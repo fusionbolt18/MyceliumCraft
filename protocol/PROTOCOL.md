@@ -9,7 +9,7 @@ If you change anything here, change both files and bump `VERSION`.
 
 ## Basics
 
-- Mapping name: `Local\MyceliumCraft_v1`, size `0x1000` bytes.
+- Mapping name: `Local\MyceliumCraft_v1`, size `0x100000` bytes (1 MB).
 - **Mycelium creates the mapping. Minecraft opens it.** This matches SkyCraft, where the host
   game (Skyrim) owns the mapping.
 - Everything is little-endian.
@@ -18,20 +18,20 @@ If you change anything here, change both files and bump `VERSION`.
 
 ## Seqlock
 
-Per-frame state blocks use a seqlock. A seqlock is a counter that lets one writer and one reader
-share a block without locks.
+Per-frame blocks use a seqlock. A seqlock is a counter that lets one writer and one reader share
+a block without locks.
 - **Writer:** add 1 to `seq` (it becomes odd), write the fields, then add 1 again (it becomes even).
 - **Reader:** read `seq`. If it's odd, try again. Read the fields, then read `seq` again. If it
   changed, try again.
 
-## Layout
+## Layout (version 4)
 
 ### Header @ 0x000
 
 | Off | Type | Field |
 |---|---|---|
 | 0x00 | u32 | magic `0x4343594D` ("MYCC") |
-| 0x04 | u32 | version (currently **1**) |
+| 0x04 | u32 | version (currently **4**) |
 | 0x08 | u32 | Mycelium process id |
 | 0x0C | u32 | Minecraft process id (0 until Minecraft opens the mapping) |
 | 0x10 | u64 | Mycelium heartbeat (GetTickCount64 at the last Mycelium frame) |
@@ -39,18 +39,21 @@ share a block without locks.
 
 ### MycState @ 0x100 (Mycelium → Minecraft, seqlock)
 
-Positions are in **Mycelium (Unity) coordinates**: Y up, Z forward, left-handed.
-
 | Off | Type | Field |
 |---|---|---|
 | 0x00 | u32 | seq |
 | 0x04 | u32 | flags: bit0 `IN_LEVEL` (a spore player exists), bit1 `PAUSED` |
-| 0x08 | f64 | spore X |
+| 0x08 | f64 | spore X (**Mycelium** coords) |
 | 0x10 | f64 | spore Y |
 | 0x18 | f64 | spore Z |
 | 0x20 | f32 | spore yaw (Unity degrees) |
-| 0x24 | u32 | pad |
+| 0x24 | u32 | teleportSeq: when this changes, Minecraft moves its player to the teleport target |
 | 0x28 | u64 | Mycelium frame counter |
+| 0x30 | f64 | teleport target X (**Minecraft** coords, feet) |
+| 0x38 | f64 | teleport target Y |
+| 0x40 | f64 | teleport target Z |
+| 0x48 | f32 | teleport target yaw (Minecraft degrees) |
+| 0x4C | f32 | wanted Minecraft player height in blocks, to match the spore's body (0 = leave Minecraft's size alone). Since version 4 |
 
 ### McState @ 0x200 (Minecraft → Mycelium, seqlock)
 
@@ -66,19 +69,36 @@ Positions are in **Minecraft coordinates**: blocks, Y up, +Z is south.
 | 0x20 | f32 | yaw (Minecraft degrees) |
 | 0x24 | f32 | pitch (Minecraft degrees) |
 | 0x28 | u64 | Minecraft frame counter |
-| 0x30 | u32 | world epoch: goes up by 1 every time Minecraft enters a world, so Mycelium re-anchors |
-| 0x34 | u32 | pad |
+| 0x30 | u32 | world epoch: goes up by 1 every time Minecraft enters a world |
+| 0x34 | u32 | teleportAck: the last MycState teleportSeq Minecraft has applied |
 
-## Coordinate mapping (Phase 0)
+### GroundGrid @ 0x1000 (Mycelium → Minecraft, seqlock)
 
-Minecraft movement is applied to Mycelium as a **difference from an anchor**. When the link comes
-up, or the world epoch changes, Mycelium records both positions as the anchor:
+Mycelium's solid ground around the spore, in **Minecraft coordinates**, as *layered columns*.
+Cell `(i, j)` covers X from `originX + i*cell` to `originX + (i+1)*cell`, and Z the same way with `j`.
+Each cell has up to 4 solid pieces, each a bottom and top height. Everything else in the column is
+empty space. That's how tunnels, overhangs and canopies are represented (since version 3).
+
+| Off | Type | Field |
+|---|---|---|
+| 0x00 | u32 | seq |
+| 0x04 | u32 | gridVersion: goes up by 1 on every new scan (0 = no grid yet) |
+| 0x08 | u32 | n: cells per side (at most 128) |
+| 0x0C | u32 | pad |
+| 0x10 | f64 | originX (Minecraft X of the grid's west edge) |
+| 0x18 | f64 | originZ (Minecraft Z of the grid's north edge) |
+| 0x20 | f64 | cell size (blocks) |
+| 0x28 | 0x18 bytes | reserved |
+| 0x40 | f32[n*n*8] | per cell, index `(j*n + i)*8`: 4 pieces of (bottom, top), lowest piece first. `bottom = -1e30` means "from far below". Unused pieces have `bottom = top = 1e30`. A cell with no pieces is a hole |
+
+## Coordinate mapping (since version 2: fixed)
 
 ```
-myc.x = anchorMyc.x + SCALE * (mc.x - anchorMc.x)
-myc.z = anchorMyc.z - SCALE * (mc.z - anchorMc.z)   (MC +Z is south; Unity +Z is "north")
-myc.y = Mycelium's own physics (Phase 0 does not drive height)
-myc.yaw = mc.yaw + 180
+mc.x  =  myc.x / SCALE        myc.x =  mc.x * SCALE
+mc.y  =  myc.y / SCALE        myc.y =  mc.y * SCALE
+mc.z  = -myc.z / SCALE        myc.z = -mc.z * SCALE     (MC +Z is south; Unity +Z is "north")
+mc.yaw = myc.yaw + 180        (Minecraft yaw 0 faces +Z)
 ```
 
-`SCALE` is 1 Mycelium unit per Minecraft block for now.
+`SCALE` is Mycelium units per Minecraft block (`scale=` in `MyceliumCraft.cfg`, default 1.4).
+Only Mycelium uses it. Everything it sends Minecraft is already in Minecraft coordinates.

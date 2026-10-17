@@ -3,7 +3,7 @@
 > Play Mycelium as the main game while *being* a Minecraft player. Same approach as
 > [SkyCraft](https://github.com/chasmlol/SkyCraft) (Skyrim + Minecraft), with Mycelium in Skyrim's place.
 
-Status: Phase 0 (link) · 2026-10-17
+Status: Phase 1, step 1 (Minecraft walks on Mycelium's ground; layered, protocol v3) · 2026-10-17
 
 ## 1. Core principle (taken from SkyCraft)
 
@@ -12,7 +12,7 @@ Mycelium runs its own world, enemies, levels and saves. The two mods only **tran
 them:
 
 - Minecraft tells Mycelium *where the player is* (and later: what it hit, what to draw).
-- Mycelium tells Minecraft *what the world is shaped like* (later) and *where the enemies are* (later).
+- Mycelium tells Minecraft *what the world is shaped like* (the ground grid, §5) and *where the enemies are* (later).
 
 **Minecraft is authoritative for the player** (AGENTS.md: "Which game is authoritative: B").
 
@@ -22,9 +22,11 @@ them:
 ┌────────── MyceliumCraft.exe (Unity 2022.3, Mono) ──────────┐        ┌──────── javaw.exe (Minecraft 26.3 + Fabric) ────────┐
 │  dev.myceliumcraft package (mycelium/)                      │        │  myceliumcraft Fabric mod (fabric/)                 │
 │                                                             │        │                                                     │
-│  MinecraftDriver ◀── McState: feet pos, yaw, flags ─────────┼─────── │  MinecraftMixin → MyceliumCraftClient.afterFrame    │
-│     moves the spore's Rigidbody                             │        │     (end of every rendered frame)                   │
-│  MinecraftDriver ─── MycState: spore pos, yaw, flags ───────┼──────▶ │  logged only, for now                               │
+│  MinecraftDriver ◀── McState: feet pos, yaw, flags, ack ────┼─────── │  MinecraftMixin → MyceliumCraftClient.afterFrame    │
+│     moves the spore's Rigidbody in X, Y, Z                  │        │     (end of every rendered frame)                   │
+│  MinecraftDriver ─── MycState: spore pos, teleport ─────────┼──────▶ │  teleports the player (client + integrated server)  │
+│  GroundScanner  ──── GroundGrid: 128x128 heights ───────────┼──────▶ │  MycCollision → BlockCollisionsMixin                │
+│     raycasts around the spore                               │        │     Mycelium's ground in every collision query      │
 └─────────────────────────────────────────────────────────────┘        └─────────────────────────────────────────────────────┘
                         shared memory  Local\MyceliumCraft_v1  (layout: protocol/PROTOCOL.md)
 ```
@@ -79,56 +81,209 @@ heartbeat every frame. If the other side's heartbeat is older than 3 s, that sid
 Per-frame blocks use a seqlock. That's a counter that is odd while the block is being written, so
 the reader never sees half an update. Full byte layout: `protocol/PROTOCOL.md`.
 
-## 4. Coordinate mapping (Phase 0)
+## 4. Coordinate mapping (fixed, since Phase 1)
 
-Phase 0 doesn't know where Mycelium's level is relative to the Minecraft world. So it moves the
-spore by **the same amount** Minecraft's player moves, starting from an *anchor*. The anchor is
-both positions recorded at the same moment. It's taken when the link starts, when Minecraft enters
-a new world, and when a new Mycelium scene spawns a player.
+Phase 0 moved the spore *by the same amount* as Minecraft's player, starting from an anchor.
+Sharing the ground needs one fixed formula instead, so a Mycelium height means the same thing to
+both games:
 
 ```
-spore.x = anchorSpore.x + SCALE * (mc.x - anchorMc.x)
-spore.z = anchorSpore.z - SCALE * (mc.z - anchorMc.z)     Minecraft +Z is south
-spore.y = Mycelium's own gravity and ground (not driven yet)
-spore.yaw = mc.yaw + 180
-SCALE = 1 Mycelium unit per block (a guess; tune from the logs)
+mc.x =  myc.x / SCALE      mc.y = myc.y / SCALE      mc.z = -myc.z / SCALE   (Minecraft +Z is south)
+mc.yaw = myc.yaw + 180
+SCALE = scale= in work\build\MyceliumCraft.cfg (default 1.4 Mycelium units per block)
 ```
 
-The spore is pulled toward that target with a velocity of `error × 12/s`, capped at 30 units/s.
-That keeps Mycelium's own collision working. If a Mycelium wall holds the spore more than 6 units
-behind, it re-anchors where it stands and logs `reanchor`. This is the Phase 0 stand-in for real
-collision sharing.
+Only Mycelium uses SCALE. Everything it sends Minecraft is already in Minecraft coordinates.
+1.4 was chosen from the Phase 0 log: Minecraft walks at 4.3 blocks/s, and the spore's base speed
+is 6 units/s (`moveSpeedBase: 6` in `PlayerBundle.prefab`). The tutorial's ground is at
+Mycelium y ≈ 125, which is Minecraft y ≈ 89, well inside Minecraft's height range and far above a
+superflat world's own ground at y −60.
 
-## 5. Logs ("log, don't look")
+### 4.1 Each level, in order (MinecraftDriver phases)
+
+1. **Idle:** Minecraft isn't linked, or isn't in a world. Mycelium controls the spore as normal.
+2. **Scan and teleport:** scan the ground (§5) and send it. Then ask Minecraft to put its player
+   where the spore's feet are (`teleportSeq` + target). Teleport numbers start from the clock, so a
+   restarted Mycelium never reuses one.
+3. **WaitingForTeleport:** wait until Minecraft reports it applied that teleport (`teleportAck`).
+   Minecraft teleports only once it has a ground grid, so it never lands in empty air. It moves both
+   its own player and the integrated server's copy, as SkyCraft does, so the server doesn't pull
+   the player back.
+4. **Driving:** every physics step:
+   - The target is Minecraft's feet, mapped to Mycelium, plus the spore's own feet offset.
+   - Spore velocity = Minecraft's velocity (smoothed, "feed-forward") + `error × 12/s`, capped at 40.
+   - The gravity Mycelium itself adds is cancelled, because Minecraft does gravity now. That's
+     PlayerController's −25 plus Unity's own, since `useGravity` is on for the spore.
+   - The spore faces Minecraft's yaw, and the walk animation follows Minecraft's speed.
+5. **Resync:** Mycelium teleports Minecraft's player back onto the spore (back to step 3) when:
+   - Mycelium's own collision holds the spore more than 6 units away, for something Minecraft
+     doesn't know about, or
+   - they disagree by more than **1.5 units for 2 seconds in a row**, meaning one is wedged
+     somewhere only its own game thinks is open. Added after you were stuck for 30 s with them
+     only about 2 units apart, so the 6-unit rule never fired. Normal walking stays under ~0.5.
+
+   A new Minecraft world or a new Mycelium scene also starts over.
+
+## 5. Ground grid: layered columns (SkyCraft's CollisionField, stage A)
+
+**What the tutorial level is made of** (measured with `-mcSurvey` and `tools/survey_check.py`, §7):
+- The walkway is a mesh called `Terrain`.
+- Over about half of it, roughly 10 units up, there's a Unity terrain tile,
+  `Terrain_(146.90 47.03 -324.77)`. Unity terrain is solid only from above: rays from below never
+  hit it, even counting back faces. That's why the spore walks freely under it, and it's what makes
+  the tutorial's tunnels.
+- Trees stack up to 6 surfaces over the path: three layers of `Leaves`, a `Trunk`, the terrain
+  tile, then the floor.
+
+So one height per cell can't describe the level. Version 1 of the grid tried that, and blocked
+the tunnels. Each cell is a **column of up to 4 solid pieces** instead; everything else is open
+space.
+
+**Mycelium side (`GroundScanner`):**
+- **Grid:** 128 × 128 cells, ½ block each, so 64 × 64 blocks centred on the spore. It's laid out in
+  Minecraft coordinates.
+- **Surfaces:** each cell is raycast straight down from 60 units above the spore. After each hit
+  the ray carries on just below it, finding up to 10 surfaces, each the top of something solid.
+- **Undersides:** a ray going *up* from each lower surface, with back faces counted, finds the
+  underside of the piece above. It stops **0.1 units short of the surface above**, and a hit
+  within 0.05 of that surface counts as "none". Otherwise it hits a one-sided surface's own back
+  face and reports "underside = top". Those zero-thickness pieces give Minecraft no box at all, so
+  the narrow passage's walkway simply **wasn't there in Minecraft**: you fell through it onto the
+  hidden terrain 1.8 units below and got wedged. In the tutorial scan, 7,670 pieces were affected.
+- **Pieces:**
+  - Everything below the lowest surface is solid.
+  - Each higher surface is a piece from its underside to its top.
+  - If no underside is found (one-way surfaces like a walkway mesh or the terrain tile):
+    - if the gap below it is smaller than **2.5 × the spore's height** (4.25 units), it's
+      **filled**. Those slivers are hidden ground just under a walkway. The smallest one-way gap
+      the spore ever walked in was 5.79 units, while gaps of 0–5 units occur about 3,300 times in
+      the survey and were never walked. Tutorial: 2,545 filled.
+    - otherwise it's a slab ½ block thick (a tunnel roof).
+- **More than 4 pieces:** the pieces with the **smallest gaps** between them are merged first,
+  for example layers of leaves. Gaps that small can't fit a player anyway.
+- **Layers counted as ground:** every physics layer the spore's layer collides with (read from
+  Mycelium's own collision settings), except characters and weapons. In the tutorial that's
+  Default, TransparentFX, Water, Enviroment, Sun, Wall, Background, IgnoreFog, Interactable and
+  Furniture.
+- **When:** when the spore is more than 16 blocks from the grid's centre, and at each new level or
+  player. In the tutorial: about 49,000 rays, **30 ms**, once per 16 blocks walked.
+
+**Checked offline** against 246 positions the spore really walked (your two logs) and the
+survey: does Minecraft's 0.6 × 1.8-block player fit there, stepping up at most 0.6 blocks?
+
+| Model | Fits |
+|---|---|
+| One height per cell, top surface | 99 / 246 |
+| Layered, but only the top 4 surfaces (the first layered build) | 208 / 246 |
+| **Layered, 10 surfaces, merged to 4 pieces (now)** | **232 / 246** |
+
+That table is for a normal-size Minecraft player. Of the 14 left, 13 are low overhangs (mostly
+`pCone1`, 1.5–2.1 units above the floor) that the shorter spore walks under. §5.1 shrinks the
+player to fix that.
+
+**Minecraft side:**
+- `MycCollision` keeps the latest grid and builds a collision shape per block position when asked:
+  one box per piece per ½-block cell inside the block.
+- `BlockCollisionsMixin` (the same hook as SkyCraft's) adds that shape to every block-collision
+  query. It's registered for both sides, so the integrated server's movement checks see the same
+  ground as the client.
+- Minecraft's own walking, step-up (0.6), jumping, falling and fall damage then work against
+  Mycelium's ground, unchanged.
+
+**Known limits:**
+- One-way surfaces become ½-block slabs, so you can't jump up through them from below like the
+  spore could.
+- Things that move (doors, platforms) aren't rescanned.
+- Holes go all the way down to the superflat world's own ground.
+
+### 5.1 Body size: Minecraft's player is shrunk to the spore's height
+
+**The problem:** Minecraft's player is always 1.8 blocks tall. At scale 1.4 that's 2.52 units. The
+spore's collision capsule is **1.70 units** tall in the game: the prefab says 1.35, but the game
+sizes it up. Overhangs the spore fits under blocked Minecraft. One `scale` can't match both
+walking speed and body size, so **speed is matched by `scale`, and size by shrinking Minecraft's
+player** (decided 2026-10-17, your choice of option 1).
+
+**How:**
+- **Mycelium measures the body:** `MinecraftDriver.SporeHeight()` takes the height of the spore's
+  own non-trigger colliders whose layer collides with the ground layers. Each one is logged; the
+  12.6-unit trigger sphere is ignored. It sends `height / scale` in blocks (MycState 0x4C,
+  protocol v4): 1.70 / 1.4 = **1.214 blocks**.
+- **Minecraft applies it:** the Fabric mod sets the player's **vanilla `minecraft:scale` attribute**
+  to `height / 1.8` (0.674) on the integrated server, which syncs it to the client.
+- **Checked in Minecraft 26.3's code** (`javap`): scale is only used for the body size
+  (`getDimensions`, which sets hitbox and eye height) and for riding. Step-up uses the separate
+  `STEP_HEIGHT` attribute; jump strength, movement speed, gravity, safe fall distance and reach are
+  separate too. So movement feels the same; only the body shrinks. Width shrinks with it: 0.6 →
+  0.40 blocks = 0.57 units, narrower than the spore's 1.0.
+- **Back to normal size:** the player goes back to scale 1 whenever Mycelium has no spore in a level,
+  or Mycelium's heartbeat stops. So a world isn't left with a tiny player. The attribute is saved
+  with the world, so if Minecraft quits while small, it stays small until the next link.
+- **Switch:** `matchSporeSize=0` in `MyceliumCraft.cfg` turns it off.
+
+**Offline check** (`tools/survey_check.py --player-scale`) at the 246 walked positions:
+
+| Player scale | Fits |
+|---|---|
+| 1 (normal) | 232 / 246 |
+| **0.674 (spore's measured height, now)** | **241 / 246** |
+| 0.536 (the prefab's 1.35) | 246 / 246 |
+
+The 5 left at 0.674: 3 are overhangs 1.5–1.6 units up. The spore's *rounded* capsule top squeezes
+under them, but Minecraft's square box can't. 2 are at the edge of a ledge. They might be worth a
+small allowance later. For now the measured real height is used, unchanged.
+
+**Narrower than the spore:** Minecraft's player can fit through gaps the spore can't. The resync
+(§4.1) moves it back onto the spore when that happens.
+
+## 6. Logs ("log, don't look")
 
 | File | What |
 |---|---|
-| `work\build\MyceliumCraft.log` | Overwritten each launch. Startup checks (types found by reflection), link up/down, anchors, scene loads, and a status line every second: Minecraft pos, spore pos, target, error, velocity, re-anchor count, fps |
+| `work\build\MyceliumCraft.log` | Overwritten each launch. Startup checks (types found by reflection), config, link up/down, scene loads, ground scans (hits, layered columns, skipped surfaces, spikes, time), phase changes, teleports, and a status line every second: phase, Minecraft pos, `groundUnderMc`, teleport seq/ack, spore pos, target, error, velocity, resyncs, fps |
 | `%USERPROFILE%\AppData\LocalLow\Overgrowth Games\MyceliumCraft\Player.log` | Unity's own log: the same lines prefixed `[MyceliumCraft]`, plus Mycelium's own messages and errors |
-| Prism instance `minecraft\logs\latest.log` | Lines starting `MyceliumCraft:`: link state and a status line every second |
+| Prism instance `minecraft\logs\latest.log` | Lines starting `MyceliumCraft:`: link state, ground grid versions, teleports, and a status line every second with `groundHere` |
 
-## 6. Test stand-ins
+## 7. Test stand-ins
 
 Like SkyCraft's `fake_skyrim.py`:
 
 - `tools\FakeMycelium`: a .NET console app built from the **same** link files as the Unity package.
-  It creates the mapping and applies the same `AnchorMapping`.
-- `fabric\gradlew linkTest`: runs the **real** Java link code outside Minecraft. It walks a fake
-  player 10 blocks east, then 10 blocks north.
-- Run FakeMycelium first, then linkTest. FakeMycelium prints PASS when the spore target ends
-  10 units +X and 10 units +Z from the start.
+  It publishes a known ground grid (a step from y 10 to y 10.5 at x = 0, one hole, and a tunnel)
+  and a teleport. Then it maps Minecraft's walk back with the same `WorldMapping`.
+- `fabric\gradlew linkTest`: runs the **real** Java link code outside Minecraft. It checks the
+  heights and collision boxes it reads, confirms the teleport, then walks 10 east and 10 north.
+- Run FakeMycelium first, then linkTest. They print "ground checks PASS" (Java) and "PASS" (C#).
+- **`MyceliumCraft.exe -mcScene "New Tutorial" -mcSurvey`** also records every surface and
+  ceiling within 220 units of the spawn to `work\build\survey.csv` (395,641 columns, 0.6 s), then
+  quits. It's for checking ground models offline against walked positions from the logs, without
+  rebuilding Unity.
+- **`-mcDumpGrid`** writes each grid **exactly as sent to Minecraft** to `work\build\grid_vN.csv`.
+  `-mcNoFill` turns the sliver fill off, for comparison. Then `python -I tools/grid_check.py
+  <grid> <log> --player-scale 0.674 [--spore] [--from T --to T]` checks positions from a log
+  against it:
+  - Minecraft positions, which flag traps Minecraft got into.
+  - With `--spore`, where the spore really stood. Those must all be open.
 
-## 7. Phases (adapted from SkyCraft §12)
+  **Lesson:** `survey_check.py` checks a *model* of the scanner. The zero-thickness walkway bug was
+  in the scanner itself and only showed up in the real grid, so check grid dumps too.
+- **`MyceliumCraft.exe -mcScene "New Tutorial"`** skips the menus and loads that level directly.
+  With `gradlew linkTest` (no FakeMycelium), this exercises the real ground scan, teleport and
+  driving without clicking through the game. linkTest's ground checks FAIL then, which is
+  expected: they're written for FakeMycelium's grid.
+
+## 8. Phases (adapted from SkyCraft §12)
 
 | # | Phase | Done when |
 |---|---|---|
-| 0 | **Link** | Walking in a flat Minecraft world moves the spore in Mycelium. ← *now* |
-| 1 | **Walk Mycelium in Minecraft physics** | Mycelium's level collision is exported to Minecraft (SkyCraft's CollisionField). Minecraft drives Y too. Mycelium's camera follows Minecraft's look. Input goes from Mycelium's window to Minecraft. |
+| 0 | **Link** | Walking in a flat Minecraft world moves the spore in Mycelium. ✔ (your test, 2026-10-17) |
+| 1a | **Ground** | Mycelium's ground is in Minecraft's collision, and Minecraft drives X, Y and Z. ← *now* |
+| 1b | **Camera and input** | Mycelium's camera follows Minecraft's look. Input goes from Mycelium's window to Minecraft, so you play in one window. |
 | 2 | **Overlay** | Minecraft's hand, hotbar and inventory are drawn over Mycelium's frame. |
 | 3 | **Combat** | Mycelium enemies become hittable stand-in entities in Minecraft. Hits carry over both ways. |
 | 4+ | Blocks, persistence, polish | |
 
-## 8. Things SkyCraft has that we deliberately leave out
+## 9. Things SkyCraft has that we deliberately leave out
 
 - **e4mc and "Playing with friends":** online play. This project is single-player and offline only.
 - **Mycelium's Steam code** (achievements, stats, overlay pause) stays exactly as Mycelium has it.

@@ -8,11 +8,14 @@ using UnityEngine.Scripting;
 namespace MyceliumCraft
 {
     /// <summary>
-    /// Phase 0: moves Mycelium's spore the way the Minecraft player moves.
+    /// Phase 1: Minecraft walks on Mycelium's ground, and the spore follows Minecraft in X, Y and Z.
     ///
     /// Mycelium's code is not changed. This component starts itself before the first scene, finds
     /// Mycelium's PlayerController by name (reflection), and runs its FixedUpdate after
     /// PlayerController's (execution order 10000) so the velocity it sets wins.
+    ///
+    /// Each level: scan the ground around the spore and send it to Minecraft, teleport Minecraft's
+    /// player onto the spore, wait until Minecraft confirms, then drive the spore from Minecraft.
     /// </summary>
     [Preserve]
     [DefaultExecutionOrder(10000)]
@@ -20,18 +23,33 @@ namespace MyceliumCraft
     {
         // How hard the spore is pulled toward where Minecraft says it should be (1/s), and caps.
         const float Gain = 12f;
-        const float MaxSpeed = 30f;
-        // If Mycelium's own collision holds the spore back further than this, give up on catching up
-        // and re-anchor where it is (Phase 0 has no shared collision yet).
-        const float ReanchorDistance = 6f;
+        const float MaxSpeed = 40f;
+        // If Mycelium's own collision holds the spore further than this from Minecraft's player,
+        // move Minecraft's player back onto the spore (Mycelium knows something Minecraft doesn't).
+        const float ResyncDistance = 6f;
+        // ...or if they disagree by more than StuckDistance for StuckSeconds in a row (wedged
+        // somewhere only one game thinks is open, which the 6-unit rule never notices).
+        const float StuckDistance = 1.5f;
+        const float StuckSeconds = 2f;
+        // Gaps under one-sided surfaces smaller than this many spore heights are filled (GroundScanner).
+        const float FillBelowSporeHeights = 2.5f;
+        // Rescan the ground when the spore is this many blocks from the grid's centre (grid half-width is 32).
+        const double RescanBlocks = 16;
+        // PlayerController adds this acceleration itself every physics step (gravityForce = -25).
+        static readonly Vector3 MyceliumGravity = new Vector3(0f, -25f, 0f);
+
+        enum Phase { Idle, WaitingForTeleport, Driving }
 
         static Type playerControllerType;
         static FieldInfo rbField;
         static FieldInfo animatorField;
+        static FieldInfo moveSpeedField;
         static PropertyInfo pausedProperty;
 
         MyceliumLink link;
-        readonly AnchorMapping mapping = new AnchorMapping();
+        WorldMapping map;
+        readonly GroundScanner ground = new GroundScanner();
+        bool needScan = true;
         Component controller;
         Rigidbody rb;
         Animator animator;
@@ -39,13 +57,22 @@ namespace MyceliumCraft
         ulong frame;
         bool mcWasAlive;
         bool driving;
+        Phase phase = Phase.Idle;
 
         McState mc;
-        double lastMcX, lastMcZ;
-        float mcSpeed; // blocks per second, smoothed
+        uint lastEpoch;
+        Teleport tp;
+        float tpSentTime;
+        float feetOffset; // rb.position.y minus the bottom of the spore's collider
+        float playerHeightBlocks; // what Minecraft's player height should be (0 = leave it)
+        bool haveLastMc;
+        double lastMcX, lastMcY, lastMcZ;
+        Vector3 mcVel; // Minecraft velocity mapped to Mycelium units/s, smoothed
+        float mcSpeed; // Minecraft horizontal speed, blocks/s, smoothed
         Vector3 lastTarget;
         float lastError;
-        int reanchors;
+        float stuckSince = -1f; // when error first went above StuckDistance, or -1
+        int resyncs;
         float nextLogTime;
         int framesSinceLog;
 
@@ -61,6 +88,11 @@ namespace MyceliumCraft
         void Awake()
         {
             McLog.Open();
+            McConfig.Load();
+            map = new WorldMapping(McConfig.Scale);
+            // Teleport numbers start from the clock, so a restarted Mycelium never reuses a number a
+            // still-running Minecraft has already applied.
+            tp.Seq = (uint)Environment.TickCount & 0x7FFFFF00u;
             // Mycelium normally freezes when its window loses focus. Minecraft has the focus while
             // you play, so keep running.
             Application.runInBackground = true;
@@ -70,10 +102,11 @@ namespace MyceliumCraft
             {
                 rbField = playerControllerType.GetField("rb", BindingFlags.Public | BindingFlags.Instance);
                 animatorField = playerControllerType.GetField("animator", BindingFlags.Public | BindingFlags.Instance);
+                moveSpeedField = playerControllerType.GetField("moveSpeed", BindingFlags.Public | BindingFlags.Instance);
             }
             Type globalData = Type.GetType("GlobalData, Assembly-CSharp");
             pausedProperty = globalData?.GetProperty("isGamePaused", BindingFlags.Public | BindingFlags.Static);
-            McLog.Info($"loaded, protocol v{Proto.Version}. PlayerController found={playerControllerType != null} rb={rbField != null} animator={animatorField != null} GlobalData.isGamePaused={pausedProperty != null}");
+            McLog.Info($"loaded, protocol v{Proto.Version}. PlayerController found={playerControllerType != null} rb={rbField != null} animator={animatorField != null} moveSpeed={moveSpeedField != null} GlobalData.isGamePaused={pausedProperty != null}");
 
             try
             {
@@ -85,11 +118,25 @@ namespace MyceliumCraft
                 McLog.Info("FAILED to create shared memory: " + e.Message);
             }
 
+            // Test aid: "-mcScene <name>" skips the menus and loads that level directly.
+            string[] args = Environment.GetCommandLineArgs();
+            int sceneArg = Array.IndexOf(args, "-mcScene");
+            string directScene = sceneArg >= 0 && sceneArg + 1 < args.Length ? args[sceneArg + 1] : null;
+
             SceneManager.sceneLoaded += (scene, mode) =>
             {
+                if (directScene != null && scene.name != directScene)
+                {
+                    McLog.Info($"-mcScene: loading '{directScene}' directly (test aid)");
+                    string next = directScene;
+                    directScene = null;
+                    SceneManager.LoadScene(next);
+                }
                 McLog.Info($"scene loaded: '{scene.name}'");
                 controller = null;
+                rb = null;
                 nextFindTime = 0;
+                SetPhase(Phase.Idle, "new scene");
             };
         }
 
@@ -111,14 +158,13 @@ namespace MyceliumCraft
                 yaw = rb.rotation.eulerAngles.y;
             }
             if (IsPaused()) flags |= Proto.MycPaused;
-            link.WriteMycState(flags, pos.x, pos.y, pos.z, yaw, frame);
+            link.WriteMycState(flags, pos.x, pos.y, pos.z, yaw, frame, tp, rb != null ? playerHeightBlocks : 0f);
 
             bool alive = link.MinecraftAlive;
             if (alive != mcWasAlive)
             {
                 mcWasAlive = alive;
                 McLog.Info(alive ? $"Minecraft linked (pid {link.MinecraftPid})" : "Minecraft gone (heartbeat stopped); Mycelium controls the spore again");
-                if (!alive) mapping.Clear();
             }
 
             if (Time.realtimeSinceStartup >= nextLogTime)
@@ -135,51 +181,171 @@ namespace MyceliumCraft
         void FixedUpdate()
         {
             driving = false;
-            if (link == null || rb == null || !link.MinecraftAlive) return;
-            if (!link.TryReadMcState(out mc) || !mc.InWorld) { mapping.Clear(); return; }
+            if (link == null || rb == null) return;
+            if (!link.MinecraftAlive || !link.TryReadMcState(out mc) || !mc.InWorld)
+            {
+                SetPhase(Phase.Idle, "Minecraft not in a world");
+                return;
+            }
             if (IsPaused()) return;
 
-            // Smoothed Minecraft horizontal speed, for the walk animation and the log.
-            if (mapping.HasAnchor)
+            Vector3 pos = rb.position;
+            map.ToMc(pos.x, pos.y, pos.z, out double sporeMcX, out _, out double sporeMcZ);
+            if (needScan || Math.Abs(sporeMcX - ground.CenterX) > RescanBlocks || Math.Abs(sporeMcZ - ground.CenterZ) > RescanBlocks)
             {
-                double dx = mc.X - lastMcX, dz = mc.Z - lastMcZ;
-                float instant = (float)Math.Sqrt(dx * dx + dz * dz) / Time.fixedDeltaTime;
-                mcSpeed = Mathf.Lerp(mcSpeed, instant, 0.2f);
+                needScan = false;
+                string summary = ground.Scan(pos, map);
+                link.WriteGround(ground.Version, GroundScanner.N, ground.OriginX, ground.OriginZ, GroundScanner.CellBlocks, ground.Pieces);
+                McLog.Info(summary);
+                if (Array.IndexOf(Environment.GetCommandLineArgs(), "-mcDumpGrid") >= 0) DumpGrid();
             }
+
+            if (phase == Phase.Idle || mc.Epoch != lastEpoch)
+            {
+                bool newWorld = phase != Phase.Idle;
+                lastEpoch = mc.Epoch;
+                SendTeleport(newWorld ? "Minecraft entered a new world" : "start");
+                return;
+            }
+
+            if (phase == Phase.WaitingForTeleport)
+            {
+                if (mc.TeleportAck != tp.Seq) return;
+                // Belt and braces: wait (up to 2 s) until Minecraft's reported position is really there.
+                double off = Math.Sqrt((mc.X - tp.X) * (mc.X - tp.X) + (mc.Y - tp.Y) * (mc.Y - tp.Y) + (mc.Z - tp.Z) * (mc.Z - tp.Z));
+                if (off > 2 && Time.realtimeSinceStartup - tpSentTime < 2f) return;
+                McLog.Info($"teleport {tp.Seq} confirmed by Minecraft after {Time.realtimeSinceStartup - tpSentTime:F2} s: mc=({mc.X:F2}, {mc.Y:F2}, {mc.Z:F2})");
+                SetPhase(Phase.Driving, "teleport confirmed");
+                stuckSince = -1f;
+                haveLastMc = false;
+                mcVel = Vector3.zero;
+            }
+
+            // Smoothed Minecraft velocity: the walk animation, the log, and feed-forward so the
+            // spore moves with Minecraft instead of trailing behind it.
+            if (haveLastMc)
+            {
+                double dx = mc.X - lastMcX, dy = mc.Y - lastMcY, dz = mc.Z - lastMcZ;
+                mcSpeed = Mathf.Lerp(mcSpeed, (float)Math.Sqrt(dx * dx + dz * dz) / Time.fixedDeltaTime, 0.2f);
+                var vNow = new Vector3((float)dx, (float)dy, (float)-dz) * (float)(map.Scale / Time.fixedDeltaTime);
+                mcVel = Vector3.Lerp(mcVel, vNow, 0.3f);
+            }
+            haveLastMc = true;
             lastMcX = mc.X;
+            lastMcY = mc.Y;
             lastMcZ = mc.Z;
 
-            Vector3 pos = rb.position;
-            if (!mapping.HasAnchor || mapping.Epoch != mc.Epoch)
-            {
-                Anchor(pos, "start");
-            }
-
-            mapping.Target(mc.X, mc.Z, out double tx, out double tz);
-            Vector3 target = new Vector3((float)tx, pos.y, (float)tz);
+            map.ToMyc(mc.X, mc.Y, mc.Z, out double tx, out double ty, out double tz);
+            Vector3 target = new Vector3((float)tx, (float)ty + feetOffset, (float)tz);
             Vector3 error = target - pos;
-            error.y = 0;
             lastError = error.magnitude;
-            if (lastError > ReanchorDistance)
-            {
-                reanchors++;
-                Anchor(pos, $"spore {lastError:F1} units behind (Mycelium collision?)");
-                target = pos;
-                error = Vector3.zero;
-            }
             lastTarget = target;
+            if (lastError > ResyncDistance)
+            {
+                resyncs++;
+                stuckSince = -1f;
+                SendTeleport($"spore {lastError:F1} units from Minecraft's player (Mycelium collision?)");
+                return;
+            }
+            if (lastError <= StuckDistance) stuckSince = -1f;
+            else if (stuckSince < 0) stuckSince = Time.time;
+            else if (Time.time - stuckSince >= StuckSeconds)
+            {
+                resyncs++;
+                stuckSince = -1f;
+                SendTeleport($"spore and Minecraft's player {lastError:F1} units apart for {StuckSeconds} s (one is wedged): mc=({mc.X:F2}, {mc.Y:F2}, {mc.Z:F2})");
+                return;
+            }
 
-            Vector3 v = Vector3.ClampMagnitude(error * Gain, MaxSpeed);
-            rb.velocity = new Vector3(v.x, rb.velocity.y, v.z);
-            rb.MoveRotation(Quaternion.Euler(0f, AnchorMapping.Yaw(mc.Yaw), 0f));
+            rb.velocity = Vector3.ClampMagnitude(mcVel + error * Gain, MaxSpeed);
+            rb.AddForce(-MyceliumGravity, ForceMode.Acceleration); // cancel PlayerController's gravity: Minecraft does gravity now
+            if (rb.useGravity) rb.AddForce(-Physics.gravity, ForceMode.Acceleration);
+            rb.MoveRotation(Quaternion.Euler(0f, WorldMapping.MycYaw(mc.Yaw), 0f));
             if (animator != null) animator.SetBool("Walk", mcSpeed > 0.5f);
             driving = true;
         }
 
-        void Anchor(Vector3 sporePos, string why)
+        /// <summary>Test aid ("-mcDumpGrid"): the grid exactly as sent to Minecraft, to grid_v{N}.csv next to the exe.</summary>
+        void DumpGrid()
         {
-            mapping.SetAnchor(mc.X, mc.Z, sporePos.x, sporePos.y, sporePos.z, mc.Epoch);
-            McLog.Info($"anchor ({why}): mc=({mc.X:F2}, {mc.Y:F2}, {mc.Z:F2}) epoch={mc.Epoch} <-> spore=({sporePos.x:F2}, {sporePos.y:F2}, {sporePos.z:F2})");
+            var inv = System.Globalization.CultureInfo.InvariantCulture;
+            string path = System.IO.Path.GetFullPath(System.IO.Path.Combine(Application.dataPath, "..", $"grid_v{ground.Version}.csv"));
+            using (var w = new System.IO.StreamWriter(path, false))
+            {
+                w.WriteLine($"# n={GroundScanner.N} originX={ground.OriginX.ToString(inv)} originZ={ground.OriginZ.ToString(inv)} cell={GroundScanner.CellBlocks.ToString(inv)} fillBelow={ground.FillBelowOneSided.ToString(inv)}");
+                for (int c = 0; c < GroundScanner.N * GroundScanner.N; c++)
+                {
+                    var line = new System.Text.StringBuilder();
+                    line.Append(c % GroundScanner.N).Append(',').Append(c / GroundScanner.N);
+                    for (int k = 0; k < Proto.GFloatsPerCell; k++)
+                        line.Append(',').Append(ground.Pieces[c * Proto.GFloatsPerCell + k].ToString("R", inv));
+                    w.WriteLine(line.ToString());
+                }
+            }
+            McLog.Info($"grid dumped to {path}");
+        }
+
+        /// <summary>Ask Minecraft to put its player where the spore stands.</summary>
+        void SendTeleport(string why)
+        {
+            Vector3 pos = rb.position;
+            float feet = FeetY(pos.y);
+            feetOffset = pos.y - feet;
+            map.ToMc(pos.x, feet, pos.z, out double x, out double y, out double z);
+            float groundY = ground.GroundAt(x, z, (float)y);
+            if (!float.IsNaN(groundY) && groundY > y - 2 && groundY < y + 2) y = Math.Max(y, groundY);
+            tp.Seq++;
+            tp.X = x;
+            tp.Y = y + 0.01;
+            tp.Z = z;
+            tp.Yaw = WorldMapping.McYaw(rb.rotation.eulerAngles.y);
+            tpSentTime = Time.realtimeSinceStartup;
+            SetPhase(Phase.WaitingForTeleport, why);
+            McLog.Info($"teleport {tp.Seq} ({why}): spore=({pos.x:F2}, {pos.y:F2}, {pos.z:F2}) feet y={feet:F2} (offset {feetOffset:F2}) -> mc=({tp.X:F2}, {tp.Y:F2}, {tp.Z:F2}) yaw={tp.Yaw:F0}, ground there={groundY:F2}");
+        }
+
+        /// <summary>Bottom of the spore's own (non-trigger) colliders, or its position if it has none.</summary>
+        float FeetY(float fallback)
+        {
+            float min = float.MaxValue;
+            foreach (Collider c in rb.GetComponentsInChildren<Collider>())
+            {
+                if (c.isTrigger || !c.enabled || c.attachedRigidbody != rb) continue;
+                min = Mathf.Min(min, c.bounds.min.y);
+            }
+            return min == float.MaxValue ? fallback : min;
+        }
+
+        /// <summary>
+        /// Height of the spore's body: its own non-trigger colliders whose layer collides with the
+        /// ground layers (others pass through the level, so they don't limit where it fits).
+        /// Logs every collider it looked at. 0 if none.
+        /// </summary>
+        float SporeHeight()
+        {
+            float min = float.MaxValue, max = float.MinValue;
+            foreach (Collider c in rb.GetComponentsInChildren<Collider>())
+            {
+                if (c.attachedRigidbody != rb) continue;
+                int layer = c.gameObject.layer;
+                bool hitsGround = false;
+                for (int l = 0; l < 32; l++)
+                    if ((ground.LayerMask & (1 << l)) != 0 && !Physics.GetIgnoreLayerCollision(layer, l)) { hitsGround = true; break; }
+                bool counts = !c.isTrigger && c.enabled && hitsGround;
+                McLog.Info($"  spore collider '{c.name}' {c.GetType().Name} layer={LayerMask.LayerToName(layer)} trigger={c.isTrigger} enabled={c.enabled} " +
+                           $"y {c.bounds.min.y:F2}..{c.bounds.max.y:F2} ({c.bounds.size.y:F2} tall) -> {(counts ? "counts" : "ignored")}");
+                if (!counts) continue;
+                min = Mathf.Min(min, c.bounds.min.y);
+                max = Mathf.Max(max, c.bounds.max.y);
+            }
+            return min == float.MaxValue ? 0f : max - min;
+        }
+
+        void SetPhase(Phase next, string why)
+        {
+            if (phase == next) return;
+            McLog.Info($"phase {phase} -> {next} ({why})");
+            phase = next;
         }
 
         void FindPlayer()
@@ -192,8 +358,30 @@ namespace MyceliumCraft
             if (controller == null) return;
             rb = rbField?.GetValue(controller) as Rigidbody ?? controller.GetComponentInChildren<Rigidbody>();
             animator = animatorField?.GetValue(controller) as Animator;
-            mapping.Clear();
-            McLog.Info($"found PlayerController on '{controller.gameObject.name}', rigidbody on '{(rb != null ? rb.gameObject.name : "none")}' at {(rb != null ? rb.position.ToString("F2") : "-")}");
+            if (rb == null) return;
+            ground.ChooseLayers(rb.gameObject.layer);
+            float sporeHeight = SporeHeight();
+            ground.FillBelowOneSided = FillBelowSporeHeights * (sporeHeight > 0.1f ? sporeHeight : 1.7f);
+            if (Array.IndexOf(Environment.GetCommandLineArgs(), "-mcNoFill") >= 0) ground.FillBelowOneSided = 0f; // test aid: compare without the fill
+            playerHeightBlocks = McConfig.MatchSporeSize && sporeHeight > 0.1f ? (float)(sporeHeight / map.Scale) : 0f;
+            McLog.Info($"spore body: {sporeHeight:F2} units tall -> Minecraft player height {(playerHeightBlocks > 0 ? $"{playerHeightBlocks:F3} blocks (scale {playerHeightBlocks / 1.8f:F3})" : "unchanged (matchSporeSize=0)")}");
+            needScan = true;
+            SetPhase(Phase.Idle, "new player");
+            McLog.Info($"found PlayerController on '{controller.gameObject.name}', rigidbody on '{rb.gameObject.name}' (layer {LayerMask.LayerToName(rb.gameObject.layer)}, useGravity={rb.useGravity}, interpolation={rb.interpolation}) at {rb.position:F2}, feet y={FeetY(rb.position.y):F2}");
+            McLog.Info($"ground layers: {ground.LayerNames}");
+
+            // Test aid: "-mcSurvey" records the level's surfaces and ceilings, then quits.
+            if (Array.IndexOf(Environment.GetCommandLineArgs(), "-mcSurvey") >= 0)
+            {
+                LevelSurvey.Run(rb.position, ground.LayerMask, (float)(GroundScanner.CellBlocks * map.Scale));
+                Application.Quit();
+            }
+        }
+
+        float OwnSpeed()
+        {
+            if (controller == null || moveSpeedField == null) return 0;
+            return (float)moveSpeedField.GetValue(controller);
         }
 
         static bool IsPaused()
@@ -208,11 +396,13 @@ namespace MyceliumCraft
             int fps = framesSinceLog; // frames since the last status line, about 1 s ago
             if (!link.MinecraftAlive)
             {
-                McLog.Info($"status: scene='{scene}' fps={fps:F0} minecraft=not linked spore={(rb != null ? sporePos.ToString("F2") : "none")}");
+                McLog.Info($"status: scene='{scene}' fps={fps} minecraft=not linked spore={(rb != null ? sporePos.ToString("F2") : "none")}");
                 return;
             }
-            McLog.Info($"status: scene='{scene}' fps={fps:F0} driving={driving} mc=({mc.X:F2}, {mc.Y:F2}, {mc.Z:F2}) yaw={mc.Yaw:F0} flags={mc.Flags} epoch={mc.Epoch} mcSpeed={mcSpeed:F2} " +
-                       $"| spore={(rb != null ? sporePos.ToString("F2") : "none")} target={lastTarget.ToString("F2")} error={lastError:F2} vel={(rb != null ? rb.velocity.ToString("F2") : "-")} reanchors={reanchors}");
+            float groundUnderMc = ground.GroundAt(mc.X, mc.Z, (float)mc.Y);
+            McLog.Info($"status: scene='{scene}' fps={fps} phase={phase} mc=({mc.X:F2}, {mc.Y:F2}, {mc.Z:F2}) yaw={mc.Yaw:F0} flags={mc.Flags} epoch={mc.Epoch} " +
+                       $"groundUnderMc={groundUnderMc:F2} tp={tp.Seq}/ack {mc.TeleportAck} mcSpeed={mcSpeed:F2} sporeOwnSpeed={OwnSpeed():F1} " +
+                       $"| spore={(rb != null ? sporePos.ToString("F2") : "none")} target={lastTarget:F2} error={lastError:F2} vel={(rb != null ? rb.velocity.ToString("F2") : "-")} resyncs={resyncs} grid=v{ground.Version}");
         }
 
         void OnDestroy()

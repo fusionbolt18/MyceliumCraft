@@ -2,6 +2,9 @@
   "required": true,
   "package": "dev.myceliumcraft.mixin",
   "compatibilityLevel": "JAVA_25",
+  "mixins": [
+    "BlockCollisionsMixin"
+  ],
   "client": [
     "MinecraftMixin"
   ],

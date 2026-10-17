@@ -12,8 +12,17 @@ namespace MyceliumCraft.Link
         public float Yaw, Pitch;
         public ulong Frame;
         public uint Epoch;
+        public uint TeleportAck;
 
         public bool InWorld => (Flags & Proto.McInWorld) != 0;
+    }
+
+    /// <summary>A request for Minecraft to move its player (Minecraft coords). Applied when Seq changes.</summary>
+    public struct Teleport
+    {
+        public uint Seq;
+        public double X, Y, Z;
+        public float Yaw;
     }
 
     /// <summary>
@@ -102,7 +111,7 @@ namespace MyceliumCraft.Link
         }
 
         /// <summary>Seqlock write of MycState.</summary>
-        public void WriteMycState(uint flags, double x, double y, double z, float yaw, ulong frame)
+        public void WriteMycState(uint flags, double x, double y, double z, float yaw, ulong frame, in Teleport tp, float playerHeightBlocks)
         {
             int b = Proto.OffMycState;
             uint seq = ReadU32(view, b + Proto.MySeq);
@@ -114,8 +123,33 @@ namespace MyceliumCraft.Link
             WriteF64(view, b + Proto.MyZ, z);
             WriteF32(view, b + Proto.MyYaw, yaw);
             Marshal.WriteInt64(view, b + Proto.MyFrame, (long)frame);
+            WriteU32(view, b + Proto.MyTeleportSeq, tp.Seq);
+            WriteF64(view, b + Proto.MyTpX, tp.X);
+            WriteF64(view, b + Proto.MyTpY, tp.Y);
+            WriteF64(view, b + Proto.MyTpZ, tp.Z);
+            WriteF32(view, b + Proto.MyTpYaw, tp.Yaw);
+            WriteF32(view, b + Proto.MyPlayerHeight, playerHeightBlocks);
             Thread.MemoryBarrier();
             WriteU32(view, b + Proto.MySeq, seq + 2); // even: done
+        }
+
+        /// <summary>Seqlock write of the ground grid: per cell GPieces (bottom, top) pairs in Minecraft Y.</summary>
+        public void WriteGround(uint gridVersion, int n, double originX, double originZ, double cell, float[] pieces)
+        {
+            int floats = n * n * Proto.GFloatsPerCell;
+            if (n > Proto.GMaxN || pieces.Length < floats) throw new ArgumentException("grid too big");
+            int b = Proto.OffGround;
+            uint seq = ReadU32(view, b + Proto.GSeq);
+            WriteU32(view, b + Proto.GSeq, seq + 1);
+            Thread.MemoryBarrier();
+            WriteU32(view, b + Proto.GVersion, gridVersion);
+            WriteU32(view, b + Proto.GN, (uint)n);
+            WriteF64(view, b + Proto.GOriginX, originX);
+            WriteF64(view, b + Proto.GOriginZ, originZ);
+            WriteF64(view, b + Proto.GCell, cell);
+            Marshal.Copy(pieces, 0, view + b + Proto.GHeights, floats);
+            Thread.MemoryBarrier();
+            WriteU32(view, b + Proto.GSeq, seq + 2);
         }
 
         /// <summary>Seqlock read of McState. False if Minecraft kept interrupting.</summary>
@@ -135,6 +169,7 @@ namespace MyceliumCraft.Link
                 s.Pitch = ReadF32(view, b + Proto.McPitch);
                 s.Frame = (ulong)Marshal.ReadInt64(view, b + Proto.McFrame);
                 s.Epoch = ReadU32(view, b + Proto.McEpoch);
+                s.TeleportAck = ReadU32(view, b + Proto.McTeleportAck);
                 Thread.MemoryBarrier();
                 if (ReadU32(view, b + Proto.McSeq) == seq1) return true;
             }

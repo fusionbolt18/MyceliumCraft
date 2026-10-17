@@ -128,7 +128,7 @@ public final class MycLink {
 	}
 
 	/** Seqlock write of McState. */
-	public static void writeMcState(int flags, double x, double y, double z, float yaw, float pitch, long frame, int epoch) {
+	public static void writeMcState(int flags, double x, double y, double z, float yaw, float pitch, long frame, int epoch, int teleportAck) {
 		MemorySegment s = shm;
 		if (s == null) {
 			return;
@@ -145,6 +145,7 @@ public final class MycLink {
 		s.set(JAVA_FLOAT, b + MC_PITCH, pitch);
 		s.set(JAVA_LONG, b + MC_FRAME, frame);
 		s.set(JAVA_INT, b + MC_EPOCH, epoch);
+		s.set(JAVA_INT, b + MC_TELEPORT_ACK, teleportAck);
 		INT.setRelease(s, b + MC_SEQ, seq + 2); // even: done
 	}
 
@@ -154,6 +155,12 @@ public final class MycLink {
 		public double x, y, z;
 		public float yaw;
 		public long frame;
+		/** When this changes, move the player to tpX/tpY/tpZ (Minecraft coords). */
+		public int teleportSeq;
+		public double tpX, tpY, tpZ;
+		public float tpYaw;
+		/** Wanted Minecraft player height in blocks (0 = leave it alone). */
+		public float playerHeight;
 
 		public boolean inLevel() {
 			return (this.flags & MYC_IN_LEVEL) != 0;
@@ -179,6 +186,12 @@ public final class MycLink {
 			out.z = s.get(JAVA_DOUBLE, b + MY_Z);
 			out.yaw = s.get(JAVA_FLOAT, b + MY_YAW);
 			out.frame = s.get(JAVA_LONG, b + MY_FRAME);
+			out.teleportSeq = s.get(JAVA_INT, b + MY_TELEPORT_SEQ);
+			out.tpX = s.get(JAVA_DOUBLE, b + MY_TP_X);
+			out.tpY = s.get(JAVA_DOUBLE, b + MY_TP_Y);
+			out.tpZ = s.get(JAVA_DOUBLE, b + MY_TP_Z);
+			out.tpYaw = s.get(JAVA_FLOAT, b + MY_TP_YAW);
+			out.playerHeight = s.get(JAVA_FLOAT, b + MY_PLAYER_HEIGHT);
 			VarHandle.loadLoadFence();
 			int seq2 = (int) INT.getVolatile(s, b + MY_SEQ);
 			if (seq1 == seq2) {
@@ -186,6 +199,43 @@ public final class MycLink {
 			}
 		}
 		return false;
+	}
+
+	/**
+	 * Seqlock read of the ground grid. Returns {@code current} unchanged if Mycelium hasn't published a
+	 * newer scan (cheap: only the version is read), or null if there is no grid at all.
+	 */
+	public static GroundGrid readGround(GroundGrid current) {
+		MemorySegment s = shm;
+		if (s == null) {
+			return current;
+		}
+		long b = OFF_GROUND;
+		for (int attempt = 0; attempt < 16; attempt++) {
+			int seq1 = (int) INT.getAcquire(s, b + G_SEQ);
+			if ((seq1 & 1) != 0) {
+				Thread.onSpinWait();
+				continue;
+			}
+			int version = s.get(JAVA_INT, b + G_VERSION);
+			if (version == 0 || (current != null && current.version == version)) {
+				return current;
+			}
+			int n = s.get(JAVA_INT, b + G_N);
+			if (n <= 0 || n > G_MAX_N) {
+				return current;
+			}
+			double ox = s.get(JAVA_DOUBLE, b + G_ORIGIN_X);
+			double oz = s.get(JAVA_DOUBLE, b + G_ORIGIN_Z);
+			double cell = s.get(JAVA_DOUBLE, b + G_CELL);
+			float[] pieces = new float[n * n * G_FLOATS_PER_CELL];
+			MemorySegment.copy(s, JAVA_FLOAT, b + G_HEIGHTS, pieces, 0, pieces.length);
+			VarHandle.loadLoadFence();
+			if ((int) INT.getVolatile(s, b + G_SEQ) == seq1) {
+				return new GroundGrid(version, n, ox, oz, cell, pieces);
+			}
+		}
+		return current;
 	}
 
 	public static long tickCount() {
