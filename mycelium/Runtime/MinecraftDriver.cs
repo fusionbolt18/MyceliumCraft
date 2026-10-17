@@ -44,12 +44,20 @@ namespace MyceliumCraft
         static FieldInfo rbField;
         static FieldInfo animatorField;
         static FieldInfo moveSpeedField;
+        static FieldInfo canActField;
+        static FieldInfo lookingField;
+        bool lookingOff; // we switched PlayerController.looking off
+        static FieldInfo actionsField;
         static PropertyInfo pausedProperty;
 
         MyceliumLink link;
         WorldMapping map;
         readonly GroundScanner ground = new GroundScanner();
         readonly CameraSync cameraSync = new CameraSync();
+        readonly InputBridge input = new InputBridge();
+        bool heldByMycelium;   // Mycelium has the controls (menu, pause, cutscene): don't drive the spore
+        bool checkAfterHold;   // just got the controls back: resync if Mycelium moved the spore
+        string controlsWhy = "";
         bool needScan = true;
         Component controller;
         Rigidbody rb;
@@ -72,10 +80,22 @@ namespace MyceliumCraft
         float mcSpeed; // Minecraft horizontal speed, blocks/s, smoothed
         Vector3 lastTarget;
         float lastError;
+        // Clock: Mycelium's unscaled time <-> Windows QueryPerformanceCounter, read at
+        // each frame, so a physics step's time can be turned into Minecraft's clock.
+        long frameQpc;
+        double frameUnscaled;
+        float lastAlpha; // ticks past the newest stored tick point at the last physics step (log; negative = inside history)
+        readonly TickHistory ticks = new TickHistory();
+        int tickSteps, fallbackSteps; // physics steps that used tick timing / the fallback (log)
         float stuckSince = -1f; // when error first went above StuckDistance, or -1
         int resyncs;
         float nextLogTime;
         bool shakeTest;
+        bool holdTest;
+        bool mouseTest;
+        readonly System.Collections.Generic.List<UnityEngine.InputSystem.Key> heldTestKeys = new System.Collections.Generic.List<UnityEngine.InputSystem.Key>();
+        float holdTestStart = -1f;
+        int holdTestStep;
         float nextShakeTime;
         int framesSinceLog;
 
@@ -91,6 +111,7 @@ namespace MyceliumCraft
         void Awake()
         {
             McLog.Open();
+            BackgroundWindow.Init();
             McConfig.Load();
             map = new WorldMapping(McConfig.Scale);
             // Teleport numbers start from the clock, so a restarted Mycelium never reuses a number a
@@ -106,6 +127,9 @@ namespace MyceliumCraft
                 rbField = playerControllerType.GetField("rb", BindingFlags.Public | BindingFlags.Instance);
                 animatorField = playerControllerType.GetField("animator", BindingFlags.Public | BindingFlags.Instance);
                 moveSpeedField = playerControllerType.GetField("moveSpeed", BindingFlags.Public | BindingFlags.Instance);
+                canActField = playerControllerType.GetField("canAct", BindingFlags.Public | BindingFlags.Instance);
+                lookingField = playerControllerType.GetField("looking", BindingFlags.Public | BindingFlags.Instance);
+                actionsField = playerControllerType.GetField("playerActionsAsset", BindingFlags.Public | BindingFlags.Instance);
             }
             Type globalData = Type.GetType("GlobalData, Assembly-CSharp");
             pausedProperty = globalData?.GetProperty("isGamePaused", BindingFlags.Public | BindingFlags.Static);
@@ -128,6 +152,28 @@ namespace MyceliumCraft
 
             // Test aid: "-mcShakeTest" fires a level's own camera shake every 3 s while Minecraft drives.
             shakeTest = Array.IndexOf(args, "-mcShakeTest") >= 0;
+            // Test aid: "-mcHoldTest" takes the controls away the way Mycelium's menus do
+            // (PlayerController.DisableController) 3 s into driving, and gives them back 3 s later.
+            holdTest = Array.IndexOf(args, "-mcHoldTest") >= 0;
+            // Test aid: "-mcHoldKeys wasd..." makes Mycelium believe those keys are held (through
+            // Unity's Input System), as real keys in Mycelium's focused window would be.
+            // Test aid: "-mcMouseTest" moves the mouse up and down (through Unity's Input System), as
+            // your real mouse does in Mycelium's focused window.
+            mouseTest = Array.IndexOf(args, "-mcMouseTest") >= 0;
+            if (mouseTest)
+            {
+                UnityEngine.InputSystem.InputSystem.settings.backgroundBehavior = UnityEngine.InputSystem.InputSettings.BackgroundBehavior.IgnoreFocus;
+                McLog.Info("-mcMouseTest: moving the mouse up and down once Minecraft drives");
+            }
+            int keysArg = Array.IndexOf(args, "-mcHoldKeys");
+            if (keysArg >= 0 && keysArg + 1 < args.Length)
+            {
+                foreach (char c in args[keysArg + 1].ToLowerInvariant())
+                    if (c >= 'a' && c <= 'z') heldTestKeys.Add(UnityEngine.InputSystem.Key.A + (c - 'a'));
+                // The test window usually isn't focused; let the Input System take events anyway.
+                UnityEngine.InputSystem.InputSystem.settings.backgroundBehavior = UnityEngine.InputSystem.InputSettings.BackgroundBehavior.IgnoreFocus;
+                McLog.Info($"-mcHoldKeys: holding {string.Join(",", heldTestKeys)} once Minecraft drives");
+            }
 
             // Test aid: "-mcFps <n>" caps Mycelium's frame rate (re-applied per scene, which may set its own).
             int fpsArg = Array.IndexOf(args, "-mcFps");
@@ -158,6 +204,9 @@ namespace MyceliumCraft
 
         void Update()
         {
+            BackgroundWindow.Update();
+            frameQpc = MyceliumLink.Qpc();
+            frameUnscaled = Time.unscaledTimeAsDouble;
             if (link == null) return;
             frame++;
             framesSinceLog++;
@@ -187,7 +236,32 @@ namespace MyceliumCraft
             McState camMc = default;
             bool look = alive && phase == Phase.Driving && link.TryReadMcState(out camMc) && camMc.InWorld;
             cameraSync.Update(look, camMc);
+
+            // Input bridge: Minecraft plays from Mycelium's keyboard and mouse during normal play.
+            // In test runs (-mcBackground) the bridge never uses your keyboard and mouse, even if
+            // Windows hands Mycelium the focus.
+            uint reason = !McConfig.InputBridge || BackgroundWindow.Enabled ? Proto.ReasonOff
+                        : !Application.isFocused ? Proto.ReasonNotFocused
+                        : !(alive && phase == Phase.Driving) ? Proto.ReasonNotDriving
+                        : MyceliumHasControls(out _) ? Proto.ReasonMyceliumControls
+                        : Proto.ReasonActive;
+            input.Update(link, reason == Proto.ReasonActive, reason);
             if (shakeTest && look && Time.realtimeSinceStartup >= nextShakeTime) FireTestShake();
+            if (holdTest && controller != null && (phase == Phase.Driving || holdTestStep > 0)) RunHoldTest();
+            if (mouseTest && phase == Phase.Driving && UnityEngine.InputSystem.Mouse.current != null)
+            {
+                // About what a hand does: up and down, 20 px per frame at most, 1.5 s period.
+                float dy = 20f * Mathf.Sin(Time.unscaledTime * 2f * Mathf.PI / 1.5f);
+                var ms = new UnityEngine.InputSystem.LowLevel.MouseState { delta = new Vector2(0f, dy) };
+                UnityEngine.InputSystem.InputSystem.QueueStateEvent(UnityEngine.InputSystem.Mouse.current, ms);
+            }
+            if (heldTestKeys.Count > 0 && UnityEngine.InputSystem.Keyboard.current != null)
+            {
+                var state = phase == Phase.Driving
+                    ? new UnityEngine.InputSystem.LowLevel.KeyboardState(heldTestKeys.ToArray())
+                    : new UnityEngine.InputSystem.LowLevel.KeyboardState();
+                UnityEngine.InputSystem.InputSystem.QueueStateEvent(UnityEngine.InputSystem.Keyboard.current, state);
+            }
 
             if (Time.realtimeSinceStartup >= nextLogTime)
             {
@@ -200,8 +274,27 @@ namespace MyceliumCraft
             }
         }
 
+        /// <summary>Switch Mycelium's own "face where I walk" (PlayerController.looking) off while Minecraft drives, and back on afterwards.</summary>
+        void SetMyceliumTurning(bool on)
+        {
+            if (controller == null || lookingField == null) return;
+            if (!on)
+            {
+                if ((bool)lookingField.GetValue(controller)) lookingField.SetValue(controller, false);
+                if (!lookingOff) McLog.Info("facing: Mycelium's own turning (PlayerController.looking) off while Minecraft drives");
+                lookingOff = true;
+            }
+            else if (lookingOff)
+            {
+                lookingField.SetValue(controller, true);
+                lookingOff = false;
+                McLog.Info("facing: Mycelium's own turning back on");
+            }
+        }
+
         void FixedUpdate()
         {
+            if (!driving) SetMyceliumTurning(true);
             driving = false;
             if (link == null || rb == null) return;
             if (!link.MinecraftAlive || !link.TryReadMcState(out mc) || !mc.InWorld)
@@ -239,8 +332,31 @@ namespace MyceliumCraft
                 McLog.Info($"teleport {tp.Seq} confirmed by Minecraft after {Time.realtimeSinceStartup - tpSentTime:F2} s: mc=({mc.X:F2}, {mc.Y:F2}, {mc.Z:F2})");
                 SetPhase(Phase.Driving, "teleport confirmed");
                 stuckSince = -1f;
+                ticks.Clear(); // the teleport is a jump; don't interpolate across it
                 haveLastMc = false;
                 mcVel = Vector3.zero;
+            }
+
+            // Mycelium has the controls (its menu, pause or a cutscene): leave the spore to it. This
+            // comes before the distance checks, so Mycelium moving the spore isn't taken for a
+            // disagreement.
+            if (MyceliumHasControls(out string why))
+            {
+                if (!heldByMycelium || why != controlsWhy)
+                {
+                    heldByMycelium = true;
+                    controlsWhy = why;
+                    McLog.Info($"hold: Mycelium has the controls ({why}); the spore is Mycelium's until it gives them back");
+                }
+                haveLastMc = false;
+                stuckSince = -1f;
+                return;
+            }
+            if (heldByMycelium)
+            {
+                heldByMycelium = false;
+                checkAfterHold = true;
+                McLog.Info("hold: Mycelium gave the controls back; Minecraft drives the spore again");
             }
 
             // Smoothed Minecraft velocity: the walk animation, the log, and feed-forward so the
@@ -257,11 +373,45 @@ namespace MyceliumCraft
             lastMcY = mc.Y;
             lastMcZ = mc.Z;
 
-            map.ToMyc(mc.X, mc.Y, mc.Z, out double tx, out double ty, out double tz);
+            // Where Minecraft's player is at the moment this physics step stands for, worked out from
+            // Minecraft's raw ticks and their time, exactly as Minecraft's renderer does. Reading the
+            // latest interpolated position instead aliased against the physics steps (Unity runs 0,
+            // 1 or 2 per frame, often back to back): the spore moved in uneven steps and the camera,
+            // which follows it, made the world judder, worst when looking down at the ground.
+            float bodyYaw = mc.BodyYaw;
+            double mx = mc.X, my = mc.Y, mz = mc.Z;
+            ticks.Observe(mc, MyceliumLink.QpcFrequency);
+            if (mc.HasTicks && frameQpc != 0 && ticks.Count > 0)
+            {
+                // The moment this physics step stands for, on Minecraft's clock. Unity runs physics a
+                // little behind the frame, so this is often before Minecraft's latest tick; the
+                // history of recent ticks covers that (only the latest two did not: the first try
+                // froze the spore between ticks).
+                long stepQpc = frameQpc + (long)((Time.fixedUnscaledTimeAsDouble - frameUnscaled) * MyceliumLink.QpcFrequency);
+                lastAlpha = (float)ticks.Sample(stepQpc, out mx, out my, out mz, out bodyYaw);
+                double tdx = mc.CurX - mc.PrevX, tdz = mc.CurZ - mc.PrevZ;
+                mcSpeed = (float)(Math.Sqrt(tdx * tdx + tdz * tdz) / (mc.TickMs / 1000.0));
+                tickSteps++;
+            }
+            else
+            {
+                fallbackSteps++;
+            }
+            map.ToMyc(mx, my, mz, out double tx, out double ty, out double tz);
             Vector3 target = new Vector3((float)tx, (float)ty + feetOffset, (float)tz);
             Vector3 error = target - pos;
             lastError = error.magnitude;
             lastTarget = target;
+            if (checkAfterHold)
+            {
+                checkAfterHold = false;
+                if (lastError > 0.5f)
+                {
+                    resyncs++;
+                    SendTeleport($"Mycelium moved the spore {lastError:F1} units while it had the controls");
+                    return;
+                }
+            }
             if (lastError > ResyncDistance)
             {
                 resyncs++;
@@ -279,10 +429,19 @@ namespace MyceliumCraft
                 return;
             }
 
-            rb.velocity = Vector3.ClampMagnitude(mcVel + error * Gain, MaxSpeed);
+            // With tick timing the target is exact, so land on it this step; without (an older
+            // Minecraft side), the old smoothed pull.
+            rb.velocity = mc.HasTicks && ticks.Count > 0
+                ? Vector3.ClampMagnitude(error / Time.fixedDeltaTime, MaxSpeed)
+                : Vector3.ClampMagnitude(mcVel + error * Gain, MaxSpeed);
             rb.AddForce(-MyceliumGravity, ForceMode.Acceleration); // cancel PlayerController's gravity: Minecraft does gravity now
             if (rb.useGravity) rb.AddForce(-Physics.gravity, ForceMode.Acceleration);
-            rb.MoveRotation(Quaternion.Euler(0f, WorldMapping.MycYaw(mc.Yaw), 0f));
+            // Face where Minecraft's body faces (it turns toward the walk when strafing). Mycelium's own
+            // PlayerController.LookAt also turns the spore toward its WASD input; with the input
+            // bridge it gets WASD too, and the two fought (the spore flickered when not walking
+            // forward), so its turning is switched off while Minecraft drives.
+            SetMyceliumTurning(false);
+            rb.MoveRotation(Quaternion.Euler(0f, WorldMapping.MycYaw(bodyYaw), 0f));
             if (animator != null) animator.SetBool("Walk", mcSpeed > 0.5f);
             driving = true;
         }
@@ -410,6 +569,31 @@ namespace MyceliumCraft
             return (float)moveSpeedField.GetValue(controller);
         }
 
+        /// <summary>
+        /// True when Mycelium has taken the controls from the player: paused (GlobalData.isGamePaused),
+        /// PlayerController.canAct off (DisableController: menus like Explore/Cancel, cutscenes, level
+        /// end, knockback), or its "Player" input map switched off (boss intros, level-up menus).
+        /// </summary>
+        bool MyceliumHasControls(out string why)
+        {
+            why = "";
+            if (IsPaused()) { why = "paused"; return true; }
+            if (controller == null) return false;
+            try
+            {
+                if (canActField != null && !(bool)canActField.GetValue(controller)) { why = "canAct off"; return true; }
+                object actions = actionsField?.GetValue(controller);
+                var asset = actions?.GetType().GetProperty("asset")?.GetValue(actions) as UnityEngine.InputSystem.InputActionAsset;
+                var map = asset?.FindActionMap("Player");
+                if (map != null && !map.enabled) { why = "Player input map off"; return true; }
+            }
+            catch (Exception e)
+            {
+                why = "check failed: " + e.Message;
+            }
+            return false;
+        }
+
         static bool IsPaused()
         {
             try { return pausedProperty != null && (bool)pausedProperty.GetValue(null); }
@@ -428,8 +612,24 @@ namespace MyceliumCraft
             float groundUnderMc = ground.GroundAt(mc.X, mc.Z, (float)mc.Y);
             McLog.Info($"status: scene='{scene}' fps={fps} phase={phase} mc=({mc.X:F2}, {mc.Y:F2}, {mc.Z:F2}) yaw={mc.Yaw:F0} flags={mc.Flags} epoch={mc.Epoch} " +
                        $"groundUnderMc={groundUnderMc:F2} tp={tp.Seq}/ack {mc.TeleportAck} mcSpeed={mcSpeed:F2} sporeOwnSpeed={OwnSpeed():F1} " +
+                       $"input={(input.Active ? $"on keys={input.KeysDown}" : $"off({input.Reason})")} hold={heldByMycelium} " +
+                       $"ticks={(mc.HasTicks ? $"yes a={lastAlpha:F2} steps={tickSteps}/{tickSteps + fallbackSteps}" : "no")} " +
                        $"camera={(cameraSync.Controlling ? $"synced view={cameraSync.Mode} x={cameraSync.X:F0} y={cameraSync.Y:F2} want down={cameraSync.WantDown:F0} tilt={cameraSync.LastTilt:F0} shake={cameraSync.ShakePos:F2}/{cameraSync.ShakeAngle:F1}deg" : "Mycelium")} mcView={mc.CameraMode} pitch={mc.Pitch:F0} {ViewText()} " +
                        $"| spore={(rb != null ? sporePos.ToString("F2") : "none")} target={lastTarget:F2} error={lastError:F2} vel={(rb != null ? rb.velocity.ToString("F2") : "-")} resyncs={resyncs} grid=v{ground.Version}");
+        }
+
+        /// <summary>Test aid: DisableController after 3 s of driving, EnableController 3 s later, as Mycelium's menus do.</summary>
+        void RunHoldTest()
+        {
+            if (holdTestStart < 0f) holdTestStart = Time.realtimeSinceStartup;
+            float t = Time.realtimeSinceStartup - holdTestStart;
+            string method = holdTestStep == 0 && t >= 3f ? "DisableController" : holdTestStep == 1 && t >= 6f ? "EnableController" : null;
+            if (method == null) return;
+            holdTestStep++;
+            MethodInfo m = playerControllerType.GetMethod(method, BindingFlags.Public | BindingFlags.Instance);
+            object[] callArgs = m != null && m.GetParameters().Length == 1 ? new object[] { null } : new object[0];
+            m?.Invoke(controller, callArgs);
+            McLog.Info($"hold test: called PlayerController.{method}() (found={m != null})");
         }
 
         /// <summary>Test aid: shake the camera the way the level's own triggers do (CameraShakeManager.ShakeCamera).</summary>

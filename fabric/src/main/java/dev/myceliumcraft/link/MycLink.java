@@ -30,6 +30,9 @@ public final class MycLink {
 	private static final MethodHandle MAP_VIEW_OF_FILE;
 	private static final MethodHandle GET_TICK_COUNT64;
 	private static final MethodHandle GET_CURRENT_PROCESS_ID;
+	private static final MethodHandle QUERY_PERFORMANCE_COUNTER;
+	private static final MethodHandle QUERY_PERFORMANCE_FREQUENCY;
+	private static final MemorySegment QPC_OUT = Arena.global().allocate(JAVA_LONG);
 	private static final java.lang.foreign.StructLayout CALL_STATE = Linker.Option.captureStateLayout();
 	private static final VarHandle LAST_ERROR = CALL_STATE.varHandle(java.lang.foreign.MemoryLayout.PathElement.groupElement("GetLastError"));
 	private static final MemorySegment OPEN_STATE = Arena.global().allocate(CALL_STATE);
@@ -45,6 +48,8 @@ public final class MycLink {
 		);
 		GET_TICK_COUNT64 = linker.downcallHandle(k32.find("GetTickCount64").orElseThrow(), FunctionDescriptor.of(JAVA_LONG));
 		GET_CURRENT_PROCESS_ID = linker.downcallHandle(k32.find("GetCurrentProcessId").orElseThrow(), FunctionDescriptor.of(JAVA_INT));
+		QUERY_PERFORMANCE_COUNTER = linker.downcallHandle(k32.find("QueryPerformanceCounter").orElseThrow(), FunctionDescriptor.of(JAVA_INT, ADDRESS));
+		QUERY_PERFORMANCE_FREQUENCY = linker.downcallHandle(k32.find("QueryPerformanceFrequency").orElseThrow(), FunctionDescriptor.of(JAVA_INT, ADDRESS));
 	}
 
 	private static volatile MemorySegment shm;
@@ -128,7 +133,7 @@ public final class MycLink {
 	}
 
 	/** Seqlock write of McState. */
-	public static void writeMcState(int flags, double x, double y, double z, float yaw, float pitch, long frame, int epoch, int teleportAck, int cameraMode) {
+	public static void writeMcState(int flags, double x, double y, double z, float yaw, float pitch, long frame, int epoch, int teleportAck, int cameraMode, float bodyYaw, Tick tick) {
 		MemorySegment s = shm;
 		if (s == null) {
 			return;
@@ -147,6 +152,17 @@ public final class MycLink {
 		s.set(JAVA_INT, b + MC_EPOCH, epoch);
 		s.set(JAVA_INT, b + MC_TELEPORT_ACK, teleportAck);
 		s.set(JAVA_INT, b + MC_CAMERA_MODE, cameraMode);
+		s.set(JAVA_FLOAT, b + MC_BODY_YAW, bodyYaw);
+		s.set(JAVA_LONG, b + MC_TICK_QPC, tick == null ? 0L : tick.qpc);
+		s.set(JAVA_DOUBLE, b + MC_PREV_X, tick == null ? x : tick.prevX);
+		s.set(JAVA_DOUBLE, b + MC_PREV_Y, tick == null ? y : tick.prevY);
+		s.set(JAVA_DOUBLE, b + MC_PREV_Z, tick == null ? z : tick.prevZ);
+		s.set(JAVA_DOUBLE, b + MC_CUR_X, tick == null ? x : tick.curX);
+		s.set(JAVA_DOUBLE, b + MC_CUR_Y, tick == null ? y : tick.curY);
+		s.set(JAVA_DOUBLE, b + MC_CUR_Z, tick == null ? z : tick.curZ);
+		s.set(JAVA_FLOAT, b + MC_TICK_MS, tick == null ? 0f : tick.ms);
+		s.set(JAVA_FLOAT, b + MC_BODY_YAW_O, tick == null ? bodyYaw : tick.bodyO);
+		s.set(JAVA_FLOAT, b + MC_BODY_YAW_CUR, tick == null ? bodyYaw : tick.body);
 		INT.setRelease(s, b + MC_SEQ, seq + 2); // even: done
 	}
 
@@ -237,6 +253,82 @@ public final class MycLink {
 			}
 		}
 		return current;
+	}
+
+	/** Plain snapshot of the input bridge block. */
+	public static final class MycInput {
+		public int flags;
+		public int reason;
+		public int buttons;
+		public final byte[] keys = new byte[IN_KEY_BYTES];
+		public double totalDX, totalDY, totalScroll;
+		public int textCount;
+		public final int[] text = new int[IN_TEXT_RING];
+
+		public boolean active() {
+			return (this.flags & IN_ACTIVE) != 0;
+		}
+
+		public boolean key(int scancode) {
+			return scancode >= 0 && scancode < IN_KEY_BYTES * 8 && (this.keys[scancode >> 3] & (1 << (scancode & 7))) != 0;
+		}
+	}
+
+	/** Seqlock read of the input bridge block. False if not linked or the writer kept interrupting. */
+	public static boolean readInput(MycInput out) {
+		MemorySegment s = shm;
+		if (s == null) {
+			return false;
+		}
+		long b = OFF_INPUT;
+		for (int attempt = 0; attempt < 16; attempt++) {
+			int seq1 = (int) INT.getAcquire(s, b + IN_SEQ);
+			if ((seq1 & 1) != 0) {
+				Thread.onSpinWait();
+				continue;
+			}
+			out.flags = s.get(JAVA_INT, b + IN_FLAGS);
+			out.reason = s.get(JAVA_INT, b + IN_REASON);
+			out.buttons = s.get(JAVA_INT, b + IN_BUTTONS);
+			MemorySegment.copy(s, JAVA_BYTE, b + IN_KEYS, out.keys, 0, IN_KEY_BYTES);
+			out.totalDX = s.get(JAVA_DOUBLE, b + IN_TOTAL_DX);
+			out.totalDY = s.get(JAVA_DOUBLE, b + IN_TOTAL_DY);
+			out.totalScroll = s.get(JAVA_DOUBLE, b + IN_TOTAL_SCROLL);
+			out.textCount = s.get(JAVA_INT, b + IN_TEXT_COUNT);
+			MemorySegment.copy(s, JAVA_INT, b + IN_TEXT, out.text, 0, IN_TEXT_RING);
+			VarHandle.loadLoadFence();
+			if ((int) INT.getVolatile(s, b + IN_SEQ) == seq1) {
+				return true;
+			}
+		}
+		return false;
+	}
+
+	/** Minecraft's latest physics tick and when it happened (QueryPerformanceCounter). */
+	public static final class Tick {
+		public long qpc;
+		public double prevX, prevY, prevZ, curX, curY, curZ;
+		public float ms, bodyO, body;
+	}
+
+	/** Windows QueryPerformanceCounter: the clock Mycelium (Stopwatch) reads too. */
+	public static synchronized long qpc() {
+		try {
+			int ok = (int) QUERY_PERFORMANCE_COUNTER.invokeExact(QPC_OUT);
+			return QPC_OUT.get(JAVA_LONG, 0);
+		} catch (Throwable t) {
+			throw new RuntimeException(t);
+		}
+	}
+
+	/** Ticks per second of {@link #qpc()}. */
+	public static synchronized long qpcFrequency() {
+		try {
+			int ok = (int) QUERY_PERFORMANCE_FREQUENCY.invokeExact(QPC_OUT);
+			return QPC_OUT.get(JAVA_LONG, 0);
+		} catch (Throwable t) {
+			throw new RuntimeException(t);
+		}
 	}
 
 	public static long tickCount() {

@@ -8,7 +8,7 @@ namespace MyceliumCraft.Link
         public const string MappingName = "Local\\MyceliumCraft_v1";
         public const int MappingBytes = 0x100000;
         public const uint Magic = 0x4343594D; // "MYCC"
-        public const uint Version = 5;
+        public const uint Version = 8;
         public const ulong HeartbeatTimeoutMs = 3000;
 
         // Header @0x000
@@ -51,11 +51,34 @@ namespace MyceliumCraft.Link
         public const int McEpoch = 0x30;
         public const int McTeleportAck = 0x34;
         public const int McCameraMode = 0x38; // 0 first person, 1 third person behind, 2 third person in front
+        public const int McBodyYaw = 0x3C;    // where the body faces (Minecraft degrees)
+        public const int McTickQpc = 0x40;    // QueryPerformanceCounter at the latest tick
+        public const int McPrevX = 0x48, McPrevY = 0x50, McPrevZ = 0x58; // feet at the previous tick
+        public const int McCurX = 0x60, McCurY = 0x68, McCurZ = 0x70;    // feet at the latest tick
+        public const int McTickMs = 0x78;     // milliseconds per tick; 0 = no tick data
+        public const int McBodyYawO = 0x7C, McBodyYawCur = 0x80;        // body yaw at the previous / latest tick
         public const uint McInWorld = 1u << 0;
         public const uint McScreenOpen = 1u << 1;
         public const uint McOnGround = 1u << 2;
         public const uint McSneaking = 1u << 3;
         public const uint McSprinting = 1u << 4;
+
+        // MycInput @0x300 (Mycelium -> Minecraft, seqlock): the input bridge
+        public const int OffInput = 0x300;
+        public const int InSeq = 0x00;
+        public const int InFlags = 0x04;
+        public const int InReason = 0x08;
+        public const int InButtons = 0x0C;
+        public const int InKeys = 0x10;      // 64 bytes, bit per SDL scancode
+        public const int InTotalDX = 0x50;
+        public const int InTotalDY = 0x58;
+        public const int InTotalScroll = 0x60;
+        public const int InTextCount = 0x68;
+        public const int InText = 0x70;      // 64 x u32
+        public const int InKeyBytes = 64;
+        public const int InTextRing = 64;
+        public const uint InActive = 1u << 0;
+        public const uint ReasonActive = 0, ReasonNotFocused = 1, ReasonMyceliumControls = 2, ReasonNotDriving = 3, ReasonOff = 4;
 
         // GroundGrid @0x1000 (Mycelium -> Minecraft, seqlock)
         public const int OffGround = 0x1000;

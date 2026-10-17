@@ -22,6 +22,18 @@ public final class MyceliumCraftClient implements ClientModInitializer {
 	private static int teleportAck;
 	private static double appliedScale = Double.NaN; // last scale we asked the server for, in this level
 	private static final MycLink.MycState MYC = new MycLink.MycState();
+	private static final MycLink.Tick TICK = new MycLink.Tick();
+	private static long qpcFreq;
+	private static volatile long frameStartQpc;
+
+	/**
+	 * Start of every frame (Minecraft.runTick HEAD), the moment Minecraft works out its tick timing:
+	 * remember the clock, so the tick's time can be given exactly (reading it at the end of the
+	 * frame would add a render-time-dependent error).
+	 */
+	public static void frameStart() {
+		frameStartQpc = MycLink.qpc();
+	}
 
 	@Override
 	public void onInitializeClient() {
@@ -48,7 +60,7 @@ public final class MyceliumCraftClient implements ClientModInitializer {
 		LocalPlayer player = minecraft.player;
 		if (player == null || minecraft.level == null) {
 			lastLevel = null;
-			MycLink.writeMcState(0, 0, 0, 0, 0, 0, frame, epoch, teleportAck, minecraft.options.getCameraType().ordinal());
+			MycLink.writeMcState(0, 0, 0, 0, 0, 0, frame, epoch, teleportAck, minecraft.options.getCameraType().ordinal(), 0, null);
 			logOncePerSecond(null, 0, 0);
 			return;
 		}
@@ -90,7 +102,24 @@ public final class MyceliumCraftClient implements ClientModInitializer {
 		if (player.isSprinting()) {
 			flags |= Proto.MC_SPRINTING;
 		}
-		MycLink.writeMcState(flags, feet.x, feet.y, feet.z, player.getYRot(), player.getXRot(), frame, epoch, teleportAck, minecraft.options.getCameraType().ordinal());
+		// Where the body faces (it turns toward the walking direction when strafing), interpolated like the position.
+		float bodyYaw = net.minecraft.util.Mth.rotLerp(partial, player.yBodyRotO, player.yBodyRot);
+		// The raw physics tick and when it happened (as SkyCraft does): the latest tick was 'partial'
+		// ticks before this frame started. Mycelium interpolates on its own clock from these.
+		if (qpcFreq == 0) {
+			qpcFreq = MycLink.qpcFrequency();
+		}
+		TICK.ms = minecraft.level.tickRateManager().millisecondsPerTick();
+		TICK.qpc = frameStartQpc - (long) (partial * TICK.ms * qpcFreq / 1000.0);
+		TICK.prevX = player.xo;
+		TICK.prevY = player.yo;
+		TICK.prevZ = player.zo;
+		TICK.curX = player.getX();
+		TICK.curY = player.getY();
+		TICK.curZ = player.getZ();
+		TICK.bodyO = player.yBodyRotO;
+		TICK.body = player.yBodyRot;
+		MycLink.writeMcState(flags, feet.x, feet.y, feet.z, player.getYRot(), player.getXRot(), frame, epoch, teleportAck, minecraft.options.getCameraType().ordinal(), bodyYaw, TICK);
 		logOncePerSecond(feet, player.getYRot(), flags);
 	}
 

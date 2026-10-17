@@ -14,6 +14,13 @@ namespace MyceliumCraft.Link
         public uint Epoch;
         public uint TeleportAck;
         public uint CameraMode; // 0 first person, 1 third person behind, 2 third person in front
+        public float BodyYaw;   // where the body faces (Minecraft degrees)
+        public long TickQpc;    // QueryPerformanceCounter at the latest tick
+        public double PrevX, PrevY, PrevZ, CurX, CurY, CurZ; // feet at the previous / latest tick
+        public float TickMs;    // milliseconds per tick; 0 = no tick data
+        public float BodyYawO, BodyYawCur;
+
+        public bool HasTicks => TickMs > 0f && TickQpc != 0;
 
         public bool InWorld => (Flags & Proto.McInWorld) != 0;
     }
@@ -53,6 +60,34 @@ namespace MyceliumCraft.Link
 
         [DllImport("kernel32.dll")]
         static extern uint GetCurrentProcessId();
+
+        [DllImport("kernel32.dll")]
+        static extern bool QueryPerformanceCounter(out long count);
+
+        [DllImport("kernel32.dll")]
+        static extern bool QueryPerformanceFrequency(out long frequency);
+
+        static long qpcFrequency;
+
+        /// <summary>
+        /// Windows QueryPerformanceCounter, the clock Minecraft's side stamps its ticks with.
+        /// Not System.Diagnostics.Stopwatch: under Unity's Mono it counts from a different start
+        /// (measured: about 7.9 days apart), which made every tick time look far in the future.
+        /// </summary>
+        public static long Qpc()
+        {
+            QueryPerformanceCounter(out long c);
+            return c;
+        }
+
+        public static long QpcFrequency
+        {
+            get
+            {
+                if (qpcFrequency == 0) QueryPerformanceFrequency(out qpcFrequency);
+                return qpcFrequency;
+            }
+        }
 
         IntPtr handle;
         IntPtr view;
@@ -134,6 +169,26 @@ namespace MyceliumCraft.Link
             WriteU32(view, b + Proto.MySeq, seq + 2); // even: done
         }
 
+        /// <summary>Seqlock write of the input bridge block (see MycInput in protocol/PROTOCOL.md).</summary>
+        public void WriteInput(uint flags, uint reason, uint buttons, byte[] keys, double totalDX, double totalDY, double totalScroll, uint textCount, uint[] textRing)
+        {
+            int b = Proto.OffInput;
+            uint seq = ReadU32(view, b + Proto.InSeq);
+            WriteU32(view, b + Proto.InSeq, seq + 1);
+            Thread.MemoryBarrier();
+            WriteU32(view, b + Proto.InFlags, flags);
+            WriteU32(view, b + Proto.InReason, reason);
+            WriteU32(view, b + Proto.InButtons, buttons);
+            Marshal.Copy(keys, 0, view + b + Proto.InKeys, Proto.InKeyBytes);
+            WriteF64(view, b + Proto.InTotalDX, totalDX);
+            WriteF64(view, b + Proto.InTotalDY, totalDY);
+            WriteF64(view, b + Proto.InTotalScroll, totalScroll);
+            WriteU32(view, b + Proto.InTextCount, textCount);
+            for (int i = 0; i < Proto.InTextRing; i++) WriteU32(view, b + Proto.InText + 4 * i, textRing[i]);
+            Thread.MemoryBarrier();
+            WriteU32(view, b + Proto.InSeq, seq + 2);
+        }
+
         /// <summary>Seqlock write of the ground grid: per cell GPieces (bottom, top) pairs in Minecraft Y.</summary>
         public void WriteGround(uint gridVersion, int n, double originX, double originZ, double cell, float[] pieces)
         {
@@ -172,6 +227,17 @@ namespace MyceliumCraft.Link
                 s.Epoch = ReadU32(view, b + Proto.McEpoch);
                 s.TeleportAck = ReadU32(view, b + Proto.McTeleportAck);
                 s.CameraMode = ReadU32(view, b + Proto.McCameraMode);
+                s.BodyYaw = ReadF32(view, b + Proto.McBodyYaw);
+                s.TickQpc = Marshal.ReadInt64(view, b + Proto.McTickQpc);
+                s.PrevX = ReadF64(view, b + Proto.McPrevX);
+                s.PrevY = ReadF64(view, b + Proto.McPrevY);
+                s.PrevZ = ReadF64(view, b + Proto.McPrevZ);
+                s.CurX = ReadF64(view, b + Proto.McCurX);
+                s.CurY = ReadF64(view, b + Proto.McCurY);
+                s.CurZ = ReadF64(view, b + Proto.McCurZ);
+                s.TickMs = ReadF32(view, b + Proto.McTickMs);
+                s.BodyYawO = ReadF32(view, b + Proto.McBodyYawO);
+                s.BodyYawCur = ReadF32(view, b + Proto.McBodyYawCur);
                 Thread.MemoryBarrier();
                 if (ReadU32(view, b + Proto.McSeq) == seq1) return true;
             }

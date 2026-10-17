@@ -32,6 +32,14 @@ for (int j = 0; j < N; j++)
     }
 link.WriteGround(1, N, -32, -32, 0.5, pieces);
 
+// Input bridge: W held (SDL scancode 26), left mouse button, mouse moved 123.5 / -40 px, scrolled 2, typed "hi".
+var keys = new byte[Proto.InKeyBytes];
+keys[26 >> 3] |= (byte)(1 << (26 & 7));
+var textRing = new uint[Proto.InTextRing];
+textRing[0] = 'h';
+textRing[1] = 'i';
+link.WriteInput(Proto.InActive, Proto.ReasonActive, 1u << 1, keys, 123.5, -40, 2, 2, textRing);
+
 map.ToMc(0.35, 14.7, -0.35, out double tx0, out double ty0, out double tz0);
 var tp = new Teleport { Seq = 1000, X = tx0, Y = ty0, Z = tz0, Yaw = 90 };
 Console.WriteLine($"teleport {tp.Seq} -> mc ({tp.X:F2}, {tp.Y:F2}, {tp.Z:F2})");

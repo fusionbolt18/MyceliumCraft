@@ -24,6 +24,12 @@ namespace MyceliumCraft
         /// <summary>Shake position offset this frame (world space, as the listener applied it).</summary>
         public Vector3 Position { get; private set; }
 
+        /// <summary>
+        /// Position corrections made before the shake this frame: Cinemachine's collision add-on
+        /// (CinemachineCollider) pushing the camera out of the way of level geometry. For the trace.
+        /// </summary>
+        public Vector3 CollisionPush { get; private set; }
+
         /// <summary>Shake rotation this frame (applied after the camera's own orientation).</summary>
         public Quaternion Rotation { get; private set; } = Quaternion.identity;
 
@@ -34,6 +40,7 @@ namespace MyceliumCraft
             {
                 posAfterAim = state.PositionCorrection;
                 rotAfterAim = state.OrientationCorrection;
+                CollisionPush = state.PositionCorrection;
             }
             else if (stage == CinemachineCore.Stage.Noise)
             {

@@ -37,6 +37,8 @@ namespace MyceliumCraft
 
         CinemachineFreeLook freeLook;
         ShakeTap shake;
+        CinemachineCollider collider;
+        float savedOccludedDamping;
         CinemachineFreeLook.Orbit[] savedOrbits;
         string savedXInput, savedYInput;
         bool controlling;
@@ -127,8 +129,11 @@ namespace MyceliumCraft
             smoothYaw = Mathf.LerpAngle(smoothYaw, WorldMapping.MycYaw(mc.Yaw), k);
 
             // Third person in front: the camera faces the spore, so heading + 180 and the pitch
-            // mirrored, as Minecraft's own front view does.
-            float heading = WorldMapping.MycYaw(mc.Yaw) + (mode == InFront ? 180f : 0f);
+            // mirrored, as Minecraft's own front view does. The eased yaw is used in every view:
+            // with the input bridge, Minecraft turns in uneven steps (mouse movement reaches it in
+            // whatever Minecraft frame comes next), and Cinemachine passes the heading straight
+            // through, so third person showed it as jitter.
+            float heading = smoothYaw + (mode == InFront ? 180f : 0f);
             heading = Mathf.Repeat(heading + 180f, 360f) - 180f;
             freeLook.m_XAxis.Value = heading;
             wantDown = mode == FirstPerson ? Mathf.Clamp(smoothPitch, -89.9f, 89.9f)
@@ -192,7 +197,7 @@ namespace MyceliumCraft
                 McLog.Info("camera: no CinemachineFreeLook on the MainCamera object; camera not synced");
                 return;
             }
-            McLog.Info($"camera: found FreeLook on '{main.name}' (binding {freeLook.m_BindingMode})");
+            McLog.Info($"camera: found FreeLook on '{main.name}' (binding {freeLook.m_BindingMode}); Mycelium input provider on it: {(freeLook.GetComponent<AxisState.IInputAxisProvider>() is Component ip ? ip.GetType().Name + (((Behaviour)ip).enabled ? " (enabled)" : " (disabled)") : "none")}");
             // Added after Mycelium's own extensions (impulse listener, collider), so it runs after them.
             shake = freeLook.GetComponent<ShakeTap>() ?? freeLook.gameObject.AddComponent<ShakeTap>();
             var listener = freeLook.GetComponent<CinemachineImpulseListener>();
@@ -208,12 +213,31 @@ namespace MyceliumCraft
 
         void Take()
         {
+            // Mycelium's collision add-on snaps the camera in front of a wall instantly
+            // (DampingWhenOccluded 0) and eases back out over 1 s. With the full look range the
+            // camera swings past walls far more often, and each snap showed as a jump (up to 0.24
+            // units in one frame). Ease it in a little while Minecraft drives.
+            collider = freeLook.GetComponent<CinemachineCollider>();
+            if (collider != null)
+            {
+                savedOccludedDamping = collider.m_DampingWhenOccluded;
+                collider.m_DampingWhenOccluded = Mathf.Max(collider.m_DampingWhenOccluded, McConfig.CameraCollisionSmoothing);
+                McLog.Info($"camera: collision add-on found (collides with layers {collider.m_CollideAgainst.value}, damping {collider.m_Damping}); ease-in when occluded {savedOccludedDamping} -> {collider.m_DampingWhenOccluded} s");
+            }
             savedXInput = freeLook.m_XAxis.m_InputAxisName;
             savedYInput = freeLook.m_YAxis.m_InputAxisName;
             freeLook.m_XAxis.m_InputAxisName = "";
             freeLook.m_YAxis.m_InputAxisName = "";
-            freeLook.m_XAxis.m_InputAxisValue = 0;
-            freeLook.m_YAxis.m_InputAxisValue = 0;
+            // Mycelium's camera also has a CinemachineInputProvider: it feeds the mouse ("Look",
+            // new Input System) straight into both axes, whatever the axis names say. With the input
+            // bridge Mycelium has the focus, so your real mouse moved the camera on top of
+            // Minecraft's look, partly a frame late (the FreeLook moves its Y axis at the end of its
+            // update, for the next frame). That was the remaining up/down jitter. Unplug it from the
+            // axes, and clear any speed they had built up (Reset keeps the axis position).
+            freeLook.m_XAxis.SetInputAxisProvider(0, null);
+            freeLook.m_YAxis.SetInputAxisProvider(1, null);
+            freeLook.m_XAxis.Reset();
+            freeLook.m_YAxis.Reset();
 
             // Raise the high orbit to nearly overhead, at the same distance from the spore.
             savedOrbits = (CinemachineFreeLook.Orbit[])freeLook.m_Orbits.Clone();
@@ -229,7 +253,15 @@ namespace MyceliumCraft
                 curveAngle[i] = Mathf.Atan2(p.y, new Vector2(p.x, p.z).magnitude) * Mathf.Rad2Deg;
             }
             controlling = true;
-            McLog.Info($"camera: following Minecraft's look (Mycelium mouse input off; was '{savedXInput}'/'{savedYInput}'). " +
+            var curve = new System.Text.StringBuilder();
+            int turnsBack = 0;
+            for (int i = 0; i < Samples; i++)
+            {
+                if (i % 5 == 0) curve.Append($" {curveAngle[i]:F1}");
+                if (i > 0 && curveAngle[i] < curveAngle[i - 1] - 1e-3f) turnsBack++;
+            }
+            McLog.Info($"camera: orbit curve angle every 0.05 of Y:{curve}; points where it turns back: {turnsBack}");
+            McLog.Info($"camera: following Minecraft's look (Mycelium mouse input off: axis names were '{savedXInput}'/'{savedYInput}', input provider unplugged). " +
                        $"High orbit raised from {savedOrbits[0].m_Height:F2}/{savedOrbits[0].m_Radius:F2} to {freeLook.m_Orbits[0].m_Height:F2}/{freeLook.m_Orbits[0].m_Radius:F2} (height/radius); " +
                        $"orbit curve looks down {curveAngle[0]:F1}..{curveAngle[Samples / 2]:F1}..{curveAngle[Samples - 1]:F1} degrees at Y 0/0.5/1; " +
                        $"Minecraft pitch -90/0/90 -> camera {PitchToAngle(-90):F0}/{PitchToAngle(0):F0}/{PitchToAngle(90):F0} degrees");
@@ -243,7 +275,7 @@ namespace MyceliumCraft
                 if (System.Array.IndexOf(System.Environment.GetCommandLineArgs(), "-mcCameraTrace") < 0) return;
                 string path = System.IO.Path.GetFullPath(System.IO.Path.Combine(Application.dataPath, "..", "camera_trace.csv"));
                 trace = new System.IO.StreamWriter(path, false);
-                trace.WriteLine("frame,time,mcFrame,pitch,wantDown,y,camX,camY,camZ,downBeforeTilt,tilt,targetY,mode,viewYaw,shakePos,shakeAngle,offAim");
+                trace.WriteLine("frame,time,mcFrame,pitch,wantDown,y,camX,camY,camZ,downBeforeTilt,tilt,targetY,mode,viewYaw,shakePos,shakeAngle,offAim,sporeYaw,sporeX,sporeY,sporeZ,targetX,targetZ,collisionPush");
                 McLog.Info($"camera: tracing every frame to {path}");
             }
             var inv = System.Globalization.CultureInfo.InvariantCulture;
@@ -261,6 +293,13 @@ namespace MyceliumCraft
                 // How far the final view is from the wanted, unshaken direction: the visible shake
                 // (about 0 when calm, about shakeAngle while shaking).
                 Vector3.Angle(t.forward, Quaternion.Euler(wantDown, unshakenYaw, 0f) * Vector3.forward).ToString("F3", inv),
+                (spore != null ? spore.eulerAngles.y : float.NaN).ToString("F3", inv),
+                (spore != null ? spore.position.x : float.NaN).ToString("F4", inv),
+                (spore != null ? spore.position.y : float.NaN).ToString("F4", inv),
+                (spore != null ? spore.position.z : float.NaN).ToString("F4", inv),
+                (follow != null ? follow.position.x : float.NaN).ToString("F4", inv),
+                (follow != null ? follow.position.z : float.NaN).ToString("F4", inv),
+                (shake != null ? shake.CollisionPush.magnitude : 0f).ToString("F4", inv),
             }));
         }
 
@@ -270,7 +309,9 @@ namespace MyceliumCraft
             {
                 freeLook.m_XAxis.m_InputAxisName = savedXInput;
                 freeLook.m_YAxis.m_InputAxisName = savedYInput;
+                freeLook.UpdateInputAxisProvider(); // plug Mycelium's mouse provider back in
                 if (savedOrbits != null) freeLook.m_Orbits = savedOrbits;
+                if (collider != null) collider.m_DampingWhenOccluded = savedOccludedDamping;
             }
             savedOrbits = null;
             controlling = false;

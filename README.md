@@ -52,7 +52,14 @@ Single-player and offline only.
 - **Mycelium's camera shakes** (triggers, bosses) work in all three views. Measured with the
   tutorial's own trigger shake: the camera shakes exactly as much as Mycelium's shake produces. Not
   tested at the real trigger with real Minecraft.
-- You still need two windows, with Minecraft focused (input from Mycelium's window is next).
+- **Play from Mycelium's window (input bridge): not tested with real Minecraft.** Mycelium's
+  keyboard and mouse are passed on to Minecraft during normal play, except Escape and P (Mycelium's
+  pause). Stand-in tests pass. `inputBridge=0` goes back to playing from Minecraft's window.
+- **Mycelium menus keep the controls** (e.g. the hub's Explore/Cancel): the spore is no longer driven
+  while a Mycelium menu, pause or cutscene has the controls, and Minecraft gets no input. Tested with
+  Mycelium's own `DisableController()`/`EnableController()`, not yet at the real prompt.
+- Both games react to shared keys (Shift, Space, E, Q, clicks, Ctrl, Tab); see DESIGN §5.3.
+  Minecraft's screens (inventory, chat) still open in Minecraft's own window.
 - Spore attacks, dodges and skills still use Mycelium's own keys.
 - Steam achievements probably don't work in the private build (not tested).
 

@@ -6,7 +6,10 @@
     "BlockCollisionsMixin"
   ],
   "client": [
-    "MinecraftMixin"
+    "FramerateLimitTrackerMixin",
+    "InputConstantsMixin",
+    "MinecraftMixin",
+    "WindowMixin"
   ],
   "injectors": { "defaultRequire": 1 }
 }

@@ -110,11 +110,34 @@ superflat world's own ground at y −60.
    its own player and the integrated server's copy, as SkyCraft does, so the server doesn't pull
    the player back.
 4. **Driving:** every physics step:
-   - The target is Minecraft's feet, mapped to Mycelium, plus the spore's own feet offset.
-   - Spore velocity = Minecraft's velocity (smoothed, "feed-forward") + `error × 12/s`, capped at 40.
-   - The gravity Mycelium itself adds is cancelled, because Minecraft does gravity now. That's
-     PlayerController's −25 plus Unity's own, since `useGravity` is on for the spore.
-   - The spore faces Minecraft's yaw, and the walk animation follows Minecraft's speed.
+   - **Target, timed by Minecraft's ticks** (protocol v8, as SkyCraft does):
+     - Minecraft sends its last two physics ticks (it moves the player 20 times a second), plus
+       the moment of the latest tick on Windows' QueryPerformanceCounter. That moment is the
+       counter at the start of Minecraft's frame, minus `partial × 50 ms`.
+     - `TickHistory` keeps the last 16 ticks as the points Minecraft's renderer passes through.
+       Each physics step works out its own moment on that clock (frame counter +
+       `fixedUnscaledTime − unscaledTime`) and takes the position there, interpolated, or
+       continued straight for up to half a tick past the newest.
+     - The spore's velocity is then `(target − position) / step time`, so it lands on the target
+       each step, capped at 40.
+     - **Why:** reading Minecraft's latest position each step aliased against Unity's physics
+       steps (0, 1 or 2 per frame, often back to back), so the spore moved unevenly. The camera
+       follows the spore, so the whole world juddered, worst when looking down at the ground.
+       Open-ground speed unevenness went **0.159 → 0.011** (`tools/screen_jitter_check.py`).
+     - **Clock trap:** Unity's (Mono's) `System.Diagnostics.Stopwatch` is *not* the same counter;
+       it was about 7.9 days off. Mycelium calls `QueryPerformanceCounter` itself.
+     - **Fallback:** without tick data (an older Minecraft side), the old pull is used: smoothed
+       velocity + `error × 12/s`.
+   - **Gravity:** the gravity Mycelium itself adds is cancelled, because Minecraft does gravity now.
+     That's PlayerController's −25 plus Unity's own, since `useGravity` is on for the spore.
+   - **Facing:** the spore faces where **Minecraft's body** faces (`yBodyRot`, interpolated the same
+     way), which turns toward the walk when strafing, while the head keeps looking ahead.
+     - Mycelium's own "face where I walk" (`PlayerController.LookAt`, gated by its public
+       `looking`) is switched off while Minecraft drives, and back on afterwards.
+     - **Why:** with the input bridge, Mycelium also gets WASD, and the two turned the spore against
+       each other. With D held while strafing: 75 direction reversals in 9 s and up to 15.8° per
+       frame, against 0 and 0° now.
+   - **Walk animation:** follows Minecraft's speed.
 5. **Resync:** Mycelium teleports Minecraft's player back onto the spore (back to step 3) when:
    - Mycelium's own collision holds the spore more than 6 units away, for something Minecraft
      doesn't know about, or
@@ -263,8 +286,17 @@ step), the camera gets **Minecraft's full range**:
 - **Smoothing:** Minecraft sends a new pitch once per Minecraft frame. Snapping to each one
   stutters against Mycelium's own frame rate (measured: 160 freeze-then-jump frames in 9 s with
   Minecraft at ~43 fps and Mycelium at 60). So the pitch is eased toward over `cameraSmoothing`
-  seconds (default 0.05, an exponential ease; 0 = off). Turning left/right needs no extra smoothing,
-  because Cinemachine's own damping already does it.
+  seconds (default 0.05, an exponential ease; 0 = off). **The yaw is eased the same way in every
+  view.** At first, third person passed Minecraft's yaw straight to Cinemachine. That was smooth
+  while you played from Minecraft's window. With the input bridge, though, mouse movement reaches
+  Minecraft in whichever Minecraft frame comes next, so Minecraft turns in uneven steps, and third
+  person showed them as jitter. Measured, with a fake Minecraft at ~120 fps turning in 0/2/1 steps
+  and Mycelium at 60 fps (`LINKTEST_TURN=1`, unevenness 0 = perfectly even):
+
+  | View | Raw yaw | Eased yaw |
+  |---|---|---|
+  | Behind | 0.75 | 0.13 |
+  | In front | 0.71 | 0.22 |
 - **Wanted angle:** the smoothed Minecraft pitch −90..0..90 becomes a camera angle of
   −89..`cameraPitchOffset`..89. The default offset is 16, Mycelium's normal view, at "straight
   ahead". The halves above and below are stretched to fit, so straight up or down in Minecraft is
@@ -281,7 +313,24 @@ step), the camera gets **Minecraft's full range**:
     third-person camera normally does, rather than going underground.
   - It also cancels the few degrees Mycelium's aim adds.
   - No tilt is applied while another camera is live or blending, such as a cutscene.
-- **Mouse:** Mycelium's mouse input to this camera is switched off by blanking the axis names.
+- **Mouse:** Mycelium's own mouse input to this camera is switched off in two places:
+  - **The legacy axis names** ("Mouse X"/"Mouse Y") are blanked.
+  - **The `CinemachineInputProvider`** on the camera feeds the new Input System's "Look" action
+    (`<Mouse>/delta`) into both axes, whatever the axis names say. It's unplugged from the axes
+    (`SetInputAxisProvider(…, null)`), and their built-up speed is cleared (`AxisState.Reset()`,
+    which keeps the position). It's plugged back in with `UpdateInputAxisProvider()` afterwards.
+  - **Why the provider matters:** before the input bridge, Mycelium never had the focus, so it
+    never saw the mouse. With the bridge, your real mouse moved Mycelium's camera **as well as**
+    Minecraft's look. The FreeLook moves its Y axis at the end of its update, for the next frame,
+    so the orbit height ran ahead of the wanted angle (+0.02 looking down, −0.02 looking up). That
+    made the camera hop when moving it up and down. Found in your own trace (`-mcCameraTrace`):
+    the orbit height was off from the angle by up to 0.065. Reproduced with `-mcMouseTest`, and
+    after unplugging:
+
+    | | Orbit height evenness | Camera height evenness | Camera distance evenness | Height off from angle |
+    |---|---|---|---|---|
+    | Provider on | 0.50 | 0.40 | 0.54 | up to 0.035 |
+    | Unplugged | 0.21 | 0.16 | 0.25 | up to 0.0016 |
 - **Restore:** the orbits and mouse input go back to normal as soon as Minecraft stops driving.
 - **Switch:** `syncCamera=0` in `MyceliumCraft.cfg` turns it all off.
 - **F5 view** (protocol v5: McState 0x38 = Minecraft's `options.getCameraType().ordinal()`, which
@@ -300,6 +349,25 @@ step), the camera gets **Minecraft's full range**:
     - The FreeLook keeps running underneath at Mycelium's normal view, so switching back is
       seamless.
   - **Switch:** `matchF5View=0` keeps the camera behind whatever Minecraft does.
+- **Camera collision** (`CinemachineCollider` on Mycelium's main camera):
+  - **Mycelium's settings:** it collides with the "Wall" layer only (ignoring tag
+    `InvisibleWalls`), pulls the camera forward in front of a wall, and has
+    `DampingWhenOccluded = 0`. So the camera snaps in front of a wall instantly, and eases back out
+    over `Damping = 1` s.
+  - **Problem:** with the full look range, the camera swings up past walls and through the
+    tutorial's canopy far more often. At the tutorial start, the add-on pushed the camera on
+    372 of 785 frames, up to 0.7 units, and each snap was a jump (up to 0.45 units in one frame).
+    That's the jitter you saw when moving the camera up and down while looking down.
+  - **Fix:** while Minecraft drives, `DampingWhenOccluded` is raised to `cameraCollisionSmoothing`
+    (default 0.2 s), and restored afterwards. Measured with an uneven up/down look:
+
+    | | Instant (Mycelium's) | 0.2 s ease-in |
+    |---|---|---|
+    | Biggest single-frame push change | 0.445 units | 0.097 |
+    | Frames jumping over 0.05 units | 26 | 4 |
+    | Biggest camera height jump | 0.225 | 0.098 |
+
+    The trade-off: a wall's edge can be visible for a moment before the camera moves in front of it.
 - **Camera shake** is kept in every view (`ShakeTap`).
   - **How Mycelium shakes:** level triggers (`AreaTrigger`), bosses and crabs call
     `CameraShakeManager.ShakeCamera(source)`, which fires a Cinemachine impulse. The
@@ -354,6 +422,15 @@ line logs where the rendered camera really points (`Camera.main`, after everythi
 The heading matched the spore's facing throughout (`diff 0`). The run ended before exactly ±90.
 The first version, with Mycelium's own range only, is commit `63fafff`.
 
+**Test runs stay out of the way (`-mcBackground`):** every test launch of Mycelium is minimized,
+which puts it behind every window and makes Windows hand the focus back to the window you were
+using. That's repeated for the first 10 s and again if Mycelium ever gets the focus, and in this
+mode the input bridge is always off, so a test never uses your keyboard or mouse.
+- **First version:** pushed the window to the back of the window stack. That did not take the
+  focus away, and once Mycelium had it, with the bridge on, for 13 s.
+- **Now:** Windows still hands Mycelium the focus at launch about every other run. The log says
+  `Mycelium got the focus; minimizing to hand it back`, and the bridge stays off.
+
 **Smoothness is measured, not eyeballed:**
 - `-mcCameraTrace` writes one line per rendered frame to `work\build\camera_trace.csv`: pitch,
   wanted angle, Y, camera position, angle before tilt, tilt, target height.
@@ -372,6 +449,83 @@ With Minecraft at ~43 fps and Mycelium at 60 fps:
 Orbit Y now changes by about 0.0017 per frame instead of 0.01 hops. The camera's single biggest
 jump (~0.6 units) is Cinemachine's collision add-on moving it sideways when the spore walks into a
 wall, not the look.
+
+## 5.3 Input bridge: play from Mycelium's window (SkyCraft's InputBridge)
+
+**Idea:** Mycelium's window has the focus, and its keyboard and mouse are passed on to Minecraft.
+Minecraft's window can sit in the background or minimised; later it can be hidden.
+
+**When Minecraft plays from it** (`MycInput.flags ACTIVE`; otherwise a reason is sent and logged):
+1. `inputBridge=1` in `MyceliumCraft.cfg`, otherwise reason 4.
+2. Mycelium's window is focused (`Application.isFocused`), otherwise reason 1.
+3. Minecraft is driving the spore (phase Driving), otherwise reason 3.
+4. **Mycelium doesn't have the controls**, otherwise reason 2. It has them when any of these is true:
+   - `GlobalData.isGamePaused`
+   - `PlayerController.canAct` is off. `DisableController()` does this for the hub's
+     Explore/Cancel prompt (`CharSelectManagerNew`), cutscenes, credits, level end, the run-start
+     trigger, level-up, curio interactions and knockback.
+   - Mycelium's "Player" input map is off (boss intros, the enemy-kill freeze).
+
+While Mycelium has the controls, Minecraft's player gets no input, and Mycelium's own UI gets WASD
+and Enter (it has the focus), so you can navigate its menus.
+
+**Hold** (independent of the bridge): while Mycelium has the controls, the driver doesn't touch the
+spore at all. Mycelium may move it, as cutscenes do. When Mycelium gives the controls back and the
+spore is more than 0.5 units from Minecraft's player, Minecraft's player is teleported onto the
+spore. This also fixes the spore following Minecraft through a Mycelium menu when you play from
+Minecraft's window.
+
+**Mycelium side (`InputBridge.cs`):**
+- **Keys:** each frame it reads every key through Unity's Input System and maps it to an **SDL
+  scancode**, the USB HID usage number that Minecraft 26.x's SDL input uses. Unity `Key` values
+  are physical positions, so a key means the same physical key in both games. **Escape and P are
+  never sent**: they stay Mycelium's pause keys.
+- **Mouse:** buttons (SDL 1 left, 2 middle, 3 right, 4/5 side), running totals of movement (screen
+  pixels, Y down) and the wheel (notches).
+- **Text:** a 64-character ring of typed text, for Minecraft chat.
+- It's all published as *state* in `MycInput` (protocol v6, 0x300).
+
+**Minecraft side (`MycInputBridge.java`, at the start of every frame via `Minecraft.runTick`):**
+- **Keys:** compares the held keys with what it last applied and replays only changes into
+  `KeyboardHandler.keyPress` (keycodes from `SDL_GetKeyFromScancode`, Shift/Ctrl/Alt as modifiers),
+  as SkyCraft does.
+- **Buttons:** into `MouseHandler.onButton`.
+- **Look:** movement goes into `MouseHandler.onMove(handle, x, y, dx, dy)`. Minecraft's own code
+  adds `dx, dy` to its look accumulator and turns the player with all its settings (sensitivity,
+  smooth camera, spyglass, invert). The wheel goes into `onScroll`, text into `textInput` (only when
+  a Minecraft screen is open).
+- **Pretending to be focused**, only while active:
+  - `Minecraft.isWindowActive()` and `Window.isFocused()` return true.
+  - `InputConstants.isKeyDown` answers from the bridged keys.
+  - `InputConstants.grabMouse/releaseMouse` do nothing, so Minecraft never takes the real cursor
+    from Mycelium.
+  - Minecraft "grabs" the mouse the normal way, which mouse look needs. Its own screens release
+    and re-grab as usual.
+  - Your `pauseOnLostFocus` option is turned off and put back afterwards.
+  - Minecraft's "inactive" frame-rate limit is bypassed (`FramerateLimitTrackerMixin` returns your
+    own frame-rate setting), and bridged input counts as input for its idle timer. Your log showed
+    Minecraft dropping from 120 to 30 fps for stretches while bridged.
+- **Stopping:** when it stops being active, every held key and button is released.
+
+**Keys both games react to** (Mycelium still gets its own keys, since it has the focus):
+
+| Key | Minecraft | Mycelium |
+|---|---|---|
+| WASD | walk | walk (overridden by the driver) |
+| Shift | sneak | dodge |
+| Space | jump | show stats |
+| E | inventory | skill 2 |
+| Q | drop item | skill 1 |
+| Left click | attack | attack |
+| Right click | use | interact |
+| Ctrl | sprint | navigate camera |
+| Tab | player list | reset camera |
+| V | (none) | subspecies skill |
+
+Which game should own which action is the next design decision.
+
+**Not yet:** Minecraft's screens (inventory, chat, pause) open in Minecraft's own window, and its
+cursor can't be used from Mycelium. That needs the overlay (Phase 2).
 
 ## 6. Logs ("log, don't look")
 
@@ -415,7 +569,7 @@ Like SkyCraft's `fake_skyrim.py`:
 |---|---|---|
 | 0 | **Link** | Walking in a flat Minecraft world moves the spore in Mycelium. ✔ (your test, 2026-10-17) |
 | 1a | **Ground** | Mycelium's ground is in Minecraft's collision, and Minecraft drives X, Y and Z. ← *now* |
-| 1b | **Camera and input** | Mycelium's camera follows Minecraft's look (§5.2, built; your test next). Input goes from Mycelium's window to Minecraft, so you play in one window (next). |
+| 1b | **Camera and input** | Mycelium's camera follows Minecraft's look and F5 view (§5.2, tested by you). Input goes from Mycelium's window to Minecraft, so you play in one window (§5.3, built; your test next). |
 | 2 | **Overlay** | Minecraft's hand, hotbar and inventory are drawn over Mycelium's frame. |
 | 3 | **Combat** | Mycelium enemies become hittable stand-in entities in Minecraft. Hits carry over both ways. |
 | 4+ | Blocks, persistence, polish | |

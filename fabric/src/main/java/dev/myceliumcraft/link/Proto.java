@@ -5,7 +5,7 @@ public final class Proto {
 	public static final String MAPPING_NAME = "Local\\MyceliumCraft_v1";
 	public static final long MAPPING_BYTES = 0x100000;
 	public static final int MAGIC = 0x4343594D; // "MYCC"
-	public static final int VERSION = 5;
+	public static final int VERSION = 8;
 	/** A side is alive if its heartbeat is younger than this. */
 	public static final long HEARTBEAT_TIMEOUT_MS = 3000;
 
@@ -49,11 +49,34 @@ public final class Proto {
 	public static final long MC_EPOCH = 0x30;
 	public static final long MC_TELEPORT_ACK = 0x34;
 	public static final long MC_CAMERA_MODE = 0x38; // Minecraft CameraType ordinal: 0 first person, 1 behind, 2 in front
+	public static final long MC_BODY_YAW = 0x3C; // where the body faces (Minecraft degrees, interpolated)
+	public static final long MC_TICK_QPC = 0x40; // QueryPerformanceCounter at the latest tick
+	public static final long MC_PREV_X = 0x48, MC_PREV_Y = 0x50, MC_PREV_Z = 0x58; // feet at the previous tick
+	public static final long MC_CUR_X = 0x60, MC_CUR_Y = 0x68, MC_CUR_Z = 0x70; // feet at the latest tick
+	public static final long MC_TICK_MS = 0x78; // milliseconds per tick; 0 = no tick data
+	public static final long MC_BODY_YAW_O = 0x7C, MC_BODY_YAW_CUR = 0x80; // body yaw at the previous / latest tick
 	public static final int MC_IN_WORLD = 1 << 0;
 	public static final int MC_SCREEN_OPEN = 1 << 1;
 	public static final int MC_ON_GROUND = 1 << 2;
 	public static final int MC_SNEAKING = 1 << 3;
 	public static final int MC_SPRINTING = 1 << 4;
+
+	// MycInput @0x300 (Mycelium -> Minecraft, seqlock): the input bridge
+	public static final long OFF_INPUT = 0x300;
+	public static final long IN_SEQ = 0x00;
+	public static final long IN_FLAGS = 0x04;
+	public static final long IN_REASON = 0x08;
+	public static final long IN_BUTTONS = 0x0C;
+	public static final long IN_KEYS = 0x10; // 64 bytes, bit per SDL scancode
+	public static final long IN_TOTAL_DX = 0x50;
+	public static final long IN_TOTAL_DY = 0x58;
+	public static final long IN_TOTAL_SCROLL = 0x60;
+	public static final long IN_TEXT_COUNT = 0x68;
+	public static final long IN_TEXT = 0x70; // 64 x u32
+	public static final int IN_KEY_BYTES = 64;
+	public static final int IN_TEXT_RING = 64;
+	public static final int IN_ACTIVE = 1 << 0;
+	public static final String[] IN_REASONS = {"active", "Mycelium window not focused", "Mycelium has the controls (menu, pause or cutscene)", "Minecraft isn't driving the spore", "bridge turned off"};
 
 	// GroundGrid @0x1000 (Mycelium -> Minecraft, seqlock)
 	public static final long OFF_GROUND = 0x1000;

@@ -24,14 +24,14 @@ a block without locks.
 - **Reader:** read `seq`. If it's odd, try again. Read the fields, then read `seq` again. If it
   changed, try again.
 
-## Layout (version 5)
+## Layout (version 8)
 
 ### Header @ 0x000
 
 | Off | Type | Field |
 |---|---|---|
 | 0x00 | u32 | magic `0x4343594D` ("MYCC") |
-| 0x04 | u32 | version (currently **5**) |
+| 0x04 | u32 | version (currently **8**) |
 | 0x08 | u32 | Mycelium process id |
 | 0x0C | u32 | Minecraft process id (0 until Minecraft opens the mapping) |
 | 0x10 | u64 | Mycelium heartbeat (GetTickCount64 at the last Mycelium frame) |
@@ -72,6 +72,42 @@ Positions are in **Minecraft coordinates**: blocks, Y up, +Z is south.
 | 0x30 | u32 | world epoch: goes up by 1 every time Minecraft enters a world |
 | 0x34 | u32 | teleportAck: the last MycState teleportSeq Minecraft has applied |
 | 0x38 | u32 | cameraMode: Minecraft's F5 view, 0 first person, 1 third person behind, 2 third person in front. Since version 5 |
+| 0x3C | f32 | body yaw (Minecraft degrees, interpolated to the rendered frame): where the player's body faces, which turns toward the walking direction when strafing. Since version 7 |
+| 0x40 | i64 | tickQpc: Windows QueryPerformanceCounter at the moment of Minecraft's latest physics tick. Since version 8 |
+| 0x48 | f64 ×3 | feet at the previous tick (x, y, z) |
+| 0x60 | f64 ×3 | feet at the latest tick (x, y, z) |
+| 0x78 | f32 | milliseconds per tick (50 unless /tick rate changed); 0 = no tick data |
+| 0x7C | f32 | body yaw at the previous tick |
+| 0x80 | f32 | body yaw at the latest tick |
+
+Like SkyCraft: with the raw ticks and their time, Mycelium can work out where Minecraft's player is at
+*any* moment on its own clock, as Minecraft's renderer does with partial ticks:
+`pos(t) = lerp(prev, latest, (t - tickQpc) / tickLength)`. That's smooth whatever the two games'
+frame rates are. The interpolated feet at 0x08 are sampled at Minecraft's frame times, which alias
+against Mycelium's physics steps. Both games read the same QueryPerformanceCounter (Windows'
+high-precision clock).
+
+### MycInput @ 0x300 (Mycelium → Minecraft, seqlock). Since version 6
+
+The keyboard and mouse as Mycelium's window sees them, for Minecraft to play from (the input
+bridge). It's *state*, not events: Minecraft compares it with what it last applied, so nothing is
+lost if a read is missed.
+
+| Off | Type | Field |
+|---|---|---|
+| 0x00 | u32 | seq |
+| 0x04 | u32 | flags: bit0 `ACTIVE`, meaning Minecraft should play from this input (Mycelium is focused, and it's normal play) |
+| 0x08 | u32 | reason when not active: 0 active, 1 Mycelium window not focused, 2 Mycelium has the controls (its menu, pause or cutscene), 3 Minecraft isn't driving the spore, 4 bridge turned off |
+| 0x0C | u32 | mouse buttons held: bit n = SDL button n (1 left, 2 middle, 3 right, 4 back, 5 forward) |
+| 0x10 | u8[64] | keys held: bit n = SDL scancode n (USB HID usage), 0..511 |
+| 0x50 | f64 | total mouse movement X since Mycelium started (pixels, right +) |
+| 0x58 | f64 | total mouse movement Y (pixels, **down** +, like screen coordinates) |
+| 0x60 | f64 | total wheel (notches, up +) |
+| 0x68 | u32 | text count: characters typed so far (total) |
+| 0x6C | u32 | pad |
+| 0x70 | u32[64] | text ring: character n (Unicode) at index n % 64 |
+
+Escape and P are never sent: they stay Mycelium's pause keys.
 
 ### GroundGrid @ 0x1000 (Mycelium → Minecraft, seqlock)
 

@@ -26,6 +26,12 @@ namespace MyceliumCraft
         /// </summary>
         public static float CameraPitchOffset = 16f;
 
+        /// <summary>Minecraft plays from Mycelium's keyboard and mouse while Mycelium has the focus.</summary>
+        public static bool InputBridge = true;
+
+        /// <summary>Seconds the third-person camera takes to move in front of a wall (Mycelium's own: 0, instant).</summary>
+        public static float CameraCollisionSmoothing = 0.2f;
+
         /// <summary>Copy Minecraft's F5 view (first person / behind / in front).</summary>
         public static bool MatchF5View = true;
 
@@ -56,7 +62,16 @@ namespace MyceliumCraft
             "cameraSmoothing=0.05\n" +
             "\n" +
             "# 1: Mycelium's camera copies Minecraft's F5 view (first person, behind, in front). 0: always behind.\n" +
-            "matchF5View=1\n";
+            "matchF5View=1\n" +
+            "\n" +
+            "# 1: play from Mycelium's window: its keyboard and mouse are passed on to Minecraft (except\n" +
+            "# Escape and P, Mycelium's pause keys), and not while a Mycelium menu has the controls.\n" +
+            "# 0: play from Minecraft's window as before.\n" +
+            "inputBridge=1\n" +
+            "\n" +
+            "# Seconds the third-person camera takes to move in front of a wall that gets in the way.\n" +
+            "# Mycelium's own is 0 (an instant jump); bigger is smoother but may show a wall's edge briefly.\n" +
+            "cameraCollisionSmoothing=0.2\n";
 
         public static void Load()
         {
@@ -92,6 +107,14 @@ namespace MyceliumCraft
                     {
                         CameraPitchOffset = off;
                     }
+                    else if (key == "cameracollisionsmoothing" && float.TryParse(value, NumberStyles.Float, CultureInfo.InvariantCulture, out float cs) && cs >= 0f)
+                    {
+                        CameraCollisionSmoothing = cs;
+                    }
+                    else if (key == "inputbridge" && (value == "0" || value == "1"))
+                    {
+                        InputBridge = value == "1";
+                    }
                     else if (key == "matchf5view" && (value == "0" || value == "1"))
                     {
                         MatchF5View = value == "1";
@@ -110,7 +133,7 @@ namespace MyceliumCraft
             {
                 McLog.Info($"config: couldn't read {path} ({e.Message}); using defaults");
             }
-            McLog.Info($"config: scale={Scale.ToString(CultureInfo.InvariantCulture)} Mycelium units per block, matchSporeSize={(MatchSporeSize ? 1 : 0)}, syncCamera={(SyncCamera ? 1 : 0)}, cameraPitchOffset={CameraPitchOffset.ToString(CultureInfo.InvariantCulture)}, cameraSmoothing={CameraSmoothing.ToString(CultureInfo.InvariantCulture)}, matchF5View={(MatchF5View ? 1 : 0)}");
+            McLog.Info($"config: scale={Scale.ToString(CultureInfo.InvariantCulture)} Mycelium units per block, matchSporeSize={(MatchSporeSize ? 1 : 0)}, syncCamera={(SyncCamera ? 1 : 0)}, cameraPitchOffset={CameraPitchOffset.ToString(CultureInfo.InvariantCulture)}, cameraSmoothing={CameraSmoothing.ToString(CultureInfo.InvariantCulture)}, matchF5View={(MatchF5View ? 1 : 0)}, inputBridge={(InputBridge ? 1 : 0)}, cameraCollisionSmoothing={CameraCollisionSmoothing.ToString(CultureInfo.InvariantCulture)}");
         }
     }
 }

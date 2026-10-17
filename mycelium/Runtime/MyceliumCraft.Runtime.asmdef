@@ -1,7 +1,7 @@
 {
     "name": "MyceliumCraft.Runtime",
     "rootNamespace": "MyceliumCraft",
-    "references": ["Cinemachine"],
+    "references": ["Cinemachine", "Unity.InputSystem"],
     "includePlatforms": [],
     "excludePlatforms": [],
     "allowUnsafeCode": false,
