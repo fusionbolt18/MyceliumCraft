@@ -49,6 +49,7 @@ namespace MyceliumCraft
         MyceliumLink link;
         WorldMapping map;
         readonly GroundScanner ground = new GroundScanner();
+        readonly CameraSync cameraSync = new CameraSync();
         bool needScan = true;
         Component controller;
         Rigidbody rb;
@@ -136,6 +137,7 @@ namespace MyceliumCraft
                 controller = null;
                 rb = null;
                 nextFindTime = 0;
+                cameraSync.Reset();
                 SetPhase(Phase.Idle, "new scene");
             };
         }
@@ -166,6 +168,11 @@ namespace MyceliumCraft
                 mcWasAlive = alive;
                 McLog.Info(alive ? $"Minecraft linked (pid {link.MinecraftPid})" : "Minecraft gone (heartbeat stopped); Mycelium controls the spore again");
             }
+
+            // Camera: every rendered frame (not the 50 Hz physics step), so turning stays smooth.
+            McState camMc = default;
+            bool look = alive && phase == Phase.Driving && link.TryReadMcState(out camMc) && camMc.InWorld;
+            cameraSync.Update(look, camMc);
 
             if (Time.realtimeSinceStartup >= nextLogTime)
             {
@@ -402,7 +409,21 @@ namespace MyceliumCraft
             float groundUnderMc = ground.GroundAt(mc.X, mc.Z, (float)mc.Y);
             McLog.Info($"status: scene='{scene}' fps={fps} phase={phase} mc=({mc.X:F2}, {mc.Y:F2}, {mc.Z:F2}) yaw={mc.Yaw:F0} flags={mc.Flags} epoch={mc.Epoch} " +
                        $"groundUnderMc={groundUnderMc:F2} tp={tp.Seq}/ack {mc.TeleportAck} mcSpeed={mcSpeed:F2} sporeOwnSpeed={OwnSpeed():F1} " +
+                       $"camera={(cameraSync.Controlling ? $"synced x={cameraSync.X:F0} y={cameraSync.Y:F2}" : "Mycelium")} pitch={mc.Pitch:F0} {ViewText()} " +
                        $"| spore={(rb != null ? sporePos.ToString("F2") : "none")} target={lastTarget:F2} error={lastError:F2} vel={(rb != null ? rb.velocity.ToString("F2") : "-")} resyncs={resyncs} grid=v{ground.Version}");
+        }
+
+        /// <summary>Where the rendered camera really points (after Cinemachine), next to the spore's facing.</summary>
+        string ViewText()
+        {
+            Camera cam = Camera.main;
+            if (cam == null) return "view=none";
+            Vector3 f = cam.transform.forward;
+            float viewYaw = Mathf.Atan2(f.x, f.z) * Mathf.Rad2Deg;
+            float viewDown = -Mathf.Asin(Mathf.Clamp(f.y, -1f, 1f)) * Mathf.Rad2Deg;
+            float sporeYaw = rb != null ? rb.rotation.eulerAngles.y : float.NaN;
+            float diff = Mathf.DeltaAngle(viewYaw, sporeYaw);
+            return $"view yaw={viewYaw:F0} down={viewDown:F0} sporeYaw={sporeYaw:F0} (diff {diff:F0})";
         }
 
         void OnDestroy()

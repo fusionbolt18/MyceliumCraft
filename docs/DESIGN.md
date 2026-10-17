@@ -236,6 +236,38 @@ small allowance later. For now the measured real height is used, unchanged.
 **Narrower than the spore:** Minecraft's player can fit through gaps the spore can't. The resync
 (§4.1) moves it back onto the spore when that happens.
 
+## 5.2 Camera: Mycelium's camera follows Minecraft's look (`CameraSync`)
+
+**Mycelium's camera:**
+- A Cinemachine **FreeLook**, an orbit camera around the spore, on the object tagged `MainCamera`
+  (`Prefabs/Camera/Main Camera.prefab`).
+- Binding mode **World Space**, so its X axis is a world heading (−180..180, wraps). Its Y axis
+  (0..1) moves it between three orbits:
+
+  | Orbit | Height | Radius | Looks down |
+  |---|---|---|---|
+  | Low | −0.1 | 3 | −1.9° |
+  | Middle | 1 | 3.5 | 15.9° |
+  | High | 3 | 3 | 45.0° |
+
+- No auto-recentering. It's turned by the legacy input axes "Mouse X"/"Mouse Y". Other cameras
+  (reset, navigate, dramatic, cutscenes) blend in on top of it as they normally do.
+
+**While Minecraft drives the spore** (phase Driving, every rendered frame, not the 50 Hz physics
+step):
+- X = Minecraft yaw + 180 (the same heading the spore faces).
+- Y comes from Minecraft's pitch + `cameraPitchOffset` (default 16), mapped piecewise-linearly onto
+  the three orbit angles. Looking straight ahead in Minecraft gives Mycelium's normal middle view.
+  Minecraft pitch −18..29 covers the low to high orbit.
+- Mycelium's mouse input to this camera is switched off by blanking the axis names, and put back
+  as soon as Minecraft stops driving.
+- `syncCamera=0` in `MyceliumCraft.cfg` turns it off.
+
+**Checked** in "New Tutorial" with the fake Minecraft: the status line logs where the rendered
+camera really points (`Camera.main`, after Cinemachine). It was `view yaw=90 ... sporeYaw=90 (diff 0)`
+and `view yaw=0 ... sporeYaw=0 (diff 0)`, looking down 10–13°. So the camera sits behind the spore,
+looking the way Minecraft looks, and W in Minecraft moves the spore into the screen.
+
 ## 6. Logs ("log, don't look")
 
 | File | What |
@@ -278,7 +310,7 @@ Like SkyCraft's `fake_skyrim.py`:
 |---|---|---|
 | 0 | **Link** | Walking in a flat Minecraft world moves the spore in Mycelium. ✔ (your test, 2026-10-17) |
 | 1a | **Ground** | Mycelium's ground is in Minecraft's collision, and Minecraft drives X, Y and Z. ← *now* |
-| 1b | **Camera and input** | Mycelium's camera follows Minecraft's look. Input goes from Mycelium's window to Minecraft, so you play in one window. |
+| 1b | **Camera and input** | Mycelium's camera follows Minecraft's look (§5.2, built; your test next). Input goes from Mycelium's window to Minecraft, so you play in one window (next). |
 | 2 | **Overlay** | Minecraft's hand, hotbar and inventory are drawn over Mycelium's frame. |
 | 3 | **Combat** | Mycelium enemies become hittable stand-in entities in Minecraft. Hits carry over both ways. |
 | 4+ | Blocks, persistence, polish | |

@@ -17,6 +17,12 @@ namespace MyceliumCraft
         /// <summary>Shrink Minecraft's player to the spore's height (Minecraft's scale attribute).</summary>
         public static bool MatchSporeSize = true;
 
+        /// <summary>Point Mycelium's camera where Minecraft's player looks.</summary>
+        public static bool SyncCamera = true;
+
+        /// <summary>Added to Minecraft's pitch before it picks the camera height; 16 = looking straight ahead gives Mycelium's normal middle view.</summary>
+        public static float CameraPitchOffset = 16f;
+
         const string Template =
             "# MyceliumCraft settings. Restart MyceliumCraft.exe after changing them.\n" +
             "\n" +
@@ -26,7 +32,14 @@ namespace MyceliumCraft
             "\n" +
             "# 1: make Minecraft's player as tall as the spore (Minecraft's own scale setting), so it fits\n" +
             "# under everything the spore fits under. Speed, jumping and step-up stay the same. 0: normal size.\n" +
-            "matchSporeSize=1\n";
+            "matchSporeSize=1\n" +
+            "\n" +
+            "# 1: Mycelium's camera turns with Minecraft's mouse look. 0: Mycelium's own camera.\n" +
+            "syncCamera=1\n" +
+            "\n" +
+            "# Degrees added to Minecraft's pitch before choosing the camera height. 16: looking straight\n" +
+            "# ahead gives Mycelium's normal view; look down for the high view, up for the low one.\n" +
+            "cameraPitchOffset=16\n";
 
         public static void Load()
         {
@@ -54,6 +67,14 @@ namespace MyceliumCraft
                     {
                         MatchSporeSize = value == "1";
                     }
+                    else if (key == "synccamera" && (value == "0" || value == "1"))
+                    {
+                        SyncCamera = value == "1";
+                    }
+                    else if (key == "camerapitchoffset" && float.TryParse(value, NumberStyles.Float, CultureInfo.InvariantCulture, out float off))
+                    {
+                        CameraPitchOffset = off;
+                    }
                     else
                     {
                         McLog.Info($"config: ignored line '{line}'");
@@ -64,7 +85,7 @@ namespace MyceliumCraft
             {
                 McLog.Info($"config: couldn't read {path} ({e.Message}); using defaults");
             }
-            McLog.Info($"config: scale={Scale.ToString(CultureInfo.InvariantCulture)} Mycelium units per block, matchSporeSize={(MatchSporeSize ? 1 : 0)}");
+            McLog.Info($"config: scale={Scale.ToString(CultureInfo.InvariantCulture)} Mycelium units per block, matchSporeSize={(MatchSporeSize ? 1 : 0)}, syncCamera={(SyncCamera ? 1 : 0)}, cameraPitchOffset={CameraPitchOffset.ToString(CultureInfo.InvariantCulture)}");
         }
     }
 }

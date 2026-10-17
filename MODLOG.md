@@ -1,5 +1,67 @@
 # MODLOG
 
+## 2026-10-17 Camera follows Minecraft's look
+
+**Changed:**
+- **`mycelium/Runtime/CameraSync.cs` (new):** drives Mycelium's main FreeLook camera from
+  Minecraft's yaw and pitch while Minecraft drives the spore, with Mycelium's mouse input to that
+  camera off, and restores it afterwards.
+- **`MinecraftDriver.cs`:** calls it every frame. The status line now shows `camera=synced x= y=`
+  and the rendered camera's real direction, `view yaw= down= sporeYaw= (diff)`.
+- **`McConfig.cs`:** new `syncCamera=1` and `cameraPitchOffset=16`.
+- **`MyceliumCraft.Runtime.asmdef`:** now references the Cinemachine package.
+- DESIGN §5.2.
+- Earlier the same day: committed the ground and body-size work as `51f42cb`, including your
+  `STATUS-handoff.md` template.
+
+**Why:** your request. Mycelium's camera stayed wherever Mycelium's mouse left it, so Minecraft's
+"forward" could be any direction on screen.
+
+**Tested how:** `MyceliumCraft.exe -mcScene "New Tutorial"` with `gradlew linkTest`, which looks
+west (yaw −90), then north (180), at pitch 0. I read `MyceliumCraft.log`.
+
+**Result:**
+- Startup: `camera: found FreeLook on 'Main Camera' (binding WorldSpace); orbits look down
+  -1.9/15.9/45.0 degrees`, then `camera: following Minecraft's look (... was 'Mouse X'/'Mouse Y')`.
+- While driving: `camera=synced x=90 y=0.50 view yaw=90 down=10 sporeYaw=90 (diff 0)`, then
+  `x=0 ... view yaw=0 down=12 sporeYaw=0 (diff 0)`. The rendered camera points where the spore
+  faces. One sample showed `diff -7` as the spore hit a wall.
+- When driving stopped: `camera: back to Mycelium's mouse`.
+- Unity's log showed `error CS0246: ... 'CameraSync' could not be found` during the build. That was
+  an early pass before the new file was imported; Unity reruns itself, and the final result was
+  `build Succeeded: 0 errors`. The built DLL contains `CameraSync`.
+- **My mistake:** I deleted `work\build\MyceliumCraft.cfg` to get a fresh template without looking
+  at it first. Your last log shows it held only defaults (`scale=1.4`, `matchSporeSize=1`), so no
+  setting was lost. It was regenerated with the new camera settings.
+
+**Still broken / not tested:**
+- **Not tested with real Minecraft and real mouse look**, so it's unknown how it feels: mouse
+  sensitivity, the pitch range, whether the camera clips into walls.
+- Vertical look only uses Minecraft pitch −18..29. Looking further up or down doesn't change the
+  camera.
+- Input still goes to Minecraft's own window. You still play with Minecraft focused.
+
+**Next:** you test. Then input: play from Mycelium's window.
+
+### Test procedure
+
+1. Only Mycelium changed, so no jar copy is needed.
+2. Start Minecraft (Creative Superflat), then
+   `work\build\MyceliumCraft.exe -screen-fullscreen 0 -screen-width 1280 -screen-height 720`
+   and play into the tutorial.
+3. **You should see:**
+   - With Minecraft focused, moving the mouse turns Mycelium's camera too. It stays behind the
+     spore and looks where you look.
+   - W moves the spore into the screen, A/D sideways.
+   - Looking down a bit raises the camera into Mycelium's high view; looking up lowers it.
+   - Close Minecraft and Mycelium's own mouse controls the camera again.
+4. **In `work\build\MyceliumCraft.log`:**
+   - `camera: found FreeLook ...`
+   - `camera: following Minecraft's look ...`
+   - status lines with `camera=synced` and `(diff 0)` or close to it
+5. If the vertical feel is wrong, change `cameraPitchOffset=` in `work\build\MyceliumCraft.cfg`
+   (no rebuild needed). Bigger means a higher camera at the same Minecraft pitch.
+
 ## 2026-10-17 Narrow passage: walkways were missing in Minecraft
 
 **Changed:**
