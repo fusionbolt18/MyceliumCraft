@@ -1,0 +1,206 @@
+package dev.myceliumcraft.link;
+
+import static dev.myceliumcraft.link.Proto.*;
+import static java.lang.foreign.ValueLayout.*;
+
+import java.lang.foreign.Arena;
+import java.lang.foreign.FunctionDescriptor;
+import java.lang.foreign.Linker;
+import java.lang.foreign.MemorySegment;
+import java.lang.foreign.SymbolLookup;
+import java.lang.invoke.MethodHandle;
+import java.lang.invoke.VarHandle;
+import java.nio.charset.StandardCharsets;
+import org.slf4j.Logger;
+import org.slf4j.LoggerFactory;
+
+/**
+ * The Minecraft end of the shared-memory link. Mycelium owns the mapping; we open it when it
+ * appears and treat Mycelium as gone when its heartbeat stops. No Minecraft classes in here, so
+ * the link test can run it outside the game.
+ */
+public final class MycLink {
+	public static final Logger LOG = LoggerFactory.getLogger("MyceliumCraft");
+
+	private static final int FILE_MAP_ALL_ACCESS = 0xF001F;
+	private static final VarHandle INT = JAVA_INT.varHandle();
+	private static final VarHandle LONG = JAVA_LONG.varHandle();
+
+	private static final MethodHandle OPEN_FILE_MAPPING;
+	private static final MethodHandle MAP_VIEW_OF_FILE;
+	private static final MethodHandle GET_TICK_COUNT64;
+	private static final MethodHandle GET_CURRENT_PROCESS_ID;
+	private static final java.lang.foreign.StructLayout CALL_STATE = Linker.Option.captureStateLayout();
+	private static final VarHandle LAST_ERROR = CALL_STATE.varHandle(java.lang.foreign.MemoryLayout.PathElement.groupElement("GetLastError"));
+	private static final MemorySegment OPEN_STATE = Arena.global().allocate(CALL_STATE);
+
+	static {
+		Linker linker = Linker.nativeLinker();
+		SymbolLookup k32 = SymbolLookup.libraryLookup("kernel32", Arena.global());
+		OPEN_FILE_MAPPING = linker.downcallHandle(
+			k32.find("OpenFileMappingW").orElseThrow(), FunctionDescriptor.of(ADDRESS, JAVA_INT, JAVA_INT, ADDRESS), Linker.Option.captureCallState("GetLastError")
+		);
+		MAP_VIEW_OF_FILE = linker.downcallHandle(
+			k32.find("MapViewOfFile").orElseThrow(), FunctionDescriptor.of(ADDRESS, ADDRESS, JAVA_INT, JAVA_INT, JAVA_INT, JAVA_LONG)
+		);
+		GET_TICK_COUNT64 = linker.downcallHandle(k32.find("GetTickCount64").orElseThrow(), FunctionDescriptor.of(JAVA_LONG));
+		GET_CURRENT_PROCESS_ID = linker.downcallHandle(k32.find("GetCurrentProcessId").orElseThrow(), FunctionDescriptor.of(JAVA_INT));
+	}
+
+	private static volatile MemorySegment shm;
+	private static long lastOpenAttempt;
+	private static int lastOpenError = -1;
+	private static int mycPid;
+	private static boolean wasAlive;
+
+	private MycLink() {
+	}
+
+	/** Open the mapping if we haven't yet (at most once a second) and beat our heartbeat. Call every frame. */
+	public static void poll() {
+		MemorySegment s = shm;
+		if (s != null) {
+			s.set(JAVA_INT, OFF_HEADER + H_MC_PID, pid());
+			LONG.setRelease(s, OFF_HEADER + H_MC_HEARTBEAT, tickCount());
+			int pid = s.get(JAVA_INT, OFF_HEADER + H_MYC_PID);
+			if (pid != mycPid) {
+				mycPid = pid;
+				LOG.info("MyceliumCraft: Mycelium instance changed (pid {})", pid);
+			}
+			boolean alive = myceliumAlive();
+			if (alive != wasAlive) {
+				wasAlive = alive;
+				LOG.info("MyceliumCraft: Mycelium is {}", alive ? "alive" : "gone (heartbeat stopped)");
+			}
+			return;
+		}
+		long now = System.currentTimeMillis();
+		if (now - lastOpenAttempt < 1000) {
+			return;
+		}
+		lastOpenAttempt = now;
+		try (Arena arena = Arena.ofConfined()) {
+			MemorySegment name = arena.allocateFrom(MAPPING_NAME, StandardCharsets.UTF_16LE);
+			MemorySegment handle = (MemorySegment) OPEN_FILE_MAPPING.invokeExact(OPEN_STATE, FILE_MAP_ALL_ACCESS, 0, name);
+			if (handle.address() == 0) {
+				int error = (int) LAST_ERROR.get(OPEN_STATE, 0L);
+				if (error != lastOpenError) {
+					lastOpenError = error;
+					LOG.info("MyceliumCraft: can't open Mycelium's shared memory yet (Windows error {}{})", error,
+						error == 2 ? ": Mycelium isn't running yet" : "");
+				}
+				return;
+			}
+			MemorySegment view = (MemorySegment) MAP_VIEW_OF_FILE.invokeExact(handle, FILE_MAP_ALL_ACCESS, 0, 0, 0L);
+			if (view.address() == 0) {
+				LOG.error("MyceliumCraft: MapViewOfFile failed");
+				return;
+			}
+			MemorySegment seg = view.reinterpret(MAPPING_BYTES);
+			int magic = seg.get(JAVA_INT, OFF_HEADER + H_MAGIC);
+			int version = seg.get(JAVA_INT, OFF_HEADER + H_VERSION);
+			if (magic != MAGIC || version != VERSION) {
+				LOG.error("MyceliumCraft: protocol mismatch (magic {} version {}); expected version {}", Integer.toHexString(magic), version, VERSION);
+				return;
+			}
+			seg.set(JAVA_INT, OFF_HEADER + H_MC_PID, pid());
+			LONG.setRelease(seg, OFF_HEADER + H_MC_HEARTBEAT, tickCount());
+			mycPid = seg.get(JAVA_INT, OFF_HEADER + H_MYC_PID);
+			shm = seg;
+			LOG.info("MyceliumCraft: linked to Mycelium (pid {})", mycPid);
+		} catch (Throwable t) {
+			LOG.error("MyceliumCraft: failed to open shared memory", t);
+		}
+	}
+
+	public static boolean mapped() {
+		return shm != null;
+	}
+
+	/** True when a live Mycelium is on the other end. */
+	public static boolean myceliumAlive() {
+		MemorySegment s = shm;
+		if (s == null) {
+			return false;
+		}
+		long beat = (long) LONG.getAcquire(s, OFF_HEADER + H_MYC_HEARTBEAT);
+		return tickCount() - beat < HEARTBEAT_TIMEOUT_MS;
+	}
+
+	/** Seqlock write of McState. */
+	public static void writeMcState(int flags, double x, double y, double z, float yaw, float pitch, long frame, int epoch) {
+		MemorySegment s = shm;
+		if (s == null) {
+			return;
+		}
+		long b = OFF_MC_STATE;
+		int seq = s.get(JAVA_INT, b + MC_SEQ);
+		INT.setRelease(s, b + MC_SEQ, seq + 1); // odd: writing
+		VarHandle.storeStoreFence();
+		s.set(JAVA_INT, b + MC_FLAGS, flags);
+		s.set(JAVA_DOUBLE, b + MC_X, x);
+		s.set(JAVA_DOUBLE, b + MC_Y, y);
+		s.set(JAVA_DOUBLE, b + MC_Z, z);
+		s.set(JAVA_FLOAT, b + MC_YAW, yaw);
+		s.set(JAVA_FLOAT, b + MC_PITCH, pitch);
+		s.set(JAVA_LONG, b + MC_FRAME, frame);
+		s.set(JAVA_INT, b + MC_EPOCH, epoch);
+		INT.setRelease(s, b + MC_SEQ, seq + 2); // even: done
+	}
+
+	/** Plain snapshot of MycState. */
+	public static final class MycState {
+		public int flags;
+		public double x, y, z;
+		public float yaw;
+		public long frame;
+
+		public boolean inLevel() {
+			return (this.flags & MYC_IN_LEVEL) != 0;
+		}
+	}
+
+	/** Seqlock read of MycState into {@code out}. Returns false if not linked or the writer kept interrupting. */
+	public static boolean readMycState(MycState out) {
+		MemorySegment s = shm;
+		if (s == null) {
+			return false;
+		}
+		long b = OFF_MYC_STATE;
+		for (int attempt = 0; attempt < 16; attempt++) {
+			int seq1 = (int) INT.getAcquire(s, b + MY_SEQ);
+			if ((seq1 & 1) != 0) {
+				Thread.onSpinWait();
+				continue;
+			}
+			out.flags = s.get(JAVA_INT, b + MY_FLAGS);
+			out.x = s.get(JAVA_DOUBLE, b + MY_X);
+			out.y = s.get(JAVA_DOUBLE, b + MY_Y);
+			out.z = s.get(JAVA_DOUBLE, b + MY_Z);
+			out.yaw = s.get(JAVA_FLOAT, b + MY_YAW);
+			out.frame = s.get(JAVA_LONG, b + MY_FRAME);
+			VarHandle.loadLoadFence();
+			int seq2 = (int) INT.getVolatile(s, b + MY_SEQ);
+			if (seq1 == seq2) {
+				return true;
+			}
+		}
+		return false;
+	}
+
+	public static long tickCount() {
+		try {
+			return (long) GET_TICK_COUNT64.invokeExact();
+		} catch (Throwable t) {
+			throw new RuntimeException(t);
+		}
+	}
+
+	private static int pid() {
+		try {
+			return (int) GET_CURRENT_PROCESS_ID.invokeExact();
+		} catch (Throwable t) {
+			throw new RuntimeException(t);
+		}
+	}
+}

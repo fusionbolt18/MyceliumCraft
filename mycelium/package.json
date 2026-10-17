@@ -1,0 +1,7 @@
+{
+  "name": "dev.myceliumcraft",
+  "version": "0.1.0",
+  "displayName": "MyceliumCraft",
+  "description": "Play Mycelium as a Minecraft player. Links to the MyceliumCraft Fabric mod over shared memory.",
+  "unity": "2022.3"
+}

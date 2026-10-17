@@ -1,0 +1,54 @@
+plugins {
+	id 'net.fabricmc.fabric-loom' version "${loom_version}"
+}
+
+loom {
+	runs {
+		client {
+			programArgs "--username", "Spore"
+			vmArgs "--enable-native-access=ALL-UNNAMED"
+		}
+	}
+}
+
+dependencies {
+	minecraft "com.mojang:minecraft:${project.minecraft_version}"
+	implementation "net.fabricmc:fabric-loader:${project.loader_version}"
+	implementation "net.fabricmc.fabric-api:fabric-api:${project.fabric_api_version}"
+}
+
+processResources {
+	def version = project.version
+	inputs.property "version", version
+	filesMatching("fabric.mod.json") {
+		expand "version": version
+	}
+}
+
+tasks.withType(JavaCompile).configureEach {
+	it.options.release = 25
+}
+
+java {
+	sourceCompatibility = JavaVersion.VERSION_25
+	targetCompatibility = JavaVersion.VERSION_25
+}
+
+// Stand-in for Mycelium's side of the link, for testing without Unity:
+//   gradlew linkTest   (run tools\FakeMycelium first, in another window)
+tasks.register('linkTest', JavaExec) {
+	classpath = sourceSets.main.runtimeClasspath
+	mainClass = 'dev.myceliumcraft.link.LinkTestMain'
+	jvmArgs '--enable-native-access=ALL-UNNAMED'
+}
+
+// Put our jar and the matching Fabric API jar side by side in ../dist/minecraft-mods,
+// ready to be copied into a Prism instance's mods folder.
+tasks.register('dist', Copy) {
+	dependsOn 'build'
+	from(layout.buildDirectory.dir('libs')) {
+		include "myceliumcraft-${project.version}.jar"
+	}
+	from(configurations.runtimeClasspath.filter { it.name ==~ /fabric-api-[0-9].*.jar/ && !it.name.contains('-sources') })
+	into rootProject.file('../dist/minecraft-mods')
+}

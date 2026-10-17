@@ -1,0 +1,32 @@
+# WHITELIST. Everything is ignored; only source files are let back in.
+# Do not turn this into a normal ignore list (AGENTS.md rule 2).
+*
+!*/
+
+# Let source files back in, by type.
+!/.gitignore
+!/.gitattributes
+!*.md
+!*.java
+!*.cs
+!*.csproj
+!*.asmdef
+!*.json
+!*.gradle
+!*.properties
+!*.ps1
+!*.py
+!/fabric/gradlew
+!/fabric/gradlew.bat
+!/fabric/gradle/wrapper/gradle-wrapper.jar
+
+# Never track these folders, even if they contain the file types above:
+# local copies of the games, clones of other projects, build output.
+/reference/
+/work/
+/dist/
+/fabric/.gradle/
+/fabric/build/
+/fabric/run/
+/tools/**/bin/
+/tools/**/obj/

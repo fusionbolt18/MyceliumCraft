@@ -1,0 +1,21 @@
+{
+  "schemaVersion": 1,
+  "id": "myceliumcraft",
+  "version": "${version}",
+  "name": "MyceliumCraft",
+  "description": "Play Mycelium as a Minecraft player. Sends the Minecraft player's movement to Mycelium over shared memory.",
+  "license": "MIT",
+  "environment": "client",
+  "entrypoints": {
+    "client": ["dev.myceliumcraft.MyceliumCraftClient"]
+  },
+  "mixins": [
+    { "config": "myceliumcraft.mixins.json", "environment": "client" }
+  ],
+  "depends": {
+    "fabricloader": ">=0.19.5",
+    "minecraft": "~26.3",
+    "java": ">=25",
+    "fabric-api": "*"
+  }
+}
