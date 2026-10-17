@@ -48,7 +48,7 @@ public final class MyceliumCraftClient implements ClientModInitializer {
 		LocalPlayer player = minecraft.player;
 		if (player == null || minecraft.level == null) {
 			lastLevel = null;
-			MycLink.writeMcState(0, 0, 0, 0, 0, 0, frame, epoch, teleportAck);
+			MycLink.writeMcState(0, 0, 0, 0, 0, 0, frame, epoch, teleportAck, minecraft.options.getCameraType().ordinal());
 			logOncePerSecond(null, 0, 0);
 			return;
 		}
@@ -90,7 +90,7 @@ public final class MyceliumCraftClient implements ClientModInitializer {
 		if (player.isSprinting()) {
 			flags |= Proto.MC_SPRINTING;
 		}
-		MycLink.writeMcState(flags, feet.x, feet.y, feet.z, player.getYRot(), player.getXRot(), frame, epoch, teleportAck);
+		MycLink.writeMcState(flags, feet.x, feet.y, feet.z, player.getYRot(), player.getXRot(), frame, epoch, teleportAck, minecraft.options.getCameraType().ordinal());
 		logOncePerSecond(feet, player.getYRot(), flags);
 	}
 

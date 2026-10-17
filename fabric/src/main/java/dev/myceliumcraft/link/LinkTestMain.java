@@ -7,7 +7,8 @@ import java.util.List;
  * Pretends to be Minecraft, for testing the link without starting the game. Run tools\FakeMycelium
  * first. It checks the ground grid FakeMycelium publishes (a step from y 10 to y 10.5 at x = 0, one
  * hole, and a tunnel: roof from y 13 to 14 over x -22..-17), confirms the teleport, then walks 10
- * blocks east and 10 blocks north from there, sweeping its pitch from -90 (up) to 90 (down).
+ * blocks east and 10 blocks north from there, sweeping its pitch from -90 (up) to 90 (down) and
+ * going through the F5 views (first person, behind, in front).
  */
 public final class LinkTestMain {
 	/** Fake Minecraft frame interval; set LINKTEST_FRAME_MS to test other frame rates (default 16 = ~60 fps). */
@@ -20,7 +21,7 @@ public final class LinkTestMain {
 		while (grid == null || !MycLink.readMycState(myc) || myc.teleportSeq == 0) {
 			MycLink.poll();
 			// Like the real mod: say "in a world" every frame, or Mycelium never starts scanning.
-			MycLink.writeMcState(Proto.MC_IN_WORLD | Proto.MC_ON_GROUND, 0, -60, 0, 0f, 0f, 0, 1, 0);
+			MycLink.writeMcState(Proto.MC_IN_WORLD | Proto.MC_ON_GROUND, 0, -60, 0, 0f, 0f, 0, 1, 0, 1);
 			grid = MycLink.readGround(grid);
 			if (System.currentTimeMillis() > deadline) {
 				System.out.println("FAIL: no Mycelium ground grid / teleport after 15 s");
@@ -65,7 +66,9 @@ public final class LinkTestMain {
 			// Look from straight up (-90) to straight down (90) over the 10 s, to exercise the camera.
 			float pitch = (float) Math.max(-90, Math.min(90, -90 + 18 * t));
 			MycLink.poll();
-			MycLink.writeMcState(Proto.MC_IN_WORLD | Proto.MC_ON_GROUND, px, y, pz, yaw, pitch, frames++, 1, ack);
+			// F5 views: first person for 0-3.5 s, behind 3.5-7 s, in front after that.
+			int cameraMode = t < 3.5 ? 0 : t < 7 ? 1 : 2;
+			MycLink.writeMcState(Proto.MC_IN_WORLD | Proto.MC_ON_GROUND, px, y, pz, yaw, pitch, frames++, 1, ack, cameraMode);
 			if (frames % 60 == 0) {
 				boolean read = MycLink.readMycState(myc);
 				System.out.printf("t=%.1f pitch=%.0f mc=(%.2f, %.2f, %.2f) | mycelium alive=%b read=%b flags=%d spore=(%.2f, %.2f, %.2f)%n",

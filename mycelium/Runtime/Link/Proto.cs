@@ -8,7 +8,7 @@ namespace MyceliumCraft.Link
         public const string MappingName = "Local\\MyceliumCraft_v1";
         public const int MappingBytes = 0x100000;
         public const uint Magic = 0x4343594D; // "MYCC"
-        public const uint Version = 4;
+        public const uint Version = 5;
         public const ulong HeartbeatTimeoutMs = 3000;
 
         // Header @0x000
@@ -50,6 +50,7 @@ namespace MyceliumCraft.Link
         public const int McFrame = 0x28;
         public const int McEpoch = 0x30;
         public const int McTeleportAck = 0x34;
+        public const int McCameraMode = 0x38; // 0 first person, 1 third person behind, 2 third person in front
         public const uint McInWorld = 1u << 0;
         public const uint McScreenOpen = 1u << 1;
         public const uint McOnGround = 1u << 2;

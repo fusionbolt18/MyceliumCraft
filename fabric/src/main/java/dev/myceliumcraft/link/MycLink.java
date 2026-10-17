@@ -128,7 +128,7 @@ public final class MycLink {
 	}
 
 	/** Seqlock write of McState. */
-	public static void writeMcState(int flags, double x, double y, double z, float yaw, float pitch, long frame, int epoch, int teleportAck) {
+	public static void writeMcState(int flags, double x, double y, double z, float yaw, float pitch, long frame, int epoch, int teleportAck, int cameraMode) {
 		MemorySegment s = shm;
 		if (s == null) {
 			return;
@@ -146,6 +146,7 @@ public final class MycLink {
 		s.set(JAVA_LONG, b + MC_FRAME, frame);
 		s.set(JAVA_INT, b + MC_EPOCH, epoch);
 		s.set(JAVA_INT, b + MC_TELEPORT_ACK, teleportAck);
+		s.set(JAVA_INT, b + MC_CAMERA_MODE, cameraMode);
 		INT.setRelease(s, b + MC_SEQ, seq + 2); // even: done
 	}
 

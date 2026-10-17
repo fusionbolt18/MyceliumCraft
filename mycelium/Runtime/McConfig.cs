@@ -26,6 +26,9 @@ namespace MyceliumCraft
         /// </summary>
         public static float CameraPitchOffset = 16f;
 
+        /// <summary>Copy Minecraft's F5 view (first person / behind / in front).</summary>
+        public static bool MatchF5View = true;
+
         /// <summary>Seconds over which the camera eases toward Minecraft's latest pitch (0 = none).</summary>
         public static float CameraSmoothing = 0.05f;
 
@@ -50,7 +53,10 @@ namespace MyceliumCraft
             "\n" +
             "# Seconds the camera takes to ease toward Minecraft's up/down look. Smooths out the steps of\n" +
             "# Minecraft's frames; bigger = smoother but laggier. 0 = follow exactly.\n" +
-            "cameraSmoothing=0.05\n";
+            "cameraSmoothing=0.05\n" +
+            "\n" +
+            "# 1: Mycelium's camera copies Minecraft's F5 view (first person, behind, in front). 0: always behind.\n" +
+            "matchF5View=1\n";
 
         public static void Load()
         {
@@ -86,6 +92,10 @@ namespace MyceliumCraft
                     {
                         CameraPitchOffset = off;
                     }
+                    else if (key == "matchf5view" && (value == "0" || value == "1"))
+                    {
+                        MatchF5View = value == "1";
+                    }
                     else if (key == "camerasmoothing" && float.TryParse(value, NumberStyles.Float, CultureInfo.InvariantCulture, out float sm) && sm >= 0f)
                     {
                         CameraSmoothing = sm;
@@ -100,7 +110,7 @@ namespace MyceliumCraft
             {
                 McLog.Info($"config: couldn't read {path} ({e.Message}); using defaults");
             }
-            McLog.Info($"config: scale={Scale.ToString(CultureInfo.InvariantCulture)} Mycelium units per block, matchSporeSize={(MatchSporeSize ? 1 : 0)}, syncCamera={(SyncCamera ? 1 : 0)}, cameraPitchOffset={CameraPitchOffset.ToString(CultureInfo.InvariantCulture)}, cameraSmoothing={CameraSmoothing.ToString(CultureInfo.InvariantCulture)}");
+            McLog.Info($"config: scale={Scale.ToString(CultureInfo.InvariantCulture)} Mycelium units per block, matchSporeSize={(MatchSporeSize ? 1 : 0)}, syncCamera={(SyncCamera ? 1 : 0)}, cameraPitchOffset={CameraPitchOffset.ToString(CultureInfo.InvariantCulture)}, cameraSmoothing={CameraSmoothing.ToString(CultureInfo.InvariantCulture)}, matchF5View={(MatchF5View ? 1 : 0)}");
         }
     }
 }

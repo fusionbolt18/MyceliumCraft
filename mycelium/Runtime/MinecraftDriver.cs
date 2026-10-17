@@ -378,6 +378,10 @@ namespace MyceliumCraft
             ground.ChooseLayers(rb.gameObject.layer);
             float sporeHeight = SporeHeight();
             ground.FillBelowOneSided = FillBelowSporeHeights * (sporeHeight > 0.1f ? sporeHeight : 1.7f);
+            // First person looks out at 90% of the body height (Minecraft: eyes 1.62 of 1.8).
+            float eyeAbovePosition = FeetY(rb.position.y) + 0.9f * (sporeHeight > 0.1f ? sporeHeight : 1.7f) - rb.position.y;
+            cameraSync.SetSpore(rb.transform, eyeAbovePosition);
+            McLog.Info($"camera: first-person eye {eyeAbovePosition:F2} units above the spore's position");
             if (Array.IndexOf(Environment.GetCommandLineArgs(), "-mcNoFill") >= 0) ground.FillBelowOneSided = 0f; // test aid: compare without the fill
             playerHeightBlocks = McConfig.MatchSporeSize && sporeHeight > 0.1f ? (float)(sporeHeight / map.Scale) : 0f;
             McLog.Info($"spore body: {sporeHeight:F2} units tall -> Minecraft player height {(playerHeightBlocks > 0 ? $"{playerHeightBlocks:F3} blocks (scale {playerHeightBlocks / 1.8f:F3})" : "unchanged (matchSporeSize=0)")}");
@@ -418,7 +422,7 @@ namespace MyceliumCraft
             float groundUnderMc = ground.GroundAt(mc.X, mc.Z, (float)mc.Y);
             McLog.Info($"status: scene='{scene}' fps={fps} phase={phase} mc=({mc.X:F2}, {mc.Y:F2}, {mc.Z:F2}) yaw={mc.Yaw:F0} flags={mc.Flags} epoch={mc.Epoch} " +
                        $"groundUnderMc={groundUnderMc:F2} tp={tp.Seq}/ack {mc.TeleportAck} mcSpeed={mcSpeed:F2} sporeOwnSpeed={OwnSpeed():F1} " +
-                       $"camera={(cameraSync.Controlling ? $"synced x={cameraSync.X:F0} y={cameraSync.Y:F2} want down={cameraSync.WantDown:F0} tilt={cameraSync.LastTilt:F0}" : "Mycelium")} pitch={mc.Pitch:F0} {ViewText()} " +
+                       $"camera={(cameraSync.Controlling ? $"synced view={cameraSync.Mode} x={cameraSync.X:F0} y={cameraSync.Y:F2} want down={cameraSync.WantDown:F0} tilt={cameraSync.LastTilt:F0}" : "Mycelium")} mcView={mc.CameraMode} pitch={mc.Pitch:F0} {ViewText()} " +
                        $"| spore={(rb != null ? sporePos.ToString("F2") : "none")} target={lastTarget:F2} error={lastError:F2} vel={(rb != null ? rb.velocity.ToString("F2") : "-")} resyncs={resyncs} grid=v{ground.Version}");
         }
 
@@ -432,7 +436,16 @@ namespace MyceliumCraft
             float viewDown = -Mathf.Asin(Mathf.Clamp(f.y, -1f, 1f)) * Mathf.Rad2Deg;
             float sporeYaw = rb != null ? rb.rotation.eulerAngles.y : float.NaN;
             float diff = Mathf.DeltaAngle(viewYaw, sporeYaw);
-            return $"view yaw={viewYaw:F0} down={viewDown:F0} sporeYaw={sporeYaw:F0} (diff {diff:F0})";
+            string where = "";
+            if (rb != null)
+            {
+                // Where the camera sits: distance from the spore, and in front of or behind it.
+                Vector3 rel = cam.transform.position - rb.transform.position;
+                Vector3 facing = rb.transform.forward;
+                float along = Vector3.Dot(new Vector3(rel.x, 0f, rel.z), new Vector3(facing.x, 0f, facing.z).normalized);
+                where = $" camDist={rel.magnitude:F2} camSide={(rel.magnitude < 0.5f ? "inside" : along > 0 ? "front" : "behind")} camHeight={rel.y:F2}";
+            }
+            return $"view yaw={viewYaw:F0} down={viewDown:F0} sporeYaw={sporeYaw:F0} (diff {diff:F0}){where}";
         }
 
         void OnDestroy()

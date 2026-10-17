@@ -284,6 +284,33 @@ step), the camera gets **Minecraft's full range**:
 - **Mouse:** Mycelium's mouse input to this camera is switched off by blanking the axis names.
 - **Restore:** the orbits and mouse input go back to normal as soon as Minecraft stops driving.
 - **Switch:** `syncCamera=0` in `MyceliumCraft.cfg` turns it all off.
+- **F5 view** (protocol v5: McState 0x38 = Minecraft's `options.getCameraType().ordinal()`, which
+  in 26.3 is 0 `FIRST_PERSON`, 1 `THIRD_PERSON_BACK`, 2 `THIRD_PERSON_FRONT`). Mycelium copies it:
+  - **Third person behind:** everything above.
+  - **Third person in front:** the orbit heading + 180° and the pitch mirrored. That's what
+    Minecraft's own front view does (`setRotation(yRot + 180, -xRot)`). The camera sits in front of
+    the spore, looking back at it.
+  - **First person:** after Cinemachine, the camera is put at the spore's eyes, at 90% of its body
+    height (Minecraft's 1.62 of 1.8). The tutorial spore's eye is 1.51 units above its position.
+    - It looks at exactly Minecraft's pitch (no stretching) and heading, both eased over
+      `cameraSmoothing`. Cinemachine's damping doesn't apply here.
+    - The spore's renderers (4 in the tutorial) are switched to "shadow only", so the camera isn't
+      inside its model, but you still see your shadow, as in Minecraft. They're restored when you
+      leave first person.
+    - The FreeLook keeps running underneath at Mycelium's normal view, so switching back is
+      seamless.
+  - **Switch:** `matchF5View=0` keeps the camera behind whatever Minecraft does.
+
+  **Checked** with the fake Minecraft going through the three views while sweeping its pitch:
+
+  | View | Position | Angle | Heading |
+  |---|---|---|---|
+  | First person | camera 1.51 above the spore, at its eyes | want −73 / actual −73, want −36 / −36 | `diff 0` |
+  | Behind | behind | matches | `diff 0` |
+  | In front | `camSide=front` | e.g. pitch 37 → camera −27 (looking up at the spore) | `diff 180` |
+
+  In all three, the view angle moved on every frame with 0 freeze-then-jump frames
+  (`-mcCameraTrace`, the trace has a `mode` column).
 
 **Checked** in "New Tutorial" with the fake Minecraft sweeping its pitch from −90 to 90. The status
 line logs where the rendered camera really points (`Camera.main`, after everything):

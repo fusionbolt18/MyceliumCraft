@@ -1,5 +1,70 @@
 # MODLOG
 
+## 2026-10-17 Camera copies Minecraft's F5 view (protocol v5)
+
+**Changed:**
+- **Protocol v5:** McState 0x38 carries Minecraft's camera type. It's in `PROTOCOL.md`, both
+  `Proto` files, `MycLink.writeMcState`, `MyceliumLink`'s `McState.CameraMode`, and
+  `MyceliumCraftClient` (`options.getCameraType().ordinal()`).
+- **`CameraSync.cs`:**
+  - *Behind:* as before.
+  - *In front:* heading + 180, pitch mirrored.
+  - *First person:* camera at the spore's eyes looking exactly where Minecraft looks, with yaw and
+    pitch eased, and the spore drawn as shadow only.
+- **`MinecraftDriver.cs`:**
+  - gives CameraSync the spore and its eye height (90% of body height)
+  - the status line shows `view=`, `mcView=`, `camDist=`, `camSide=` and `camHeight=`
+- **`McConfig.cs`:** new `matchF5View=1`.
+- **`LinkTestMain.java`:** cycles first person (0–3.5 s), behind (3.5–7 s), in front (7 s on).
+- DESIGN §5.2.
+- Before this: committed the full-range smooth camera as `54b37f9`.
+
+**Why:** your request. Minecraft is normally first person and Mycelium third person, so
+Mycelium's camera should follow whichever F5 view Minecraft is in.
+
+**Tested how:**
+1. Checked Minecraft 26.3's `CameraType` order with `javap`: FIRST_PERSON, THIRD_PERSON_BACK,
+   THIRD_PERSON_FRONT.
+2. Ran `-mcScene "New Tutorial" -mcCameraTrace -mcFps 60` with `gradlew linkTest`, and read the
+   log and trace.
+
+**Result:**
+- Log: `camera: first-person eye 1.51 units above the spore's position`, `Minecraft view third
+  person behind -> first person`, `first person, 4 spore renderers drawn as shadow only`, then
+  `-> third person behind`, `-> third person in front`.
+- First person: `view yaw=90 down=-73 sporeYaw=90 (diff 0) camDist=1.51 ... camHeight=1.51`, with
+  want −73.
+- Front: `view yaw=-180 ... sporeYaw=0 (diff 180) camSide=front`.
+- Behind: unchanged (`diff 0`).
+- Trace: the view moved on every frame in all three views, with 0 freeze-then-jumps.
+
+**Still broken / not tested:**
+- **Not tested with real Minecraft.** In particular, whether pressing F5 there switches Mycelium,
+  and how first person feels.
+- In first person, the spore's own particle effects (they're renderers too) are also shadow only.
+  Things it holds might not be, if they aren't children of the spore. Not checked.
+- The front view uses the low orbit plus tilt when looking down in Minecraft, so the camera sits
+  low and close (`camDist` 0.93 in the test, near a wall). It may feel cramped.
+- Uncommitted. Revert point: `54b37f9`.
+
+**Next:** you test. Then input from Mycelium's window.
+
+### Test procedure
+
+1. **Copy the jars:** this changed the Minecraft side too, so copy them over:
+   `copy /Y dist\minecraft-mods\*.jar "C:\Users\Ryan\AppData\Roaming\PrismLauncher\instances\Mycelium 26.3\minecraft\mods\"`
+2. Start Minecraft, then
+   `work\build\MyceliumCraft.exe -screen-fullscreen 0 -screen-width 1280 -screen-height 720`
+   and play into the tutorial.
+3. **Press F5 in Minecraft** to cycle the views. **You should see** in Mycelium:
+   - **First person** (Minecraft's default): you look out of the spore's eyes and don't see the
+     spore, only its shadow.
+   - **F5 once:** Mycelium's usual camera behind the spore.
+   - **F5 twice:** the camera in front of the spore, looking at it.
+4. **In `work\build\MyceliumCraft.log`:** `camera: Minecraft view ... -> ...` each time you press
+   F5, and status lines with `view=0/1/2` matching `mcView=`.
+5. `matchF5View=0` in `work\build\MyceliumCraft.cfg` keeps the camera behind.
+
 ## 2026-10-17 Camera: up/down jitter fixed
 
 **Changed:**

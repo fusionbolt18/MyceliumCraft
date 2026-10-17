@@ -5,7 +5,7 @@ public final class Proto {
 	public static final String MAPPING_NAME = "Local\\MyceliumCraft_v1";
 	public static final long MAPPING_BYTES = 0x100000;
 	public static final int MAGIC = 0x4343594D; // "MYCC"
-	public static final int VERSION = 4;
+	public static final int VERSION = 5;
 	/** A side is alive if its heartbeat is younger than this. */
 	public static final long HEARTBEAT_TIMEOUT_MS = 3000;
 
@@ -48,6 +48,7 @@ public final class Proto {
 	public static final long MC_FRAME = 0x28;
 	public static final long MC_EPOCH = 0x30;
 	public static final long MC_TELEPORT_ACK = 0x34;
+	public static final long MC_CAMERA_MODE = 0x38; // Minecraft CameraType ordinal: 0 first person, 1 behind, 2 in front
 	public static final int MC_IN_WORLD = 1 << 0;
 	public static final int MC_SCREEN_OPEN = 1 << 1;
 	public static final int MC_ON_GROUND = 1 << 2;

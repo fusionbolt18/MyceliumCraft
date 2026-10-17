@@ -24,14 +24,14 @@ a block without locks.
 - **Reader:** read `seq`. If it's odd, try again. Read the fields, then read `seq` again. If it
   changed, try again.
 
-## Layout (version 4)
+## Layout (version 5)
 
 ### Header @ 0x000
 
 | Off | Type | Field |
 |---|---|---|
 | 0x00 | u32 | magic `0x4343594D` ("MYCC") |
-| 0x04 | u32 | version (currently **4**) |
+| 0x04 | u32 | version (currently **5**) |
 | 0x08 | u32 | Mycelium process id |
 | 0x0C | u32 | Minecraft process id (0 until Minecraft opens the mapping) |
 | 0x10 | u64 | Mycelium heartbeat (GetTickCount64 at the last Mycelium frame) |
@@ -71,6 +71,7 @@ Positions are in **Minecraft coordinates**: blocks, Y up, +Z is south.
 | 0x28 | u64 | Minecraft frame counter |
 | 0x30 | u32 | world epoch: goes up by 1 every time Minecraft enters a world |
 | 0x34 | u32 | teleportAck: the last MycState teleportSeq Minecraft has applied |
+| 0x38 | u32 | cameraMode: Minecraft's F5 view, 0 first person, 1 third person behind, 2 third person in front. Since version 5 |
 
 ### GroundGrid @ 0x1000 (Mycelium → Minecraft, seqlock)
 

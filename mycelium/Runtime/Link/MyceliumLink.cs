@@ -13,6 +13,7 @@ namespace MyceliumCraft.Link
         public ulong Frame;
         public uint Epoch;
         public uint TeleportAck;
+        public uint CameraMode; // 0 first person, 1 third person behind, 2 third person in front
 
         public bool InWorld => (Flags & Proto.McInWorld) != 0;
     }
@@ -170,6 +171,7 @@ namespace MyceliumCraft.Link
                 s.Frame = (ulong)Marshal.ReadInt64(view, b + Proto.McFrame);
                 s.Epoch = ReadU32(view, b + Proto.McEpoch);
                 s.TeleportAck = ReadU32(view, b + Proto.McTeleportAck);
+                s.CameraMode = ReadU32(view, b + Proto.McCameraMode);
                 Thread.MemoryBarrier();
                 if (ReadU32(view, b + Proto.McSeq) == seq1) return true;
             }

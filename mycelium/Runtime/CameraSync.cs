@@ -20,6 +20,10 @@ namespace MyceliumCraft
     ///    so the camera looks at exactly the wanted angle: beyond the curve (looking up from the
     ///    low orbit, or straight down) and to cancel the small offsets Mycelium's aim adds.
     ///  - Mycelium's own mouse input to the camera is off.
+    ///  - Minecraft's F5 view is copied: third person behind is the orbit above; third person in
+    ///    front swings the orbit round to face the spore (heading + 180, pitch mirrored, as
+    ///    Minecraft does); first person puts the camera at the spore's eyes looking exactly where
+    ///    Minecraft looks, with the spore's own body drawn as shadow only (like Minecraft).
     /// Everything is restored when Minecraft stops driving. Cutscene and "reset/navigate" cameras
     /// still take over as they normally do (no tilt is applied while another camera is live).
     /// </summary>
@@ -41,6 +45,18 @@ namespace MyceliumCraft
         ulong lastMcFrame; // Minecraft frame counter this frame (for the trace)
         System.IO.StreamWriter trace; // "-mcCameraTrace": one line per rendered frame
 
+        // F5 view
+        public const uint FirstPerson = 0, Behind = 1, InFront = 2;
+        uint mode = Behind;
+        float smoothYaw;          // first person: Minecraft yaw eased like the pitch (no Cinemachine damping there)
+        Transform spore;          // the spore's (interpolated) transform, for the eye position
+        float eyeOffset;          // eye height above spore.position
+        readonly System.Collections.Generic.List<(Renderer r, UnityEngine.Rendering.ShadowCastingMode mode)> hidden =
+            new System.Collections.Generic.List<(Renderer, UnityEngine.Rendering.ShadowCastingMode)>();
+
+        public uint Mode => mode;
+        public static string ModeName(uint m) => m == FirstPerson ? "first person" : m == InFront ? "third person in front" : "third person behind";
+
         public float X => freeLook != null ? freeLook.m_XAxis.Value : float.NaN;
         public float Y => freeLook != null ? freeLook.m_YAxis.Value : float.NaN;
         public float WantDown => wantDown;
@@ -52,6 +68,17 @@ namespace MyceliumCraft
         {
             freeLook = null;
             controlling = false;
+            hidden.Clear();
+            spore = null;
+            mode = Behind;
+        }
+
+        /// <summary>The spore to look out of in first person: its transform and eye height above its position.</summary>
+        public void SetSpore(Transform sporeTransform, float eyeHeightAbovePosition)
+        {
+            if (spore != sporeTransform) ShowSpore();
+            spore = sporeTransform;
+            eyeOffset = eyeHeightAbovePosition;
         }
 
         /// <summary>Call every frame. driving: Minecraft is driving the spore and mc is fresh.</summary>
@@ -70,20 +97,57 @@ namespace MyceliumCraft
             {
                 Take();
                 smoothPitch = mc.Pitch;
+                smoothYaw = WorldMapping.MycYaw(mc.Yaw);
             }
 
-            float heading = WorldMapping.MycYaw(mc.Yaw);
-            if (heading > 180f) heading -= 360f;
-            freeLook.m_XAxis.Value = heading;
+            uint wanted = McConfig.MatchF5View && mc.CameraMode <= InFront ? mc.CameraMode : Behind;
+            if (wanted != mode)
+            {
+                McLog.Info($"camera: Minecraft view {ModeName(mode)} -> {ModeName(wanted)}");
+                mode = wanted;
+                if (mode == FirstPerson) HideSpore(); else ShowSpore();
+            }
+
             lastPitch = mc.Pitch;
             lastMcFrame = mc.Frame;
-            // Minecraft sends a new pitch once per Minecraft frame; snapping to each one stutters
-            // against Mycelium's own frame rate. Ease toward it instead (horizontal turning is
-            // already smoothed by Cinemachine's own damping).
+            // Minecraft sends a new look once per Minecraft frame; snapping to each one stutters
+            // against Mycelium's own frame rate. Ease toward it instead. In third person the
+            // heading is smoothed by Cinemachine's own damping; first person bypasses Cinemachine,
+            // so the yaw is eased here too.
             float tau = McConfig.CameraSmoothing;
-            smoothPitch = tau > 0f ? Mathf.Lerp(smoothPitch, mc.Pitch, 1f - Mathf.Exp(-Time.unscaledDeltaTime / tau)) : mc.Pitch;
-            wantDown = PitchToAngle(smoothPitch);
-            freeLook.m_YAxis.Value = AngleToY(wantDown);
+            float k = tau > 0f ? 1f - Mathf.Exp(-Time.unscaledDeltaTime / tau) : 1f;
+            smoothPitch = Mathf.Lerp(smoothPitch, mc.Pitch, k);
+            smoothYaw = Mathf.LerpAngle(smoothYaw, WorldMapping.MycYaw(mc.Yaw), k);
+
+            // Third person in front: the camera faces the spore, so heading + 180 and the pitch
+            // mirrored, as Minecraft's own front view does.
+            float heading = WorldMapping.MycYaw(mc.Yaw) + (mode == InFront ? 180f : 0f);
+            heading = Mathf.Repeat(heading + 180f, 360f) - 180f;
+            freeLook.m_XAxis.Value = heading;
+            wantDown = mode == FirstPerson ? Mathf.Clamp(smoothPitch, -89.9f, 89.9f)
+                     : PitchToAngle(mode == InFront ? -smoothPitch : smoothPitch);
+            freeLook.m_YAxis.Value = AngleToY(mode == FirstPerson ? McConfig.CameraPitchOffset : wantDown);
+        }
+
+        /// <summary>First person: draw the spore's own body as shadow only, so the camera isn't inside it.</summary>
+        void HideSpore()
+        {
+            ShowSpore();
+            if (spore == null) return;
+            foreach (Renderer r in spore.GetComponentsInChildren<Renderer>())
+            {
+                if (r.shadowCastingMode == UnityEngine.Rendering.ShadowCastingMode.ShadowsOnly) continue;
+                hidden.Add((r, r.shadowCastingMode));
+                r.shadowCastingMode = UnityEngine.Rendering.ShadowCastingMode.ShadowsOnly;
+            }
+            McLog.Info($"camera: first person, {hidden.Count} spore renderers drawn as shadow only");
+        }
+
+        void ShowSpore()
+        {
+            foreach (var (r, m) in hidden)
+                if (r != null) r.shadowCastingMode = m;
+            hidden.Clear();
         }
 
         /// <summary>Minecraft pitch to the wanted camera angle: -90..0..90 -> -89..offset..89.</summary>
@@ -168,7 +232,7 @@ namespace MyceliumCraft
                 if (System.Array.IndexOf(System.Environment.GetCommandLineArgs(), "-mcCameraTrace") < 0) return;
                 string path = System.IO.Path.GetFullPath(System.IO.Path.Combine(Application.dataPath, "..", "camera_trace.csv"));
                 trace = new System.IO.StreamWriter(path, false);
-                trace.WriteLine("frame,time,mcFrame,pitch,wantDown,y,camX,camY,camZ,downBeforeTilt,tilt,targetY");
+                trace.WriteLine("frame,time,mcFrame,pitch,wantDown,y,camX,camY,camZ,downBeforeTilt,tilt,targetY,mode,viewYaw");
                 McLog.Info($"camera: tracing every frame to {path}");
             }
             var inv = System.Globalization.CultureInfo.InvariantCulture;
@@ -181,6 +245,7 @@ namespace MyceliumCraft
                 p.x.ToString("F4", inv), p.y.ToString("F4", inv), p.z.ToString("F4", inv),
                 downBeforeTilt.ToString("F3", inv), lastTilt.ToString("F3", inv),
                 (follow != null ? follow.position.y : float.NaN).ToString("F4", inv),
+                mode.ToString(inv), t.eulerAngles.y.ToString("F3", inv),
             }));
         }
 
@@ -195,6 +260,8 @@ namespace MyceliumCraft
             savedOrbits = null;
             controlling = false;
             lastTilt = 0f;
+            ShowSpore();
+            mode = Behind;
             McLog.Info($"camera: back to Mycelium's mouse and orbits ({why})");
         }
 
@@ -208,6 +275,14 @@ namespace MyceliumCraft
                 return;
             }
             Transform t = brain.OutputCamera.transform;
+            if (mode == FirstPerson && spore != null)
+            {
+                // Out of the spore's eyes, exactly where Minecraft looks (eased).
+                t.SetPositionAndRotation(spore.position + Vector3.up * eyeOffset, Quaternion.Euler(wantDown, smoothYaw, 0f));
+                lastTilt = 0f;
+                WriteTrace(t, wantDown);
+                return;
+            }
             float down = -Mathf.Asin(Mathf.Clamp(t.forward.y, -1f, 1f)) * Mathf.Rad2Deg;
             lastTilt = wantDown - down;
             WriteTrace(t, down);
