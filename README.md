@@ -41,9 +41,11 @@ Single-player and offline only.
   are 3 low overhangs where the spore's rounded top squeezes under, and 2 ledge edges
   (DESIGN §5.1).
 - One-way surfaces (Unity terrain seen from below) are ½-block slabs: you can't jump up through them.
-- **Camera follows Minecraft's look: not tested with real Minecraft.** With a fake Minecraft, the
-  rendered camera points where the spore faces (diff 0°). `syncCamera=0` turns it off;
-  `cameraPitchOffset=` tunes the height.
+- **Camera follows Minecraft's look, over the full −90..90 range: not tested with real Minecraft.**
+  With a fake Minecraft sweeping its pitch, the rendered camera matched the wanted angle within 1°
+  from −72° to 72°, and its heading matched the spore's facing. Up/down jitter (reported by you)
+  is fixed and measured smooth with a per-frame trace. `syncCamera=0` turns it off;
+  `cameraPitchOffset=` sets the straight-ahead view, and `cameraSmoothing=` trades smoothness for lag.
 - You still need two windows, with Minecraft focused (input from Mycelium's window is next).
 - Spore attacks, dodges and skills still use Mycelium's own keys.
 - Steam achievements probably don't work in the private build (not tested).

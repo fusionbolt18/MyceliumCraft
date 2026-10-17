@@ -252,21 +252,71 @@ small allowance later. For now the measured real height is used, unchanged.
 
 - No auto-recentering. It's turned by the legacy input axes "Mouse X"/"Mouse Y". Other cameras
   (reset, navigate, dramatic, cutscenes) blend in on top of it as they normally do.
+- It has Cinemachine's collision add-on (`CinemachineCollider`), which pushes the camera out of
+  walls and ground.
+- Mycelium's own range is about −2° to 45° down, much less than Minecraft's −90 (straight up) to
+  +90 (straight down).
 
 **While Minecraft drives the spore** (phase Driving, every rendered frame, not the 50 Hz physics
-step):
-- X = Minecraft yaw + 180 (the same heading the spore faces).
-- Y comes from Minecraft's pitch + `cameraPitchOffset` (default 16), mapped piecewise-linearly onto
-  the three orbit angles. Looking straight ahead in Minecraft gives Mycelium's normal middle view.
-  Minecraft pitch −18..29 covers the low to high orbit.
-- Mycelium's mouse input to this camera is switched off by blanking the axis names, and put back
-  as soon as Minecraft stops driving.
-- `syncCamera=0` in `MyceliumCraft.cfg` turns it off.
+step), the camera gets **Minecraft's full range**:
+- **Heading:** X = Minecraft yaw + 180, the same heading the spore faces.
+- **Smoothing:** Minecraft sends a new pitch once per Minecraft frame. Snapping to each one
+  stutters against Mycelium's own frame rate (measured: 160 freeze-then-jump frames in 9 s with
+  Minecraft at ~43 fps and Mycelium at 60). So the pitch is eased toward over `cameraSmoothing`
+  seconds (default 0.05, an exponential ease; 0 = off). Turning left/right needs no extra smoothing,
+  because Cinemachine's own damping already does it.
+- **Wanted angle:** the smoothed Minecraft pitch −90..0..90 becomes a camera angle of
+  −89..`cameraPitchOffset`..89. The default offset is 16, Mycelium's normal view, at "straight
+  ahead". The halves above and below are stretched to fit, so straight up or down in Minecraft is
+  straight up or down for the camera.
+- **Swing:** the high orbit is raised from height/radius 3/3 (45°) to 4.18/0.74 (80°), at the same
+  distance from the spore. The orbit curve now runs −1.9° → 15.9° → 80°. Y is set to the point on
+  that curve with the wanted angle: 101 samples of `GetLocalPositionForCameraFromInput`,
+  **interpolated** between neighbours, clamped to the curve. The first version rounded to the
+  nearest sample, which made the camera hop 0.08 units every time Y ticked over by 0.01; that was
+  the up/down jitter you saw.
+- **Tilt:** after Cinemachine has placed the camera (`CinemachineCore.CameraUpdatedEvent`), the
+  view is turned about its horizontal axis by whatever is still missing:
+  - Looking up past the low orbit, the camera stays low behind the spore and tilts up, the way a
+    third-person camera normally does, rather than going underground.
+  - It also cancels the few degrees Mycelium's aim adds.
+  - No tilt is applied while another camera is live or blending, such as a cutscene.
+- **Mouse:** Mycelium's mouse input to this camera is switched off by blanking the axis names.
+- **Restore:** the orbits and mouse input go back to normal as soon as Minecraft stops driving.
+- **Switch:** `syncCamera=0` in `MyceliumCraft.cfg` turns it all off.
 
-**Checked** in "New Tutorial" with the fake Minecraft: the status line logs where the rendered
-camera really points (`Camera.main`, after Cinemachine). It was `view yaw=90 ... sporeYaw=90 (diff 0)`
-and `view yaw=0 ... sporeYaw=0 (diff 0)`, looking down 10–13°. So the camera sits behind the spore,
-looking the way Minecraft looks, and W in Minecraft moves the spore into the screen.
+**Checked** in "New Tutorial" with the fake Minecraft sweeping its pitch from −90 to 90. The status
+line logs where the rendered camera really points (`Camera.main`, after everything):
+
+| Minecraft pitch | Wanted (down°) | Actual (down°) | Y | Tilt |
+|---|---|---|---|---|
+| −75 | −71 | −72 | 0.00 | −64 |
+| −39 | −30 | −30 | 0.00 | −21 |
+| −3 | 13 | 13 | 0.47 | 5 |
+| 33 | 43 | 43 | 0.69 | 8 |
+| 69 | 72 | 72 | 0.90 | 1 |
+
+The heading matched the spore's facing throughout (`diff 0`). The run ended before exactly ±90.
+The first version, with Mycelium's own range only, is commit `63fafff`.
+
+**Smoothness is measured, not eyeballed:**
+- `-mcCameraTrace` writes one line per rendered frame to `work\build\camera_trace.csv`: pitch,
+  wanted angle, Y, camera position, angle before tilt, tilt, target height.
+- `-mcFps 60` caps Mycelium's frame rate, as in real play.
+- `LINKTEST_FRAME_MS=23` makes the fake Minecraft run at another rate.
+- `python -I tools/camera_trace_check.py <trace>` counts uneven steps, the biggest jumps and
+  freeze-then-jump frames.
+
+With Minecraft at ~43 fps and Mycelium at 60 fps:
+
+| `cameraSmoothing` | Freeze-then-jump frames (9 s) | Frames the view moved |
+|---|---|---|
+| 0 | 160 | 383 / 543 |
+| 0.05 | 0 | 498 / 498 |
+
+Orbit Y now changes by about 0.0017 per frame instead of 0.01 hops. The camera's single biggest
+jump (~0.6 units) is Cinemachine's collision add-on moving it sideways when the spore walks into a
+wall, not the look.
 
 ## 6. Logs ("log, don't look")
 

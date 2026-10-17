@@ -20,8 +20,14 @@ namespace MyceliumCraft
         /// <summary>Point Mycelium's camera where Minecraft's player looks.</summary>
         public static bool SyncCamera = true;
 
-        /// <summary>Added to Minecraft's pitch before it picks the camera height; 16 = looking straight ahead gives Mycelium's normal middle view.</summary>
+        /// <summary>
+        /// Degrees Mycelium's camera looks down when Minecraft looks straight ahead (16 = Mycelium's
+        /// normal middle view). Minecraft's full -90..90 is stretched around it to -89..89.
+        /// </summary>
         public static float CameraPitchOffset = 16f;
+
+        /// <summary>Seconds over which the camera eases toward Minecraft's latest pitch (0 = none).</summary>
+        public static float CameraSmoothing = 0.05f;
 
         const string Template =
             "# MyceliumCraft settings. Restart MyceliumCraft.exe after changing them.\n" +
@@ -37,9 +43,14 @@ namespace MyceliumCraft
             "# 1: Mycelium's camera turns with Minecraft's mouse look. 0: Mycelium's own camera.\n" +
             "syncCamera=1\n" +
             "\n" +
-            "# Degrees added to Minecraft's pitch before choosing the camera height. 16: looking straight\n" +
-            "# ahead gives Mycelium's normal view; look down for the high view, up for the low one.\n" +
-            "cameraPitchOffset=16\n";
+            "# Degrees Mycelium's camera looks down when Minecraft looks straight ahead. 16 is Mycelium's\n" +
+            "# normal view; 0 makes the camera level with Minecraft. Straight up/down in Minecraft is\n" +
+            "# always straight up/down for the camera.\n" +
+            "cameraPitchOffset=16\n" +
+            "\n" +
+            "# Seconds the camera takes to ease toward Minecraft's up/down look. Smooths out the steps of\n" +
+            "# Minecraft's frames; bigger = smoother but laggier. 0 = follow exactly.\n" +
+            "cameraSmoothing=0.05\n";
 
         public static void Load()
         {
@@ -75,6 +86,10 @@ namespace MyceliumCraft
                     {
                         CameraPitchOffset = off;
                     }
+                    else if (key == "camerasmoothing" && float.TryParse(value, NumberStyles.Float, CultureInfo.InvariantCulture, out float sm) && sm >= 0f)
+                    {
+                        CameraSmoothing = sm;
+                    }
                     else
                     {
                         McLog.Info($"config: ignored line '{line}'");
@@ -85,7 +100,7 @@ namespace MyceliumCraft
             {
                 McLog.Info($"config: couldn't read {path} ({e.Message}); using defaults");
             }
-            McLog.Info($"config: scale={Scale.ToString(CultureInfo.InvariantCulture)} Mycelium units per block, matchSporeSize={(MatchSporeSize ? 1 : 0)}, syncCamera={(SyncCamera ? 1 : 0)}, cameraPitchOffset={CameraPitchOffset.ToString(CultureInfo.InvariantCulture)}");
+            McLog.Info($"config: scale={Scale.ToString(CultureInfo.InvariantCulture)} Mycelium units per block, matchSporeSize={(MatchSporeSize ? 1 : 0)}, syncCamera={(SyncCamera ? 1 : 0)}, cameraPitchOffset={CameraPitchOffset.ToString(CultureInfo.InvariantCulture)}, cameraSmoothing={CameraSmoothing.ToString(CultureInfo.InvariantCulture)}");
         }
     }
 }

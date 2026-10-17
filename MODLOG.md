@@ -1,5 +1,112 @@
 # MODLOG
 
+## 2026-10-17 Camera: up/down jitter fixed
+
+**Changed:**
+- **`CameraSync.cs`:**
+  - The orbit height is interpolated between the 101 curve samples instead of rounded to the
+    nearest.
+  - Minecraft's pitch is eased toward over `cameraSmoothing` seconds.
+  - New per-frame trace, `-mcCameraTrace`.
+- **`McConfig.cs`:** new `cameraSmoothing=0.05`.
+- **`MinecraftDriver.cs`:** new `-mcFps <n>` test aid.
+- **`LinkTestMain.java`:** new `LINKTEST_FRAME_MS` setting.
+- **`tools/camera_trace_check.py` (new).**
+- DESIGN §5.2.
+
+**Why:** you reported the up/down camera movement as very jittery after the full-range change.
+
+**Tested how:**
+1. Recorded every frame (`-mcCameraTrace`) during the fake Minecraft's pitch sweep in "New Tutorial".
+2. Analysed it with `camera_trace_check.py`.
+3. Repeated with Mycelium capped at 60 fps, and with the fake Minecraft at 60 and ~43 fps.
+
+**Result:**
+- **Cause 1, the main one:** the orbit height was rounded to the nearest of 101 samples. The trace
+  showed Y moving on only 78 of 6,042 frames, in 0.01 steps (up to 0.05), and the camera hopping
+  about 0.08 units each time.
+  - Now Y changes about 0.0017 per frame.
+- **Cause 2:** the view angle only changed when Minecraft drew a new frame, then snapped. With
+  Minecraft at ~43 fps and Mycelium at 60, that gave 160 freeze-then-jump frames in 9 s.
+  - With `cameraSmoothing=0.05` there are 0, and the view moves on 498 of 498 frames.
+- The one remaining big jump (~0.6 units) is Cinemachine's collision add-on moving the camera when
+  the spore walks into a wall. It's not related to looking.
+
+**Still broken / not tested:**
+- **Not tested with real Minecraft and a real mouse.**
+- Smoothing adds about 0.05 s of lag to up/down look. Set `cameraSmoothing=0` for none, or bigger
+  for smoother.
+- The full-range camera is still uncommitted. Revert point: `63fafff`.
+
+**Next:** you test, and keep or revert.
+
+### Test procedure
+
+1. Only Mycelium changed, so no jar copy is needed. Start Minecraft, then
+   `work\build\MyceliumCraft.exe -screen-fullscreen 0 -screen-width 1280 -screen-height 720`.
+2. **You should see:** moving the mouse up and down moves the camera smoothly over the whole range,
+   from overhead down to looking up at the sky.
+3. **If it still stutters,** run it once with `-mcCameraTrace` added to the command, look around for
+   a few seconds, close it, and tell me. `work\build\camera_trace.csv` lets me measure what you saw.
+4. **To trade smoothness for lag,** change `cameraSmoothing=` in `work\build\MyceliumCraft.cfg`.
+   It's already in your file.
+
+## 2026-10-17 Camera: Minecraft's full look range
+
+**Changed:**
+- **`mycelium/Runtime/CameraSync.cs`:** while Minecraft drives the spore, it now:
+  - raises Mycelium's high orbit to 80° down
+  - picks the orbit position from Minecraft's pitch over the full −90..90 range
+  - tilts the rendered camera afterwards to the exact wanted angle, including looking straight up
+    from the low orbit
+  - restores the orbits afterwards
+- **`MinecraftDriver.cs`:** the status line shows `want down=` and `tilt=`.
+- **`McConfig.cs`:** `cameraPitchOffset` now means "camera angle when Minecraft looks straight
+  ahead". The default 16 is unchanged.
+- **`LinkTestMain.java`:** the fake Minecraft sweeps pitch −90 → 90.
+- DESIGN §5.2.
+- Before this: committed the first camera sync as `63fafff`. Revert to it if you don't like this.
+
+**Why:** you asked for Minecraft's whole camera range. Mycelium's camera only went from about −2°
+to 45° down, so looking further up or down in Minecraft did nothing.
+
+**Tested how:** `MyceliumCraft.exe -mcScene "New Tutorial"` with `gradlew linkTest` (pitch sweep),
+reading `MyceliumCraft.log`.
+
+**Result:**
+- `High orbit raised from 3.00/3.00 to 4.18/0.74 (height/radius); orbit curve looks down
+  -1.9..15.9..80.0 degrees; Minecraft pitch -90/0/90 -> camera -89/16/89 degrees`.
+- The rendered camera's real angle matched the wanted one within 1° at every sample from −72° to
+  72°, e.g. `y=0.00 want down=-71 tilt=-64 pitch=-75 view ... down=-72` and
+  `y=0.90 want down=72 tilt=1 pitch=69 view ... down=72`.
+- The heading still matched (`diff 0`).
+- `camera: back to Mycelium's mouse and orbits` when driving stopped.
+
+**Still broken / not tested:**
+- **Not tested with real Minecraft and a real mouse:** how it feels, and how the collision add-on
+  behaves near walls and ceilings with the higher orbit, for example in tunnels.
+- The exact ends (±89°) weren't reached in the test run; the run ended at pitch 69.
+- Looking up uses a tilt, not an orbit, so the spore drops out of view at the bottom of the screen.
+  That's normal for a third-person camera.
+
+**Next:** you test, and keep or revert (`63fafff`). Then input from Mycelium's window.
+
+### Test procedure
+
+1. Only Mycelium changed, so no jar copy is needed. Start Minecraft (Creative Superflat), then
+   `work\build\MyceliumCraft.exe -screen-fullscreen 0 -screen-width 1280 -screen-height 720`
+   and play into the tutorial.
+2. **You should see:**
+   - **Looking straight ahead** gives Mycelium's usual view.
+   - **Looking down** swings the camera up behind and over the spore, until it looks almost
+     straight down on it.
+   - **Looking up** keeps the camera low behind the spore and tilts it up to the sky.
+   - **Turning** still works as before.
+3. **In `work\build\MyceliumCraft.log`:** status lines where `want down=` and the `view ... down=`
+   number are within a degree or two.
+4. To change the default view, edit `cameraPitchOffset=` in `work\build\MyceliumCraft.cfg`: 16 is
+   Mycelium's normal view, 0 is level with Minecraft.
+
 ## 2026-10-17 Camera follows Minecraft's look
 
 **Changed:**

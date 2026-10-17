@@ -124,8 +124,17 @@ namespace MyceliumCraft
             int sceneArg = Array.IndexOf(args, "-mcScene");
             string directScene = sceneArg >= 0 && sceneArg + 1 < args.Length ? args[sceneArg + 1] : null;
 
+            // Test aid: "-mcFps <n>" caps Mycelium's frame rate (re-applied per scene, which may set its own).
+            int fpsArg = Array.IndexOf(args, "-mcFps");
+            int testFps = fpsArg >= 0 && fpsArg + 1 < args.Length && int.TryParse(args[fpsArg + 1], out int f) ? f : 0;
+
             SceneManager.sceneLoaded += (scene, mode) =>
             {
+                if (testFps > 0)
+                {
+                    QualitySettings.vSyncCount = 0;
+                    Application.targetFrameRate = testFps;
+                }
                 if (directScene != null && scene.name != directScene)
                 {
                     McLog.Info($"-mcScene: loading '{directScene}' directly (test aid)");
@@ -409,7 +418,7 @@ namespace MyceliumCraft
             float groundUnderMc = ground.GroundAt(mc.X, mc.Z, (float)mc.Y);
             McLog.Info($"status: scene='{scene}' fps={fps} phase={phase} mc=({mc.X:F2}, {mc.Y:F2}, {mc.Z:F2}) yaw={mc.Yaw:F0} flags={mc.Flags} epoch={mc.Epoch} " +
                        $"groundUnderMc={groundUnderMc:F2} tp={tp.Seq}/ack {mc.TeleportAck} mcSpeed={mcSpeed:F2} sporeOwnSpeed={OwnSpeed():F1} " +
-                       $"camera={(cameraSync.Controlling ? $"synced x={cameraSync.X:F0} y={cameraSync.Y:F2}" : "Mycelium")} pitch={mc.Pitch:F0} {ViewText()} " +
+                       $"camera={(cameraSync.Controlling ? $"synced x={cameraSync.X:F0} y={cameraSync.Y:F2} want down={cameraSync.WantDown:F0} tilt={cameraSync.LastTilt:F0}" : "Mycelium")} pitch={mc.Pitch:F0} {ViewText()} " +
                        $"| spore={(rb != null ? sporePos.ToString("F2") : "none")} target={lastTarget:F2} error={lastError:F2} vel={(rb != null ? rb.velocity.ToString("F2") : "-")} resyncs={resyncs} grid=v{ground.Version}");
         }
 
