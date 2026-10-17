@@ -49,6 +49,9 @@ Single-player and offline only.
 - **Camera copies Minecraft's F5 view (first person / behind / in front): not tested with real
   Minecraft.** With a fake Minecraft, all three place and aim the camera correctly. In first person
   the spore is drawn as shadow only. `matchF5View=0` keeps the camera behind.
+- **Mycelium's camera shakes** (triggers, bosses) work in all three views. Measured with the
+  tutorial's own trigger shake: the camera shakes exactly as much as Mycelium's shake produces. Not
+  tested at the real trigger with real Minecraft.
 - You still need two windows, with Minecraft focused (input from Mycelium's window is next).
 - Spore attacks, dodges and skills still use Mycelium's own keys.
 - Steam achievements probably don't work in the private build (not tested).

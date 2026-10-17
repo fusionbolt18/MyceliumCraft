@@ -300,6 +300,34 @@ step), the camera gets **Minecraft's full range**:
     - The FreeLook keeps running underneath at Mycelium's normal view, so switching back is
       seamless.
   - **Switch:** `matchF5View=0` keeps the camera behind whatever Minecraft does.
+- **Camera shake** is kept in every view (`ShakeTap`).
+  - **How Mycelium shakes:** level triggers (`AreaTrigger`), bosses and crabs call
+    `CameraShakeManager.ShakeCamera(source)`, which fires a Cinemachine impulse. The
+    `CinemachineImpulseListener` on the main FreeLook (gain 1, applied after the Noise stage, with a
+    *secondary noise* reaction at amplitude and frequency ×100) adds a position and rotation
+    "correction" to the camera.
+  - **What broke it:** first person replaced the camera's position and rotation, which dropped the
+    shake completely. In third person, the tilt was measured from the shaken view, so it cancelled
+    the shake's up/down part.
+  - **The tap:** `ShakeTap` is a Cinemachine extension added to the FreeLook *after* Mycelium's own,
+    so at every stage it runs after the listener. It records the corrections when Aim is done and
+    again when Noise is done; the difference is exactly the shake, secondary noise included, which
+    can't be recomputed outside the listener.
+  - **Third person:** the tilt is worked out from the unshaken view, so the shake stays on top.
+  - **First person:** the shake's rotation is applied after the eye rotation, and its offset is
+    moved from the orbit camera's space into the eye camera's.
+  - **Checked** with `-mcShakeTest`, which fires the tutorial's own `EventTrigger 2` shake (3 s)
+    every 3 s, in all three views. The trace measures the shake itself (`shakeAngle`) against how
+    far the final view is from its unshaken aim (`offAim`):
+
+    | View | Listener rotation, max / avg | Camera off its aim, max / avg | Calm |
+    |---|---|---|---|
+    | First person | 1.00 / 0.24° | 1.00 / 0.25° | ≤ 0.16° |
+    | Behind | 0.81 / 0.22° | 0.81 / 0.25° | ≤ 0.15° |
+    | In front | 1.00 / 0.32° | 0.97 / 0.34° | ≤ 0.14° |
+
+    The "calm" value is the up/down smoothing lagging a moving look. The shake's position part is
+    up to 0.068 units.
 
   **Checked** with the fake Minecraft going through the three views while sweeping its pitch:
 

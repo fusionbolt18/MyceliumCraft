@@ -1,5 +1,61 @@
 # MODLOG
 
+## 2026-10-17 Camera shake works again with the synced camera
+
+**Changed:**
+- **`mycelium/Runtime/ShakeTap.cs` (new):** a Cinemachine extension that records what Mycelium's
+  impulse listener (the shake) added to the camera each frame.
+- **`CameraSync.cs`:**
+  - Adds the tap to the main FreeLook.
+  - Third person works out its tilt from the unshaken view.
+  - First person applies the recorded shake to the eye camera.
+  - The trace gains `shakePos`, `shakeAngle` and `offAim` columns, and is now written after the
+    tilt.
+- **`MinecraftDriver.cs`:** new `-mcShakeTest` test aid. The status line shows `shake=`.
+- DESIGN §5.2.
+- Before this: committed the F5 views as `6a9709f`.
+
+**Why:** you reported that the trigger in the tutorial that plays a sound and shakes the camera
+didn't shake it.
+
+**Tested how:** `-mcScene "New Tutorial" -mcCameraTrace -mcFps 60 -mcShakeTest` with
+`gradlew linkTest` (first person, then behind, then in front). The test fires the tutorial's own
+`EventTrigger 2` shake through `CameraShakeManager.ShakeCamera` every 3 s. I compared the listener's
+shake with what reached the final camera in the trace.
+
+**Result:**
+- Log: `camera: shake tap added; Mycelium impulse listener found (gain 1, apply after Noise,
+  secondary noise yes)`, then `shake test: fired 'EventTrigger 2' (duration 3.00 s)` in each view.
+- **Cause:**
+  - First person overwrote the camera, so no shake at all. Minecraft's default view is first
+    person, so this is likely what you saw.
+  - Third person's tilt cancelled the shake's up/down.
+- **After the fix,** the shake reaching the camera matches the listener's:
+  - first person: max 1.00° vs 1.00°
+  - behind: 0.81° vs 0.81°
+  - in front: 0.97° vs 1.00°
+  - calm frames ≤ 0.16°
+- My first measurement of third person was wrong: the trace was written before the tilt, so it
+  showed nonsense (up to 23° off "while calm"). I moved it after the tilt and re-measured.
+
+**Still broken / not tested:**
+- **Not tested at the real trigger, with real Minecraft.**
+- I can't tell how strong the shake looks compared with plain Mycelium. The tap passes through
+  exactly what Mycelium's listener produces, but I haven't measured unmodified Mycelium.
+- Uncommitted. Revert point: `6a9709f`.
+
+**Next:** you test at the trigger.
+
+### Test procedure
+
+1. Only Mycelium changed, so no jar copy is needed. Start Minecraft, then
+   `work\build\MyceliumCraft.exe -screen-fullscreen 0 -screen-width 1280 -screen-height 720`.
+2. Walk into the tutorial trigger that plays the sound. Try it in first person, or press F5 and
+   try again from the start of the level.
+3. **You should see:** the camera shakes about 0.65 s after the sound, in whichever view you're in.
+4. **In `work\build\MyceliumCraft.log`:** `camera: shake tap added ...`, and while it shakes,
+   status lines with `shake=` above 0 (e.g. `shake=0.05/0.6deg`).
+
 ## 2026-10-17 Camera copies Minecraft's F5 view (protocol v5)
 
 **Changed:**

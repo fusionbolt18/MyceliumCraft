@@ -24,6 +24,9 @@ namespace MyceliumCraft
     ///    front swings the orbit round to face the spore (heading + 180, pitch mirrored, as
     ///    Minecraft does); first person puts the camera at the spore's eyes looking exactly where
     ///    Minecraft looks, with the spore's own body drawn as shadow only (like Minecraft).
+    ///  - Mycelium's camera shakes (Cinemachine impulses) are kept: ShakeTap records what the
+    ///    shake added, the tilt is worked out from the unshaken view, and first person adds the
+    ///    shake to the eye camera.
     /// Everything is restored when Minecraft stops driving. Cutscene and "reset/navigate" cameras
     /// still take over as they normally do (no tilt is applied while another camera is live).
     /// </summary>
@@ -33,6 +36,7 @@ namespace MyceliumCraft
         const int Samples = 101;         // points along the orbit curve for angle -> Y
 
         CinemachineFreeLook freeLook;
+        ShakeTap shake;
         CinemachineFreeLook.Orbit[] savedOrbits;
         string savedXInput, savedYInput;
         bool controlling;
@@ -40,6 +44,7 @@ namespace MyceliumCraft
         readonly float[] curveAngle = new float[Samples]; // downward angle at Y = i / (Samples - 1)
         float wantDown;    // wanted camera angle this frame (degrees, positive = down)
         float lastTilt;    // tilt applied after Cinemachine last frame
+        float lastShakePos, lastShakeAngle; // size of Mycelium's shake this frame (units, degrees)
         float lastPitch;   // Minecraft pitch this frame (for the trace)
         float smoothPitch; // Minecraft pitch eased over CameraSmoothing seconds
         ulong lastMcFrame; // Minecraft frame counter this frame (for the trace)
@@ -61,6 +66,8 @@ namespace MyceliumCraft
         public float Y => freeLook != null ? freeLook.m_YAxis.Value : float.NaN;
         public float WantDown => wantDown;
         public float LastTilt => lastTilt;
+        public float ShakePos => lastShakePos;
+        public float ShakeAngle => lastShakeAngle;
         public bool Controlling => controlling;
 
         /// <summary>Forget the camera (new scene; the old one is gone with its scene).</summary>
@@ -186,6 +193,10 @@ namespace MyceliumCraft
                 return;
             }
             McLog.Info($"camera: found FreeLook on '{main.name}' (binding {freeLook.m_BindingMode})");
+            // Added after Mycelium's own extensions (impulse listener, collider), so it runs after them.
+            shake = freeLook.GetComponent<ShakeTap>() ?? freeLook.gameObject.AddComponent<ShakeTap>();
+            var listener = freeLook.GetComponent<CinemachineImpulseListener>();
+            McLog.Info($"camera: shake tap added; Mycelium impulse listener {(listener != null ? $"found (gain {listener.m_Gain}, apply after {listener.m_ApplyAfter}, secondary noise {(listener.m_ReactionSettings.m_SecondaryNoise != null ? "yes" : "no")})" : "NOT found")}");
             if (freeLook.m_BindingMode != CinemachineTransposer.BindingMode.WorldSpace)
                 McLog.Info("camera: WARNING binding is not WorldSpace; the X axis is not a world heading, so the camera direction will be off");
             if (!listening)
@@ -225,14 +236,14 @@ namespace MyceliumCraft
         }
 
         /// <summary>Test aid: per-frame camera numbers to camera_trace.csv next to the exe.</summary>
-        void WriteTrace(Transform t, float downBeforeTilt)
+        void WriteTrace(Transform t, float downBeforeTilt, float unshakenYaw)
         {
             if (trace == null)
             {
                 if (System.Array.IndexOf(System.Environment.GetCommandLineArgs(), "-mcCameraTrace") < 0) return;
                 string path = System.IO.Path.GetFullPath(System.IO.Path.Combine(Application.dataPath, "..", "camera_trace.csv"));
                 trace = new System.IO.StreamWriter(path, false);
-                trace.WriteLine("frame,time,mcFrame,pitch,wantDown,y,camX,camY,camZ,downBeforeTilt,tilt,targetY,mode,viewYaw");
+                trace.WriteLine("frame,time,mcFrame,pitch,wantDown,y,camX,camY,camZ,downBeforeTilt,tilt,targetY,mode,viewYaw,shakePos,shakeAngle,offAim");
                 McLog.Info($"camera: tracing every frame to {path}");
             }
             var inv = System.Globalization.CultureInfo.InvariantCulture;
@@ -246,6 +257,10 @@ namespace MyceliumCraft
                 downBeforeTilt.ToString("F3", inv), lastTilt.ToString("F3", inv),
                 (follow != null ? follow.position.y : float.NaN).ToString("F4", inv),
                 mode.ToString(inv), t.eulerAngles.y.ToString("F3", inv),
+                lastShakePos.ToString("F4", inv), lastShakeAngle.ToString("F3", inv),
+                // How far the final view is from the wanted, unshaken direction: the visible shake
+                // (about 0 when calm, about shakeAngle while shaking).
+                Vector3.Angle(t.forward, Quaternion.Euler(wantDown, unshakenYaw, 0f) * Vector3.forward).ToString("F3", inv),
             }));
         }
 
@@ -275,22 +290,34 @@ namespace MyceliumCraft
                 return;
             }
             Transform t = brain.OutputCamera.transform;
+            Vector3 shakePos = shake != null ? shake.Position : Vector3.zero;
+            Quaternion shakeRot = shake != null ? shake.Rotation : Quaternion.identity;
+            lastShakePos = shakePos.magnitude;
+            lastShakeAngle = Quaternion.Angle(Quaternion.identity, shakeRot);
             if (mode == FirstPerson && spore != null)
             {
-                // Out of the spore's eyes, exactly where Minecraft looks (eased).
-                t.SetPositionAndRotation(spore.position + Vector3.up * eyeOffset, Quaternion.Euler(wantDown, smoothYaw, 0f));
+                // Out of the spore's eyes, exactly where Minecraft looks (eased), plus Mycelium's
+                // shake. The listener put its offset in the orbit camera's space; move it into the
+                // eye camera's space so it shakes the same way relative to the view.
+                Quaternion eyeRot = Quaternion.Euler(wantDown, smoothYaw, 0f);
+                Vector3 localShake = Quaternion.Inverse(t.rotation) * shakePos;
+                t.SetPositionAndRotation(spore.position + Vector3.up * eyeOffset + eyeRot * localShake, eyeRot * shakeRot);
                 lastTilt = 0f;
-                WriteTrace(t, wantDown);
+                WriteTrace(t, wantDown, smoothYaw);
                 return;
             }
-            float down = -Mathf.Asin(Mathf.Clamp(t.forward.y, -1f, 1f)) * Mathf.Rad2Deg;
+            // Measure the view without the shake, so the tilt corrects only Cinemachine's aim and
+            // leaves the shake on top (measuring the shaken view cancelled the shake's up/down).
+            Vector3 unshaken = (t.rotation * Quaternion.Inverse(shakeRot)) * Vector3.forward;
+            float down = -Mathf.Asin(Mathf.Clamp(unshaken.y, -1f, 1f)) * Mathf.Rad2Deg;
             lastTilt = wantDown - down;
-            WriteTrace(t, down);
+            float unshakenYaw = Mathf.Atan2(unshaken.x, unshaken.z) * Mathf.Rad2Deg;
             // Positive rotation about the camera's own X axis tilts it down. Rotate about the
             // horizontal right axis so the heading stays the same.
             Vector3 right = Vector3.Cross(Vector3.up, t.forward);
             if (right.sqrMagnitude < 1e-6f) right = t.right;
             t.rotation = Quaternion.AngleAxis(lastTilt, right.normalized) * t.rotation;
+            WriteTrace(t, down, unshakenYaw);
         }
     }
 }
