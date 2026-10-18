@@ -57,6 +57,7 @@ namespace MyceliumCraft
         readonly InputBridge input = new InputBridge();
         readonly KeyOwnership keys = new KeyOwnership();
         readonly McOverlay overlay = new McOverlay();
+        readonly McPlayerModel playerModel = new McPlayerModel();
         readonly uint[] bindKinds = new uint[Proto.BMax];
         readonly uint[] bindCodes = new uint[Proto.BMax];
         bool heldByMycelium;   // Mycelium has the controls (menu, pause, cutscene): don't drive the spore
@@ -178,6 +179,9 @@ namespace MyceliumCraft
             // the fake Minecraft's test picture (LINKTEST_OVERLAY=1) has its boxes, switching the
             // overlay on and off each time, and logs the colors.
             if (Array.IndexOf(args, "-mcOverlayCheck") >= 0) StartCoroutine(OverlayCheck());
+            // Test aid: "-mcModelCheck" reads back Mycelium's finished screen once a second at the
+            // Minecraft body's head, with its depth passes off and on in turn, and logs the colour.
+            if (Array.IndexOf(args, "-mcModelCheck") >= 0) StartCoroutine(ModelCheck());
             // Test aid: "-mcHoldKeys wasd..." makes Mycelium believe those keys are held (through
             // Unity's Input System), as real keys in Mycelium's focused window would be.
             // Test aid: "-mcMouseTest" moves the mouse up and down (through Unity's Input System), as
@@ -297,6 +301,10 @@ namespace MyceliumCraft
             input.Update(link, reason == Proto.ReasonActive, reason, keys.OwnedScancodes, keys.OwnedButtons);
             // Minecraft's hand, HUD and screens on top, during play (not over Mycelium's own menus).
             overlay.Update(link, McConfig.Overlay && alive && phase != Phase.Idle && !MyceliumHasControls(out _));
+            // Third person: your Minecraft body at the spore's feet, instead of the spore.
+            bool bodyWanted = McConfig.Overlay && alive && phase != Phase.Idle && rb != null && cameraSync.Controlling;
+            playerModel.Update(link, bodyWanted, rb != null ? rb.transform.position - Vector3.up * feetOffset : Vector3.zero, (float)map.Scale);
+            cameraSync.ReplaceSpore = playerModel.Shown;
             // Which game owns which key, while Minecraft drives the spore.
             keys.Update(alive && phase == Phase.Driving);
             if (shakeTest && look && Time.realtimeSinceStartup >= nextShakeTime) FireTestShake();
@@ -688,6 +696,118 @@ namespace MyceliumCraft
                        $"ticks={(mc.HasTicks ? $"yes a={lastAlpha:F2} steps={tickSteps}/{tickSteps + fallbackSteps}" : "no")} " +
                        $"camera={(cameraSync.Controlling ? $"synced view={cameraSync.Mode} x={cameraSync.X:F0} y={cameraSync.Y:F2} want down={cameraSync.WantDown:F0} tilt={cameraSync.LastTilt:F0} shake={cameraSync.ShakePos:F2}/{cameraSync.ShakeAngle:F1}deg" : "Mycelium")} mcView={mc.CameraMode} pitch={mc.Pitch:F0} {ViewText()} " +
                        $"| spore={(rb != null ? sporePos.ToString("F2") : "none")} target={lastTarget:F2} error={lastError:F2} vel={(rb != null ? rb.velocity.ToString("F2") : "-")} resyncs={resyncs} grid=v{ground.Version}");
+        }
+
+        /// <summary>Test aid: see "-mcModelCheck" in Awake.</summary>
+        System.Collections.IEnumerator ModelCheck()
+        {
+            McLog.Info($"model check: quality level '{QualitySettings.names[QualitySettings.GetQualityLevel()]}', pipeline '{(UnityEngine.Rendering.GraphicsSettings.currentRenderPipeline != null ? UnityEngine.Rendering.GraphicsSettings.currentRenderPipeline.name : "built-in")}'");
+            UnityEngine.Rendering.RenderPipelineManager.endCameraRendering += ProbeDepth;
+            // First: the body's shadow on and off in turn, with the screen brightness where the
+            // shadow should fall (from the middle of the body, along the sun, down to the feet's height).
+            // Find the sun once the level (and the body) is there.
+            while (!playerModel.Shown) yield return new WaitForSecondsRealtime(0.2f);
+            Light sun = RenderSettings.sun != null && RenderSettings.sun.isActiveAndEnabled ? RenderSettings.sun : null;
+            foreach (Light l in FindObjectsOfType<Light>())
+            {
+                if (l.type != LightType.Directional) continue;
+                McLog.Info($"model check: directional light '{l.name}', enabled {l.isActiveAndEnabled}, shadows {l.shadows}, intensity {l.intensity:F2}, pointing {l.transform.forward:F2}");
+                if (sun == null && l.isActiveAndEnabled && l.shadows != LightShadows.None) sun = l;
+            }
+            McLog.Info($"model check: sun {(sun != null ? $"'{sun.name}', shadows {sun.shadows}, pointing {sun.transform.forward:F2}" : "not found")}");
+            bool shadowOn = true;
+            int shadowChecks = 0;
+            while (shadowChecks < 8 && sun != null && sun.transform.forward.y < -0.05f)
+            {
+                yield return new WaitForSecondsRealtime(0.5f);
+                if (!playerModel.Shown || Camera.main == null) continue;
+                playerModel.SetCastsShadow(shadowOn);
+                yield return null;
+                yield return new WaitForEndOfFrame();
+                Vector3 feet = playerModel.FeetPoint;
+                Vector3 middle = feet + Vector3.up * playerModel.Height * 0.5f;
+                Vector3 dir = sun.transform.forward;
+                Vector3 ground = middle + dir * ((middle.y - feet.y) / -dir.y);
+                Vector3 g = Camera.main.WorldToScreenPoint(ground);
+                Texture2D shot = ScreenCapture.CaptureScreenshotAsTexture();
+                bool onScreen = g.z > 0 && g.x >= 0 && g.y >= 0 && g.x < Screen.width && g.y < Screen.height;
+                Color32 c = shot.GetPixel(Mathf.Clamp((int)(g.x / Screen.width * shot.width), 0, shot.width - 1),
+                                          Mathf.Clamp((int)(g.y / Screen.height * shot.height), 0, shot.height - 1));
+                Destroy(shot);
+                McLog.Info($"model check: body shadow {(shadowOn ? "ON " : "OFF")}, where it should fall ({ground.x:F2}, {ground.y:F2}, {ground.z:F2}){(onScreen ? "" : " (off screen)")}: " +
+                           $"colour ({c.r},{c.g},{c.b}), brightness {(c.r + c.g + c.b) / 3}; spore renderers still drawn: {SporeRenderersDrawn()}");
+                shadowOn = !shadowOn;
+                shadowChecks++;
+            }
+            playerModel.SetCastsShadow(true);
+
+            // Then: the depth passes off and on in turn, with the depth the Fog effect reads at the head.
+            bool passesOn = true;
+            int checks = 0;
+            while (checks < 8)
+            {
+                yield return new WaitForSecondsRealtime(0.5f);
+                if (!playerModel.Shown || playerModel.ShadowOnly || Camera.main == null) continue; // first person: not in the depth, by design
+                playerModel.SetDepthPasses(passesOn);
+                yield return null; // one frame drawn with the new setting
+                yield return new WaitForEndOfFrame();
+                Vector3 s = Camera.main.WorldToScreenPoint(playerModel.HeadPoint);
+                Texture2D shot = ScreenCapture.CaptureScreenshotAsTexture();
+                int px = Mathf.Clamp((int)(s.x / Screen.width * shot.width), 0, shot.width - 1);
+                int py = Mathf.Clamp((int)(s.y / Screen.height * shot.height), 0, shot.height - 1);
+                Color32 c = shot.GetPixel(px, py);
+                int shotW = shot.width, shotH = shot.height;
+                Destroy(shot);
+                // The depth Mycelium's Fog effect reads at that pixel, on the next frame drawn.
+                probeUV = new Vector2(s.x / Screen.width, s.y / Screen.height);
+                probeResult = float.NaN;
+                probePending = true;
+                float waitUntil = Time.realtimeSinceStartup + 1f;
+                while (float.IsNaN(probeResult) && Time.realtimeSinceStartup < waitUntil) yield return null;
+                McLog.Info($"model check: depth passes {(passesOn ? "ON " : "OFF")}, head at screen ({px}, {py}) of {shotW}x{shotH}, really {s.z:F2} units away; " +
+                           $"the depth texture says {(float.IsNaN(probeResult) ? "nothing (probe failed)" : probeResult.ToString("F2"))}; colour ({c.r},{c.g},{c.b})");
+                passesOn = !passesOn;
+                checks++;
+            }
+            playerModel.SetDepthPasses(true);
+            UnityEngine.Rendering.RenderPipelineManager.endCameraRendering -= ProbeDepth;
+        }
+
+        /// <summary>Test aid: how many of the spore's renderers are drawn at all (0 while your Minecraft body is shown).</summary>
+        int SporeRenderersDrawn()
+        {
+            if (rb == null) return 0;
+            int n = 0;
+            foreach (Renderer r in rb.GetComponentsInChildren<Renderer>())
+                if (r.enabled && !r.forceRenderingOff) n++;
+            return n;
+        }
+
+        Vector2 probeUV;
+        bool probePending;
+        float probeResult = float.NaN;
+        Material probeMaterial;
+        RenderTexture probeTarget;
+
+        /// <summary>Test aid: after the main camera draws, read the depth texture at probeUV (MyceliumCraftDepthProbe shader).</summary>
+        void ProbeDepth(UnityEngine.Rendering.ScriptableRenderContext context, Camera cam)
+        {
+            if (!probePending || cam == null || !cam.CompareTag("MainCamera")) return;
+            probePending = false;
+            if (probeMaterial == null)
+            {
+                Shader probe = Resources.Load<Shader>("MyceliumCraftDepthProbe");
+                if (probe == null) { McLog.Info("model check: depth probe shader missing"); return; }
+                probeMaterial = new Material(probe);
+                probeTarget = new RenderTexture(1, 1, 0, RenderTextureFormat.ARGBFloat);
+            }
+            probeMaterial.SetVector("_ProbeUV", new Vector4(probeUV.x, probeUV.y, 0, 0));
+            Graphics.Blit(null, probeTarget, probeMaterial);
+            UnityEngine.Rendering.AsyncGPUReadback.Request(probeTarget, 0, TextureFormat.RGBAFloat, r =>
+            {
+                if (r.hasError) { McLog.Info("model check: depth probe readback failed"); return; }
+                probeResult = r.GetData<Color>()[0].r;
+            });
         }
 
         /// <summary>Test aid: see "-mcOverlayCheck" in Awake.</summary>

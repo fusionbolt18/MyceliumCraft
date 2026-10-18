@@ -60,8 +60,8 @@ namespace MyceliumCraft
         float smoothYaw;          // first person: Minecraft yaw eased like the pitch (no Cinemachine damping there)
         Transform spore;          // the spore's (interpolated) transform, for the eye position
         float eyeOffset;          // eye height above spore.position
-        readonly System.Collections.Generic.List<(Renderer r, UnityEngine.Rendering.ShadowCastingMode mode)> hidden =
-            new System.Collections.Generic.List<(Renderer, UnityEngine.Rendering.ShadowCastingMode)>();
+        readonly System.Collections.Generic.List<(Renderer r, UnityEngine.Rendering.ShadowCastingMode mode, bool off)> hidden =
+            new System.Collections.Generic.List<(Renderer, UnityEngine.Rendering.ShadowCastingMode, bool)>();
 
         public uint Mode => mode;
 
@@ -80,6 +80,9 @@ namespace MyceliumCraft
         public float ShakePos => lastShakePos;
         public float ShakeAngle => lastShakeAngle;
         public bool Controlling => controlling;
+        /// <summary>Set while your Minecraft body is drawn instead of the spore (McPlayerModel): hide the spore then too.</summary>
+        public bool ReplaceSpore;
+        int sporeHidden; // 0 drawn, 1 shadow only, 2 not drawn at all
 
         /// <summary>Forget the camera (new scene; the old one is gone with its scene).</summary>
         public void Reset()
@@ -87,6 +90,7 @@ namespace MyceliumCraft
             freeLook = null;
             controlling = false;
             hidden.Clear();
+            sporeHidden = 0;
             spore = null;
             mode = Behind;
         }
@@ -94,7 +98,11 @@ namespace MyceliumCraft
         /// <summary>The spore to look out of in first person: its transform and eye height above its position.</summary>
         public void SetSpore(Transform sporeTransform, float eyeHeightAbovePosition)
         {
-            if (spore != sporeTransform) ShowSpore();
+            if (spore != sporeTransform)
+            {
+                ShowSpore();
+                sporeHidden = 0;
+            }
             spore = sporeTransform;
             eyeOffset = eyeHeightAbovePosition;
         }
@@ -136,7 +144,15 @@ namespace MyceliumCraft
             {
                 McLog.Info($"camera: Minecraft view {ModeName(mode)} -> {ModeName(wanted)}");
                 mode = wanted;
-                if (mode == FirstPerson) HideSpore(); else ShowSpore();
+            }
+            // The spore's body: not drawn at all while your Minecraft body stands in for it (that
+            // body casts the shadow, in first person too); otherwise shadow only in first person
+            // (the camera is inside it).
+            int hide = ReplaceSpore ? 2 : mode == FirstPerson ? 1 : 0;
+            if (hide != sporeHidden)
+            {
+                sporeHidden = hide;
+                if (hide > 0) HideSpore(hide == 2); else ShowSpore();
             }
 
             lastPitch = mc.Pitch;
@@ -181,24 +197,41 @@ namespace MyceliumCraft
             }
         }
 
-        /// <summary>First person: draw the spore's own body as shadow only, so the camera isn't inside it.</summary>
-        void HideSpore()
+        /// <summary>
+        /// First person: draw the spore's own body as shadow only, so the camera isn't inside it.
+        /// fully: don't draw it at all, not even its shadow (your Minecraft body is shown instead).
+        /// </summary>
+        void HideSpore(bool fully)
         {
             ShowSpore();
             if (spore == null) return;
             foreach (Renderer r in spore.GetComponentsInChildren<Renderer>())
             {
-                if (r.shadowCastingMode == UnityEngine.Rendering.ShadowCastingMode.ShadowsOnly) continue;
-                hidden.Add((r, r.shadowCastingMode));
-                r.shadowCastingMode = UnityEngine.Rendering.ShadowCastingMode.ShadowsOnly;
+                if (fully)
+                {
+                    if (r.forceRenderingOff) continue;
+                    hidden.Add((r, r.shadowCastingMode, true));
+                    r.forceRenderingOff = true;
+                }
+                else
+                {
+                    if (r.shadowCastingMode == UnityEngine.Rendering.ShadowCastingMode.ShadowsOnly) continue;
+                    hidden.Add((r, r.shadowCastingMode, false));
+                    r.shadowCastingMode = UnityEngine.Rendering.ShadowCastingMode.ShadowsOnly;
+                }
             }
-            McLog.Info($"camera: first person, {hidden.Count} spore renderers drawn as shadow only");
+            McLog.Info(fully ? $"camera: Minecraft body shown, {hidden.Count} spore renderers not drawn at all (no spore shadow)"
+                             : $"camera: first person, {hidden.Count} spore renderers drawn as shadow only");
         }
 
         void ShowSpore()
         {
-            foreach (var (r, m) in hidden)
-                if (r != null) r.shadowCastingMode = m;
+            foreach (var (r, m, off) in hidden)
+            {
+                if (r == null) continue;
+                if (off) r.forceRenderingOff = false;
+                else r.shadowCastingMode = m;
+            }
             hidden.Clear();
         }
 
@@ -358,6 +391,7 @@ namespace MyceliumCraft
             notDrivingSince = -1f;
             lastTilt = 0f;
             ShowSpore();
+            sporeHidden = 0;
             mode = Behind;
             McLog.Info($"camera: back to Mycelium's mouse and orbits ({why})");
         }

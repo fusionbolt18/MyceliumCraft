@@ -112,6 +112,7 @@ public final class MycLink {
 			LONG.setRelease(seg, OFF_HEADER + H_MC_HEARTBEAT, tickCount());
 			mycPid = seg.get(JAVA_INT, OFF_HEADER + H_MYC_PID);
 			shm = seg;
+			linkCount++;
 			LOG.info("MyceliumCraft: linked to Mycelium (pid {})", mycPid);
 		} catch (Throwable t) {
 			LOG.error("MyceliumCraft: failed to open shared memory", t);
@@ -183,6 +184,57 @@ public final class MycLink {
 			s.set(JAVA_INT, b + B_ENTRIES + 8L * i + 4, codes[i]);
 		}
 		INT.setRelease(s, b + B_SEQ, seq + 2);
+	}
+
+	private static int linkCount;
+	private static final int SESSION = (int) (System.nanoTime() | 1); // texture versions from this Minecraft run
+
+	/** Goes up every time the shared memory is (re)opened. */
+	public static int linkCount() {
+		return linkCount;
+	}
+
+	/** Seqlock write of the player model: table = (texture, first, count) per batch; data = 6 ints per vertex. */
+	public static void writeModel(int flags, int[] table, int batches, int[] data, int vertices) {
+		MemorySegment s = shm;
+		if (s == null) {
+			return;
+		}
+		long b = OFF_MODEL;
+		int seq = s.get(JAVA_INT, b + M_SEQ);
+		INT.setRelease(s, b + M_SEQ, seq + 1);
+		VarHandle.storeStoreFence();
+		s.set(JAVA_INT, b + M_FLAGS, flags);
+		s.set(JAVA_INT, b + M_BATCHES, batches);
+		s.set(JAVA_INT, b + M_VERTICES, vertices);
+		s.set(JAVA_LONG, b + M_FRAME, s.get(JAVA_LONG, b + M_FRAME) + 1);
+		for (int i = 0; i < batches; i++) {
+			long e = b + M_BATCH_TABLE + 16L * i;
+			s.set(JAVA_INT, e, table[i * 3]);
+			s.set(JAVA_INT, e + 4, table[i * 3 + 1]);
+			s.set(JAVA_INT, e + 8, table[i * 3 + 2]);
+		}
+		if (vertices > 0) {
+			MemorySegment.copy(data, 0, s, JAVA_INT, b + M_VERTEX_DATA, vertices * 6);
+		}
+		INT.setRelease(s, b + M_SEQ, seq + 2);
+	}
+
+	/** Write texture id (1-based) once: pixels (RGBA, top row first) first, then its entry. */
+	public static boolean writeTexture(int id, int width, int height, long offset, byte[] rgba) {
+		MemorySegment s = shm;
+		if (s == null || id < 1 || id > T_MAX || offset + rgba.length > T_DATA_BYTES) {
+			return false;
+		}
+		long e = OFF_TEXTURES + T_TABLE + (id - 1) * T_ENTRY_SIZE;
+		INT.setRelease(s, e, 0); // not valid while rewriting
+		MemorySegment.copy(rgba, 0, s, JAVA_BYTE, OFF_TEXTURES + T_DATA + offset, rgba.length);
+		s.set(JAVA_INT, e + 4, width);
+		s.set(JAVA_INT, e + 8, height);
+		s.set(JAVA_LONG, e + 16, offset);
+		VarHandle.storeStoreFence();
+		INT.setRelease(s, e, SESSION + id);
+		return true;
 	}
 
 	/** The whole shared memory (null when not linked), for the overlay's picture copy. */

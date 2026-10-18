@@ -65,7 +65,13 @@ Single-player and offline only.
   R interact, Tab show stats, V subspecies skill, middle click salvage, the rest unbound. Tested
   with a fake Minecraft: Mycelium followed the binds it sent, and a change during play was picked
   up within a frame. See DESIGN §5.3.
-- **Overlay: not tested in real Minecraft.** Minecraft's hand, hotbar, hearts and screens
+- **Your Minecraft body in third person: not tested in real Minecraft.** In both F5 third-person
+  views, your Minecraft player (skin, armour, cape, its own walking and swinging) stands where the
+  spore is, and the spore is hidden. The body casts its own shadow (the spore's is gone), in first
+  person too, where only the shadow is drawn (third person tested by you). It
+  isn't washed out by the fog any more (tested by you). Held items aren't shown yet. `playerModel=0` keeps the spore.
+  Tested with a fake Minecraft's test body: right size, right place, right facing.
+- **Overlay: tested by you** (you saw it working in real play). Minecraft's hand, hotbar, hearts and screens
   (inventory, chat) are drawn on top of Mycelium, and Minecraft stops drawing its own world
   (`overlay=0` in `MyceliumCraft.cfg` turns it off). Tested with a fake Minecraft's test picture,
   which showed with exact colors. **Not built yet:** a mouse cursor in Minecraft's screens, and

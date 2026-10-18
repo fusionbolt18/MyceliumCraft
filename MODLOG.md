@@ -1,5 +1,146 @@
 # MODLOG
 
+## 2026-10-18 Your Minecraft body's shadow in first person too
+
+**Changed:**
+- **Protocol v12:** the Model block's flags have `FIRST_PERSON` (bit 1).
+- **`MycPlayerModel.java`:** sends the body in every view, marked `FIRST_PERSON` in first person.
+- **`McPlayerModel.cs`:** in first person the body is drawn as shadow only (`ShadowsOnly`). The
+  spore stays fully off in every view while the body is there.
+- **`LinkTestMain.java`:** the test body is sent in first person too.
+- **`-mcModelCheck`:** skips the depth part in first person. Its "shadow off" state now hides the
+  body completely there.
+- PROTOCOL, DESIGN §5.4.1, README.
+
+**Why:** you asked for the correct shadow in first person too.
+
+**Tested how:** the real build in the hub with the fake Minecraft in first person, then the
+stand-ins together.
+
+**Result:**
+- **Looking 30° down:** the shadow's spot was off screen (not usable).
+- **Looking 80° down:**
+  - brightness 46 where the shadow should fall, with the body's shadow;
+  - 80 without (sunlit grass);
+  - spore: 0 renderers drawn.
+- **The body is invisible from the eyes:** the reading with the shadow is shaded grass, (57,59,23).
+- **A flaw in my test aid, found and fixed:** at first the "shadow off" reading was grey
+  (195,194,193). The test's "no shadow" mode draws an object normally, so the camera saw the
+  inside of the test body. Real play never uses that mode in first person.
+- Stand-ins: ground checks PASS, PASS.
+
+**Still broken / not tested:**
+- **Not tested in your real play.**
+- **The body still doesn't receive shadows** from trees and other objects.
+
+## 2026-10-18 The shadow is your Minecraft body's, not the spore's
+
+**Changed:**
+- **`Resources/MyceliumCraftModel.shader`:** new "ShadowCaster" pass. It uses URP's depth bias and
+  leaves out the skin's see-through pixels.
+- **`McPlayerModel.cs`:** the body casts shadows.
+- **`CameraSync.cs`:** while the body is shown, the spore's renderers aren't drawn at all
+  (`forceRenderingOff`), instead of shadow only. In first person it's still shadow only.
+- **`-mcModelCheck`:**
+  - first switches the body's shadow on and off, reading the screen where the shadow should land;
+  - then does the depth check as before.
+  - It finds the active directional light: the hub's scene "sun" setting points at an inactive
+    "Dawn Light".
+- DESIGN §5.4.1, README.
+
+**Why:** you saw the spore's shadow under your Minecraft body.
+
+**Tested how:** the real build in the hub (`-mcScene "The Carcass" -mcBackground -mcModelCheck`)
+with the fake Minecraft's test body, behind view, at two camera angles.
+
+**Result:**
+- **Where the shadow should land:** brightness 54–60 with the body's shadow, 89–98 without.
+- **Spore:** 0 renderers drawn throughout ("3 spore renderers not drawn at all").
+- **Fog check still holds:** depth 2.72 with the passes, 6.35 without.
+- **First attempt didn't measure anything:** it looked for the light before the hub had loaded,
+  then used the inactive Dawn Light. Fixed in the test aid.
+
+**Still broken / not tested:**
+- **Not tested in your real play.**
+- **The body doesn't receive shadows** (for example from trees). Neither did it before.
+- **First person** still casts the spore's shadow, since Minecraft sends no body in first person.
+
+## 2026-10-18 Minecraft body washed out in front of the sky
+
+**Changed:**
+- **`Resources/MyceliumCraftModel.shader`:** added the "DepthOnly" and "DepthNormals" passes.
+- **New `-mcModelCheck` test aid** (`MinecraftDriver.cs`) and `Resources/MyceliumCraftDepthProbe.shader`.
+  It reads the scene depth at the body's head, with those passes switched off and on in turn.
+- DESIGN §5.4.1.
+
+**Why:** you saw the body blend into the sky in third person (screenshot).
+
+**Cause:**
+- Mycelium's High Fidelity renderer runs SSAO from depth and normals. So Unity fills its depth
+  texture from separate passes that every object needs, and the body's shader had none.
+- Mycelium's Fog effect (`Depth.shadergraph`: up to 75% white, by the depth texture's distance)
+  therefore fogged the body as if it were whatever was behind it. Behind it was sky, so the fog
+  was full.
+
+**Tested how and result:**
+- **Screen colour (2 attempts, inconclusive):** read back the screen colour at the body's head with
+  the passes off and on, in the tutorial and the hub at 6 camera angles. Nothing differed. None of
+  those views had sky behind the head (just above it was dark rock, wall or foliage), and the fog
+  hardly changes at 10–30 units.
+- **Depth probe (decisive):** read the depth texture itself at the head's pixel, in the hub. The
+  head's centre was 3.66 units away.
+  - passes on: 3.24 and 3.17 (the body's front face);
+  - passes off: 10.86 and 30.90 (the wall behind).
+- So the body is now in the depth that the fog reads.
+
+**Still broken / not tested:**
+- **Not tested in your real play** in front of the sky. I couldn't find a test view with sky right
+  behind the body.
+- **SSAO** now also sees the body. It may darken the ground around its feet a little, as it does
+  for other objects.
+
+## 2026-10-18 Your Minecraft body instead of the spore in third person
+
+**Changed:**
+- **Protocol v11:** new Model block (the posed body as triangles) and Textures block, after the
+  overlay slots. The mapping is now about 105 MB.
+- **New `MycPlayerModel.java`:** takes Minecraft's own posed player model (skin, armour, cape,
+  animations) as triangles and sends it with its textures, in third person. Adapted from the player
+  part of SkyCraft's `AvatarExporter`.
+- New accessor mixins `RenderTypeAccessor`, `RenderSetupAccessor`, `TextureBindingAccessor`,
+  `TextureManagerAccessor` (from SkyCraft), to find each part's texture.
+- **New `McPlayerModel.cs`** and `Resources/MyceliumCraftModel.shader`: draws the body at the
+  spore's feet.
+- **`CameraSync.cs`:** the spore is drawn as shadow only while the body is shown (`ReplaceSpore`),
+  as in first person.
+- New `playerModel=` setting (default 1). `LinkTestMain.java`: `LINKTEST_MODEL=1` test body.
+- PROTOCOL, DESIGN §5.4.1, README.
+
+**Why:** you asked for the Minecraft player to be there instead of the spore in third person.
+
+**Tested how:** the real Mycelium build, minimized, with the fake Minecraft sending its test body
+through first person, then behind, then in front. Then the stand-ins together.
+
+**Result:**
+- **First person:** no body, spore shadow only.
+- **Third person (both views):** the body shown and the spore's 4 renderers shadow only.
+- **Shape:** box from (−0.42, 0.00, −0.49) to (0.42, 1.68, 0.21) units around the spore's feet,
+  as expected from 1.4 × the block size. The nose is on −Z, which is Minecraft's +Z (the facing
+  side).
+- 60 updates a second.
+- Stand-ins: ground checks PASS, PASS.
+
+**Still broken / not tested:**
+- **Not tested in real Minecraft:**
+  - capturing the real player model and its skin and armour textures;
+  - whether the skin comes out right side up.
+- **Not built:**
+  - held items and blocks (they need Minecraft's texture atlases, as in SkyCraft);
+  - enchantment glint;
+  - the body's own shadow (the spore's shadow is still cast).
+- **Lighting:** the body is shaded Minecraft-style, not by Mycelium's lights. In a dark cave it
+  may look too bright.
+
 ## 2026-10-18 Overlay, step 1: Minecraft's picture on top of Mycelium
 
 **Changed:**

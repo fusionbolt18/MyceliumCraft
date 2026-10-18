@@ -12,9 +12,34 @@ namespace MyceliumCraft.Link
         public const int OverlaySlotBytes = MaxOverlayW * MaxOverlayH * 4;
         public const int OverlaySlots = 3;
         public const int OffOverlayPixels = 0x100000;
-        public const int MappingBytes = OffOverlayPixels + OverlaySlots * OverlaySlotBytes;
+        // Model (Minecraft -> Mycelium, seqlock): the player's posed body for third person.
+        public const int OffModel = OffOverlayPixels + OverlaySlots * OverlaySlotBytes;
+        public const int ModelBytes = 0x100000;
+        public const int MSeq = 0x00;
+        public const int MFlags = 0x04;
+        public const int MBatches = 0x08;
+        public const int MVertices = 0x0C;
+        public const int MFrame = 0x10;
+        public const int MBatchTable = 0x40;  // MMaxBatches x (u32 texture id, u32 first vertex, u32 vertex count, u32 pad)
+        public const int MMaxBatches = 32;
+        public const int MVertexData = 0x400;
+        public const int MVertexBytes = 24;   // f32 x, y, z, u, v; u8 r, g, b, a
+        public const int MMaxVertices = (ModelBytes - MVertexData) / MVertexBytes;
+        public const uint MVisible = 1u << 0;
+        public const uint MFirstPerson = 1u << 1; // Minecraft is in first person: draw only the body's shadow
+
+        // Textures (Minecraft -> Mycelium): written once each; an entry is valid when its version is set.
+        public const int OffTextures = OffModel + ModelBytes;
+        public const int TexturesBytes = 0x800000;
+        public const int TTable = 0x00;       // TMax x 0x20: u32 version, u32 width, u32 height, u32 pad, u64 data offset (from TData)
+        public const int TEntrySize = 0x20;
+        public const int TMax = 32;
+        public const int TData = 0x400;
+        public const int TDataBytes = TexturesBytes - TData;
+
+        public const int MappingBytes = OffTextures + TexturesBytes;
         public const uint Magic = 0x4343594D; // "MYCC"
-        public const uint Version = 10;
+        public const uint Version = 12;
         public const ulong HeartbeatTimeoutMs = 3000;
 
         // Header @0x000

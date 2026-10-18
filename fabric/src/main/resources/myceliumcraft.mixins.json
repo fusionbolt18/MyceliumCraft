@@ -10,6 +10,10 @@
     "InputConstantsMixin",
     "LevelRendererMixin",
     "MinecraftMixin",
+    "RenderSetupAccessor",
+    "RenderTypeAccessor",
+    "TextureBindingAccessor",
+    "TextureManagerAccessor",
     "WindowMixin"
   ],
   "injectors": { "defaultRequire": 1 }

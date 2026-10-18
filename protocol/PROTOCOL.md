@@ -9,8 +9,11 @@ If you change anything here, change both files and bump `VERSION`.
 
 ## Basics
 
-- Mapping name: `Local\MyceliumCraft_v1`, size `0x5FEC000` bytes (about 96 MB): the blocks below in
-  the first 1 MB, then 3 overlay picture slots of 3840 × 2160 × 4 bytes each (since version 10).
+- Mapping name: `Local\MyceliumCraft_v1`, size `0x68EC000` bytes (about 105 MB):
+  - the small blocks in the first 1 MB;
+  - 3 overlay picture slots of 3840 × 2160 × 4 bytes each (since version 10);
+  - the player model (1 MB) and its textures (8 MB), since version 11.
+
   Windows only uses memory for the parts that are written.
 - **Mycelium creates the mapping. Minecraft opens it.** This matches SkyCraft, where the host
   game (Skyrim) owns the mapping.
@@ -26,7 +29,7 @@ a block without locks.
 - **Reader:** read `seq`. If it's odd, try again. Read the fields, then read `seq` again. If it
   changed, try again.
 
-## Layout (version 10)
+## Layout (version 12)
 
 ### Header @ 0x000
 
@@ -148,6 +151,33 @@ Minecraft's picture: its hand, HUD and open screens on a transparent background,
 - **Mycelium**, when bit 2 is set, swaps its own slot (it starts with 2) into the middle:
   `old = exchange(state, mySlot)`, and reads slot `old & 3`. Neither side ever touches the other's
   slot, so there's no tearing and no waiting.
+
+### Model @ 0x5FEC000 (Minecraft → Mycelium, seqlock). Since version 11
+
+Your Minecraft player's body, posed and animated by Minecraft, for Mycelium to draw instead of
+the spore. Written every Minecraft frame while the overlay is on, in every view. In first person it
+has `FIRST_PERSON` set, and Mycelium draws only its shadow (since version 12).
+
+| Off | Type | Field |
+|---|---|---|
+| 0x00 | u32 | seq |
+| 0x04 | u32 | flags: bit0 `VISIBLE`, bit1 `FIRST_PERSON` (draw only the shadow; since version 12) |
+| 0x08 | u32 | batches (at most 32) |
+| 0x0C | u32 | vertices |
+| 0x10 | u64 | frame: goes up on every write |
+| 0x40 | 32 × 16 bytes | per batch: u32 texture id, u32 first vertex, u32 vertex count, u32 pad |
+| 0x400 | vertices × 24 bytes | triangles: f32 x, y, z (blocks, Minecraft axes, relative to the feet, already turned to where the body faces), f32 u, v (0..1, v from the top), u8 r, g, b, a (tint) |
+
+### Textures @ 0x60EC000 (Minecraft → Mycelium). Since version 11
+
+The textures the model uses (skin, armour, cape), each written once.
+
+| Off | Type | Field |
+|---|---|---|
+| 0x00 + 0x20·(id−1) | entry for texture id 1..32 | 0x00 u32 version (0 = not there yet; set last), 0x04 u32 width, 0x08 u32 height, 0x10 u64 offset of its pixels from 0x400 |
+| 0x400 | | pixels: RGBA bytes, top row first, not premultiplied |
+
+A new Minecraft run uses new version numbers, so Mycelium reloads a texture whose version changed.
 
 ### GroundGrid @ 0x1000 (Mycelium → Minecraft, seqlock)
 

@@ -9,9 +9,34 @@ public final class Proto {
 	public static final long OVERLAY_SLOT_BYTES = (long) MAX_OVERLAY_W * MAX_OVERLAY_H * 4;
 	public static final int OVERLAY_SLOTS = 3;
 	public static final long OFF_OVERLAY_PIXELS = 0x100000;
-	public static final long MAPPING_BYTES = OFF_OVERLAY_PIXELS + OVERLAY_SLOTS * OVERLAY_SLOT_BYTES;
+	// Model (Minecraft -> Mycelium, seqlock): the player's posed body for third person.
+	public static final long OFF_MODEL = OFF_OVERLAY_PIXELS + OVERLAY_SLOTS * OVERLAY_SLOT_BYTES;
+	public static final long MODEL_BYTES = 0x100000;
+	public static final long M_SEQ = 0x00;
+	public static final long M_FLAGS = 0x04;
+	public static final long M_BATCHES = 0x08;
+	public static final long M_VERTICES = 0x0C;
+	public static final long M_FRAME = 0x10;
+	public static final long M_BATCH_TABLE = 0x40; // M_MAX_BATCHES x (u32 texture id, u32 first vertex, u32 vertex count, u32 pad)
+	public static final int M_MAX_BATCHES = 32;
+	public static final long M_VERTEX_DATA = 0x400;
+	public static final int M_VERTEX_BYTES = 24; // f32 x, y, z, u, v; u8 r, g, b, a
+	public static final int M_MAX_VERTICES = (int) ((MODEL_BYTES - M_VERTEX_DATA) / M_VERTEX_BYTES);
+	public static final int M_VISIBLE = 1 << 0;
+	public static final int M_FIRST_PERSON = 1 << 1; // Minecraft is in first person: draw only the body's shadow
+
+	// Textures (Minecraft -> Mycelium): written once each; an entry is valid when its version is set.
+	public static final long OFF_TEXTURES = OFF_MODEL + MODEL_BYTES;
+	public static final long TEXTURES_BYTES = 0x800000;
+	public static final long T_TABLE = 0x00; // T_MAX x 0x20: u32 version, u32 width, u32 height, u32 pad, u64 data offset (from T_DATA)
+	public static final long T_ENTRY_SIZE = 0x20;
+	public static final int T_MAX = 32;
+	public static final long T_DATA = 0x400;
+	public static final long T_DATA_BYTES = TEXTURES_BYTES - T_DATA;
+
+	public static final long MAPPING_BYTES = OFF_TEXTURES + TEXTURES_BYTES;
 	public static final int MAGIC = 0x4343594D; // "MYCC"
-	public static final int VERSION = 10;
+	public static final int VERSION = 12;
 	/** A side is alive if its heartbeat is younger than this. */
 	public static final long HEARTBEAT_TIMEOUT_MS = 3000;
 

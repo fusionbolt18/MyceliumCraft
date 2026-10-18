@@ -600,6 +600,64 @@ While Mycelium shows a level (and `overlay=1`), Mycelium sets `OVERLAY` in its s
 - **Size:** the picture is Minecraft's window size, stretched to Mycelium's window. It looks right
   when both windows have the same shape; the log warns if they don't.
 
+### 5.4.1 Your Minecraft body instead of the spore, in third person
+
+Following SkyCraft (its `AvatarExporter`). Minecraft doesn't send a picture of the player here;
+it sends the **model itself**:
+- **Posing:** Minecraft's own player renderer poses and animates the body: skin, second skin
+  layer, armour, cape, walking, swinging, sneaking, the red hurt flash. It "submits" the parts to
+  a collector; `MycPlayerModel.java` is that collector, and takes the parts as triangles instead
+  of drawing them.
+- **Sending:** every Minecraft frame, the triangles go out with their texture ids (Model block),
+  and each texture once (Textures block).
+- **Positions:** relative to the player's feet, in blocks, already turned to where the body faces.
+- **Drawing:** `McPlayerModel.cs` builds a mesh from them. It stands at the spore's feet and maps
+  like the world: (x, y, −z) × scale. So it's as tall as the spore, and it moves exactly with the
+  spore.
+- **In Mycelium's world:** it's a real object there, so Mycelium's walls hide it correctly.
+- **Shader:** `Resources/MyceliumCraftModel.shader`. It keeps the skin's sharp pixels and is
+  see-through where the skin is. It shades each face by which way it points (top brightest,
+  bottom darkest), as Minecraft does.
+- **Depth:** the shader also has the two passes Unity's renderer (URP) uses to fill its depth and
+  normals textures before drawing ("DepthOnly", "DepthNormals").
+  - **Why it needs them:** Mycelium's High Fidelity renderer runs SSAO from depth and normals, so
+    the depth texture comes from those passes. Mycelium's Fog effect (`Depth.shadergraph`) then
+    blends in up to 75% white fog by that depth.
+  - **What went wrong without them:** the body was missing from the depth texture, so the fog used
+    the distance of whatever was behind it. With sky behind, the body got washed out (you saw this
+    on 2026-10-18).
+  - **Checked** with `-mcModelCheck`, which reads the depth texture at the head's pixel:
+    - with the passes: 3.2 units, the body's front face;
+    - without them: 10.9 or 30.9 units, the wall behind.
+- **Shadow:** the body casts its own shadow. Its shader has a "ShadowCaster" pass, which URP uses
+  to draw the sun's shadow map; the skin's see-through pixels are left out, as in the colour pass.
+- **First person:** Minecraft sends the body too, marked `FIRST_PERSON`. Mycelium draws it as
+  shadow only: the camera is inside it, but its shadow is on the ground.
+- **The spore** isn't drawn at all while the body is shown, in every view (`CameraSync.ReplaceSpore`;
+  its renderers get `forceRenderingOff`), so it casts no shadow either. It's drawn as shadow only
+  in first person only if there's no Minecraft body (for example `playerModel=0`).
+  - **Checked** with `-mcModelCheck` in the hub, under its active "Day Light". The check works out
+    where the shadow should land (from the middle of the body, along the light, down to the feet's
+    height) and reads the screen brightness there:
+    - with the body's shadow on: 54–60;
+    - with it off: 89–98 (two camera views);
+    - the spore had 0 renderers drawn throughout.
+    - **First person, looking down:** 46 with the shadow, 80 without. The body itself isn't seen
+      from the eyes: the reading with the shadow is shaded grass, not the body.
+- **First person:** Minecraft sends an empty model, and the spore stays hidden as before.
+- `playerModel=0` keeps the spore.
+
+**Not yet:** held items and blocks (Minecraft draws them from its texture atlases), enchantment
+glint, and Mycelium's lighting on the body (it doesn't receive shadows either).
+
+**Checked** with the fake Minecraft's test model (`LINKTEST_MODEL=1`: a 0.6 × 1.2 × 0.3 block body
+with a nose on its facing side):
+- **Size:** it arrived 0.84 × 1.68 × 0.42 units around the spore's feet, which is 1.4 × the block size.
+- **Facing:** the nose came out on the side that matches Minecraft's facing.
+- **Views:** shown in both third-person views and hidden in first person, with the spore drawn
+  as shadow only whenever the body shows.
+- **Updates:** 60 a second.
+
 **Checked** with the fake Minecraft's test picture (`LINKTEST_OVERLAY=1`: an opaque red box, a
 half-transparent white box, the rest transparent) and `-mcOverlayCheck`, which reads back Mycelium's
 finished screen with the overlay on and off:

@@ -124,6 +124,8 @@ public final class MyceliumCraftClient implements ClientModInitializer {
 		TICK.bodyO = player.yBodyRotO;
 		TICK.body = player.yBodyRot;
 		MycLink.writeMcState(flags, feet.x, feet.y, feet.z, player.getYRot(), player.getXRot(), frame, epoch, teleportAck, minecraft.options.getCameraType().ordinal(), bodyYaw, TICK);
+		// Third person: your Minecraft body, for Mycelium to draw instead of the spore.
+		MycPlayerModel.frame(minecraft, MycOverlay.active(), partial);
 		logOncePerSecond(feet, player.getYRot(), flags);
 	}
 

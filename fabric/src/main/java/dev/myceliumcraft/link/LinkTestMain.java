@@ -36,9 +36,50 @@ public final class LinkTestMain {
 	/** "1": send a 640x360 test picture as the overlay: an opaque red box, a half-transparent white box, the rest transparent. */
 	private static final boolean OVERLAY = "1".equals(System.getenv("LINKTEST_OVERLAY"));
 	private static long overlayFrames;
+	/** "1": send a test player model (a 0.6 x 1.2 x 0.3 block body with a nose on its +Z side) in third person, like Minecraft's. */
+	private static final boolean MODEL = "1".equals(System.getenv("LINKTEST_MODEL"));
+	private static boolean modelTextureSent;
 	/** Optional: switch to these key binds 5 s in, as if you changed them in the Controls menu while playing. */
 	private static final String BINDS2 = System.getenv("LINKTEST_BINDS2");
 	private static long bindsStart;
+
+	/** The test player model: two boxes relative to the feet, Minecraft blocks and axes. Marked first person in first person, as Minecraft's is. */
+	private static void writeTestModel(boolean thirdPerson) {
+		boolean firstPerson = !thirdPerson;
+		if (!modelTextureSent) {
+			byte[] tex = new byte[4 * 4 * 4];
+			for (int i = 0; i < 16; i++) { // 4x4 test texture: a red top row, the rest white
+				tex[i * 4] = (byte) 255;
+				tex[i * 4 + 1] = (byte) (i < 4 ? 0 : 255);
+				tex[i * 4 + 2] = (byte) (i < 4 ? 0 : 255);
+				tex[i * 4 + 3] = (byte) 255;
+			}
+			modelTextureSent = MycLink.writeTexture(1, 4, 4, 0, tex);
+		}
+		java.util.List<Integer> v = new java.util.ArrayList<>();
+		box(v, -0.3f, 0f, -0.15f, 0.3f, 1.2f, 0.15f); // body
+		box(v, -0.05f, 1.0f, 0.15f, 0.05f, 1.1f, 0.35f); // nose, on the +Z side (the way yaw 0 faces)
+		int[] data = v.stream().mapToInt(Integer::intValue).toArray();
+		int vertices = data.length / 6;
+		MycLink.writeModel(Proto.M_VISIBLE | (firstPerson ? Proto.M_FIRST_PERSON : 0), new int[] { 1, 0, vertices }, 1, data, vertices);
+	}
+
+	private static void box(java.util.List<Integer> out, float x0, float y0, float z0, float x1, float y1, float z1) {
+		float[][] c = { { x0, y0, z0 }, { x1, y0, z0 }, { x1, y1, z0 }, { x0, y1, z0 }, { x0, y0, z1 }, { x1, y0, z1 }, { x1, y1, z1 }, { x0, y1, z1 } };
+		int[][] faces = { { 0, 1, 2, 3 }, { 5, 4, 7, 6 }, { 4, 0, 3, 7 }, { 1, 5, 6, 2 }, { 3, 2, 6, 7 }, { 4, 5, 1, 0 } };
+		float[][] uv = { { 0, 1 }, { 1, 1 }, { 1, 0 }, { 0, 0 } };
+		for (int[] f : faces) {
+			for (int k : new int[] { 0, 1, 2, 0, 2, 3 }) {
+				float[] p = c[f[k]];
+				out.add(Float.floatToRawIntBits(p[0]));
+				out.add(Float.floatToRawIntBits(p[1]));
+				out.add(Float.floatToRawIntBits(p[2]));
+				out.add(Float.floatToRawIntBits(uv[k][0]));
+				out.add(Float.floatToRawIntBits(uv[k][1]));
+				out.add(-1); // white, opaque
+			}
+		}
+	}
 
 	/** The overlay test picture, as Minecraft's would be: RGBA, premultiplied alpha, rows bottom-up. */
 	private static void writeTestPicture() {
@@ -180,6 +221,9 @@ public final class LinkTestMain {
 			MycLink.writeMcState(flags, px, y, pz, yaw, pitch, frames++, 1, ack, cameraMode, bodyYaw, tick);
 			if (OVERLAY) {
 				writeTestPicture();
+			}
+			if (MODEL) {
+				writeTestModel(cameraMode != 0);
 			}
 			if (BINDS != null) {
 				if (bindsStart == 0) {

@@ -293,6 +293,60 @@ namespace MyceliumCraft.Link
             return true;
         }
 
+        /// <summary>Seqlock read of the player model into data. False if Minecraft kept interrupting.</summary>
+        public bool TryReadModel(ModelData data)
+        {
+            int b = Proto.OffModel;
+            for (int attempt = 0; attempt < 16; attempt++)
+            {
+                uint seq1 = ReadU32(view, b + Proto.MSeq);
+                Thread.MemoryBarrier();
+                if ((seq1 & 1) != 0) { Thread.SpinWait(20); continue; }
+                uint modelFlags = ReadU32(view, b + Proto.MFlags);
+                data.Visible = (modelFlags & Proto.MVisible) != 0;
+                data.FirstPerson = (modelFlags & Proto.MFirstPerson) != 0;
+                int batches = (int)ReadU32(view, b + Proto.MBatches);
+                int vertices = (int)ReadU32(view, b + Proto.MVertices);
+                data.Frame = Marshal.ReadInt64(view, b + Proto.MFrame);
+                if (batches < 0 || batches > Proto.MMaxBatches || vertices < 0 || vertices > Proto.MMaxVertices) return false;
+                for (int i = 0; i < batches; i++)
+                {
+                    int e = b + Proto.MBatchTable + 16 * i;
+                    data.Texture[i] = (int)ReadU32(view, e);
+                    data.First[i] = (int)ReadU32(view, e + 4);
+                    data.Count[i] = (int)ReadU32(view, e + 8);
+                }
+                int bytes = vertices * Proto.MVertexBytes;
+                if (data.Raw.Length < bytes) data.Raw = new byte[bytes];
+                Marshal.Copy(view + b + Proto.MVertexData, data.Raw, 0, bytes);
+                Thread.MemoryBarrier();
+                if (ReadU32(view, b + Proto.MSeq) != seq1) continue;
+                data.Batches = batches;
+                data.Vertices = vertices;
+                for (int i = 0; i < batches; i++)
+                    if (data.First[i] < 0 || data.Count[i] < 0 || data.First[i] + data.Count[i] > vertices) return false;
+                return true;
+            }
+            return false;
+        }
+
+        /// <summary>Texture id (1-based) from Minecraft, if it has been sent: RGBA pixels, top row first.</summary>
+        public bool TryReadTexture(int id, out uint version, out int width, out int height, out IntPtr pixels)
+        {
+            version = 0; width = height = 0; pixels = IntPtr.Zero;
+            if (id < 1 || id > Proto.TMax) return false;
+            int e = Proto.OffTextures + Proto.TTable + (id - 1) * Proto.TEntrySize;
+            version = ReadU32(view, e);
+            Thread.MemoryBarrier();
+            if (version == 0) return false;
+            width = (int)ReadU32(view, e + 4);
+            height = (int)ReadU32(view, e + 8);
+            long offset = Marshal.ReadInt64(view, e + 16);
+            if (width <= 0 || height <= 0 || offset < 0 || offset + (long)width * height * 4 > Proto.TDataBytes) return false;
+            pixels = view + Proto.OffTextures + Proto.TData + (int)offset;
+            return true;
+        }
+
         /// <summary>Pictures Minecraft has published so far.</summary>
         public long OverlayFramesPublished => Marshal.ReadInt64(view, Proto.OffOverlayCtl + Proto.OcFramesPublished);
 
