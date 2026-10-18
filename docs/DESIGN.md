@@ -331,7 +331,19 @@ step), the camera gets **Minecraft's full range**:
     |---|---|---|---|---|
     | Provider on | 0.50 | 0.40 | 0.54 | up to 0.035 |
     | Unplugged | 0.21 | 0.16 | 0.25 | up to 0.0016 |
-- **Restore:** the orbits and mouse input go back to normal as soon as Minecraft stops driving.
+- **Restore:** the orbits and mouse input go back to normal once Minecraft has stopped driving for
+  **0.5 s**.
+  - **Brief interruptions don't count:** teleports (WaitingForTeleport) and hiccups. A hiccup is
+    up to 0.25 s of an unreadable state or "not in a world"; the driver then uses Minecraft's last
+    good state.
+  - **Why:** the camera used to be released at once. A knockback (an enemy hit) moves the spore,
+    and the resync teleport after it released the camera for ~3 frames. A one-off "not in a world"
+    from Minecraft did the same. Each showed Mycelium's third-person camera for a frame in first
+    person (your log: 20:22:23 and 20:21:12).
+  - **Check (`-mcHitTest`, plus `LINKTEST_HICCUP=1`):** right before each frame is drawn,
+    `CameraSync.CheckFlash` counts first-person frames where the camera isn't at the eyes.
+    Across 4 knockbacks with resync teleports and 7 hiccups: **0 flash frames** of 713, 0 camera
+    releases, 0 drops to Idle.
 - **Switch:** `syncCamera=0` in `MyceliumCraft.cfg` turns it all off.
 - **F5 view** (protocol v5: McState 0x38 = Minecraft's `options.getCameraType().ordinal()`, which
   in 26.3 is 0 `FIRST_PERSON`, 1 `THIRD_PERSON_BACK`, 2 `THIRD_PERSON_FRONT`). Mycelium copies it:
@@ -507,22 +519,41 @@ Minecraft's window.
     Minecraft dropping from 120 to 30 fps for stretches while bridged.
 - **Stopping:** when it stops being active, every held key and button is released.
 
-**Keys both games react to** (Mycelium still gets its own keys, since it has the focus):
+**Which game owns which key** (your choice, 2026-10-17; `KeyOwnership.cs`, while Minecraft drives
+the spore; `keyOwnership=0` turns it off):
 
-| Key | Minecraft | Mycelium |
-|---|---|---|
-| WASD | walk | walk (overridden by the driver) |
-| Shift | sneak | dodge |
-| Space | jump | show stats |
-| E | inventory | skill 2 |
-| Q | drop item | skill 1 |
-| Left click | attack | attack |
-| Right click | use | interact |
-| Ctrl | sprint | navigate camera |
-| Tab | player list | reset camera |
-| V | (none) | subspecies skill |
+| Key | Goes to | Does | Mycelium's old action there |
+|---|---|---|---|
+| Left click | Minecraft | attack | attack, curio (both unbound) |
+| Right click | Minecraft | use | interact (moved to R) |
+| R | **Mycelium** | interact | (none) |
+| Shift | Minecraft | sneak | dodge roll (unbound) |
+| Space | Minecraft | jump | show stats (moved to Tab) |
+| E | Minecraft | inventory | skill 2 (unbound) |
+| Q | Minecraft | drop item | skill 1 (unbound) |
+| Ctrl | Minecraft | sprint | navigate camera (unbound) |
+| Tab | **Mycelium** | show stats (hold) | reset camera (unbound); Minecraft's player list unbound |
+| Esc, P | **Mycelium** | pause | |
+| WASD, 1–9, F5, … | Minecraft | as in Minecraft | WASD still read by Mycelium, overridden by the driver |
+| V, middle click | both | Mycelium: subspecies skill, salvage | (not in your list; unchanged) |
 
-Which game should own which action is the next design decision.
+**How:**
+- **Mycelium:** Unity Input System *binding overrides* on its "Player" actions. About 20
+  Mycelium scripts each create their own copy of its input asset; every copy with Player actions
+  in use is found through `InputSystem.ListEnabledActions()` (11 in the tutorial) and changed.
+  The overrides are removed when Minecraft stops driving. Mycelium's code is unchanged.
+- **Cheat panel:** Mycelium's developer cheat panel (`TestingManager`, in `ManagerBundle`) reads
+  the digits, K, L, Z, X and Minus directly, and digits are Minecraft's hotbar. It's switched off
+  while Minecraft drives.
+- **Minecraft:** the bridge doesn't send R and Tab.
+
+**Checked** by holding E, Q, Space, Shift, Ctrl, Tab and R in Mycelium (`-mcHoldKeys`), and
+logging which Mycelium actions register as pressed:
+- `keyOwnership=0`: `[Dodge, HideStats, NavigateCamera, ResetCamera, ShowStats, Stat_Skill_1, Stat_Skill_2]`
+- `keyOwnership=1`: `[HideStats, Interact, ShowStats]`, i.e. only R and Tab.
+
+**Consequence:** Mycelium's own attack is unbound, so until combat (Phase 3) **nothing damages
+Mycelium's enemies**. Minecraft's attack has no Mycelium target yet.
 
 **Not yet:** Minecraft's screens (inventory, chat, pause) open in Minecraft's own window, and its
 cursor can't be used from Mycelium. That needs the overlay (Phase 2).

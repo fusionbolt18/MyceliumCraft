@@ -13,8 +13,9 @@ namespace MyceliumCraft
     /// is what Minecraft 26.x uses; Unity's Key values are physical key positions, so a key means the
     /// same physical key in both games.
     ///
-    /// Mycelium still sees all its own keys too (it has the focus). Escape and P are never sent:
-    /// they stay Mycelium's pause keys. Whether Minecraft should act on the rest is decided by the
+    /// Mycelium still sees all its own keys too (it has the focus); KeyOwnership decides which of
+    /// them its actions react to. Escape, P (Mycelium's pause), R (interact) and Tab (show stats)
+    /// are never sent: they're Mycelium's. Whether Minecraft should act on the rest is decided by the
     /// driver (Active), e.g. not while a Mycelium menu has the controls.
     /// </summary>
     sealed class InputBridge
@@ -42,9 +43,12 @@ namespace MyceliumCraft
             m[Key.Numpad0] = 98; m[Key.NumpadPeriod] = 99; m[Key.ContextMenu] = 101; m[Key.NumpadEquals] = 103;
             m[Key.LeftCtrl] = 224; m[Key.LeftShift] = 225; m[Key.LeftAlt] = 226; m[Key.LeftMeta] = 227;
             m[Key.RightCtrl] = 228; m[Key.RightShift] = 229; m[Key.RightAlt] = 230; m[Key.RightMeta] = 231;
-            // Never sent: Mycelium's pause keys.
+            // Never sent: Mycelium's pause keys, and the keys you gave to Mycelium (KeyOwnership):
+            // R interact, Tab show stats (Tab would also open Minecraft's player list, unbound).
             m.Remove(Key.Escape);
             m.Remove(Key.P);
+            m.Remove(Key.R);
+            m.Remove(Key.Tab);
             return m;
         }
 

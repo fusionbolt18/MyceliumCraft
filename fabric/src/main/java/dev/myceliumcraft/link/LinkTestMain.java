@@ -23,6 +23,8 @@ public final class LinkTestMain {
 	private static final boolean STRAFE = "1".equals(System.getenv("LINKTEST_STRAFE"));
 	/** LINKTEST_VIEW=n: stay in one F5 view (0 first person, 1 behind, 2 in front) instead of cycling. */
 	private static final int VIEW = Integer.parseInt(System.getenv().getOrDefault("LINKTEST_VIEW", "-1"));
+	/** LINKTEST_HICCUP=1: report "not in a world" for one frame every 2 s. */
+	private static final boolean HICCUP = "1".equals(System.getenv("LINKTEST_HICCUP"));
 	/** LINKTEST_STILL=1: stand still at the teleport spot. */
 	private static final boolean STILL = "1".equals(System.getenv("LINKTEST_STILL"));
 	/** LINKTEST_PITCH_WAVE=1: look smoothly up and down between 30 and 80 degrees down (2.5 s period). */
@@ -92,6 +94,13 @@ public final class LinkTestMain {
 			if (t > 10.5) {
 				break;
 			}
+			// Like Minecraft: apply any new teleport from Mycelium (move there) and confirm it.
+			if (MycLink.readMycState(myc) && myc.teleportSeq != 0 && myc.teleportSeq != ack) {
+				ack = myc.teleportSeq;
+				x = myc.tpX;
+				y = myc.tpY;
+				z = myc.tpZ;
+			}
 			// 0-5 s: east (+X). 5-10 s: north (-Z). 2 blocks per second, moved in 50 ms ticks.
 			double qt = (MycLink.qpc() - qpcStart) / (double) qpcFreq;
 			long k = (long) Math.floor(qt * 20);
@@ -135,7 +144,9 @@ public final class LinkTestMain {
 			float bodyYaw = STRAFE ? yaw - 45f : yaw;
 			tick.bodyO = bodyYaw;
 			tick.body = bodyYaw;
-			MycLink.writeMcState(Proto.MC_IN_WORLD | Proto.MC_ON_GROUND, px, y, pz, yaw, pitch, frames++, 1, ack, cameraMode, bodyYaw, tick);
+			// LINKTEST_HICCUP=1: one frame of "not in a world" every 2 s, like the moment seen in a real log.
+			int flags = HICCUP && frames % (int) (2000 / FRAME_MS) == 0 && frames > 0 ? 0 : Proto.MC_IN_WORLD | Proto.MC_ON_GROUND;
+			MycLink.writeMcState(flags, px, y, pz, yaw, pitch, frames++, 1, ack, cameraMode, bodyYaw, tick);
 			if (frames % 60 == 0) {
 				boolean read = MycLink.readMycState(myc);
 				System.out.printf("t=%.1f pitch=%.0f mc=(%.2f, %.2f, %.2f) | mycelium alive=%b read=%b flags=%d spore=(%.2f, %.2f, %.2f)%n",

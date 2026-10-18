@@ -34,6 +34,8 @@ namespace MyceliumCraft
     {
         const float HighOrbitDown = 80f; // degrees down for the raised high orbit
         const int Samples = 101;         // points along the orbit curve for angle -> Y
+        const float ReleaseAfterSeconds = 0.5f; // Minecraft must stop driving this long before the camera is given back
+        float notDrivingSince = -1f;
 
         CinemachineFreeLook freeLook;
         ShakeTap shake;
@@ -62,6 +64,13 @@ namespace MyceliumCraft
             new System.Collections.Generic.List<(Renderer, UnityEngine.Rendering.ShadowCastingMode)>();
 
         public uint Mode => mode;
+
+        // Flash check: right before each frame is drawn, in first person, is the camera at the eyes?
+        uint wantedMode = Behind;     // the view Minecraft asks for (even while not controlling)
+        bool flashCheckHooked;
+        int framesChecked, flashFrames;
+        public int FlashFrames => flashFrames;
+        public int FramesChecked => framesChecked;
         public static string ModeName(uint m) => m == FirstPerson ? "first person" : m == InFront ? "third person in front" : "third person behind";
 
         public float X => freeLook != null ? freeLook.m_XAxis.Value : float.NaN;
@@ -93,15 +102,28 @@ namespace MyceliumCraft
         /// <summary>Call every frame. driving: Minecraft is driving the spore and mc is fresh.</summary>
         public void Update(bool driving, in McState mc)
         {
+            wantedMode = McConfig.MatchF5View && mc.CameraMode <= InFront ? mc.CameraMode : Behind;
+            if (!flashCheckHooked)
+            {
+                flashCheckHooked = true;
+                UnityEngine.Rendering.RenderPipelineManager.beginCameraRendering += CheckFlash;
+            }
             if (!McConfig.SyncCamera) driving = false;
             if (freeLook == null && driving) Find();
             if (freeLook == null) return;
 
             if (!driving)
             {
-                if (controlling) Release("Minecraft not driving");
+                // Only give the camera back after Minecraft has really stopped driving for a while;
+                // a one-frame release showed Mycelium's third-person camera for that frame.
+                if (controlling)
+                {
+                    if (notDrivingSince < 0f) notDrivingSince = Time.realtimeSinceStartup;
+                    else if (Time.realtimeSinceStartup - notDrivingSince >= ReleaseAfterSeconds) Release("Minecraft not driving");
+                }
                 return;
             }
+            notDrivingSince = -1f;
             if (!controlling)
             {
                 Take();
@@ -139,6 +161,24 @@ namespace MyceliumCraft
             wantDown = mode == FirstPerson ? Mathf.Clamp(smoothPitch, -89.9f, 89.9f)
                      : PitchToAngle(mode == InFront ? -smoothPitch : smoothPitch);
             freeLook.m_YAxis.Value = AngleToY(mode == FirstPerson ? McConfig.CameraPitchOffset : wantDown);
+        }
+
+        /// <summary>
+        /// Right before a camera draws: if Minecraft is in first person and the main camera isn't
+        /// at the spore's eyes, that frame shows something else (a "flash"). Counted and logged.
+        /// </summary>
+        void CheckFlash(UnityEngine.Rendering.ScriptableRenderContext context, Camera cam)
+        {
+            if (spore == null || freeLook == null || cam == null || !cam.CompareTag("MainCamera")) return;
+            if (wantedMode != FirstPerson || !McConfig.SyncCamera) return;
+            framesChecked++;
+            float off = Vector3.Distance(cam.transform.position, spore.position + Vector3.up * eyeOffset);
+            if (off > 0.3f)
+            {
+                flashFrames++;
+                if (flashFrames <= 20)
+                    McLog.Info($"camera FLASH: frame {Time.frameCount}, first person wanted but the camera is {off:F2} units from the eyes (controlling={controlling}, view={ModeName(mode)})");
+            }
         }
 
         /// <summary>First person: draw the spore's own body as shadow only, so the camera isn't inside it.</summary>
@@ -315,6 +355,7 @@ namespace MyceliumCraft
             }
             savedOrbits = null;
             controlling = false;
+            notDrivingSince = -1f;
             lastTilt = 0f;
             ShowSpore();
             mode = Behind;

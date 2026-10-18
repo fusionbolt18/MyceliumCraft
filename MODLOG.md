@@ -1,5 +1,138 @@
 # MODLOG
 
+## 2026-10-17 One-frame third-person flash in first person
+
+**Changed:**
+- **`MinecraftDriver.cs`:**
+  - Bridges hiccups: up to 0.25 s of an unreadable Minecraft state or "not in a world", using the
+    last good state and logging `hiccup:`.
+  - The camera keeps following Minecraft through teleports and hiccups.
+  - New `-mcHitTest` test aid: `PlayerController.Knockback()` every 4 s.
+- **`CameraSync.cs`:**
+  - Gives the camera back only after 0.5 s of Minecraft not driving.
+  - New flash check, right before drawing, which logs `camera FLASH`.
+- **`LinkTestMain.java`:** confirms and applies every teleport, like real Minecraft. New
+  `LINKTEST_HICCUP=1`.
+- DESIGN §5.2.
+
+**Why:** you reported that when a beetle hit you, and very rarely at other times, the camera went
+to a third-person view for a single frame.
+
+**Tested how:**
+1. Read your log (saved as `work\user-flash.log`) and Mycelium's hit code (`PlayerTakeDamage`,
+   `Knockback`, `HitStopManager`), plus Cinemachine's brain.
+2. Ran `-mcHitTest -mcBackground -mcFps 60` with the fake Minecraft in first person, then again with
+   `LINKTEST_HICCUP=1`.
+
+**Result:**
+- **Your log showed both causes:**
+  - **Beetle hit (20:22:23.522):** the knockback ended and the spore had moved, so
+    `teleport ... (Mycelium moved the spore 0.5 units while it had the controls)`, and in the same
+    instant `camera: back to Mycelium's mouse and orbits`. The camera was taken back 48 ms later.
+  - **Random (20:21:12):** `phase Driving -> Idle (Minecraft not in a world)` for a moment, which
+    released the camera.
+- **Ruled out:** Cinemachine fires its camera-updated event every time it places the camera, so
+  that wasn't it.
+- **After the fix:**
+  - 4 knockbacks with resync teleports (`Mycelium moved the spore 1.1 units`)
+  - 7 hiccups bridged
+  - **0 camera releases, 0 drops to Idle, 0 flash frames of 713 checked**
+- Stand-ins PASS. 0 focus events in the test runs.
+
+**Still broken / not tested:**
+- **Not tested in your real play.** If a flash happens, the log now says `camera FLASH: frame …`
+  with details.
+- **Why Minecraft occasionally reports "not in a world" isn't known.** It's bridged now, and the log
+  counts how often (`hiccup:`).
+- Uncommitted, with the key ownership.
+
+**Next:** you test.
+
+### Test procedure
+
+1. **No jar copy needed:** only Mycelium changed.
+2. Start Minecraft, then
+   `work\build\MyceliumCraft.exe -screen-fullscreen 0 -screen-width 1280 -screen-height 720`,
+   and play in first person. Get hit by a beetle a few times.
+3. **You should see:** no flash of the third-person camera.
+4. **In `work\build\MyceliumCraft.log`:**
+   - no `camera FLASH` lines
+   - no `camera: back to Mycelium's mouse` while you're playing
+   - after hits, `teleport ... (Mycelium moved the spore ...)` is fine
+   - an occasional `hiccup:` line is fine, and tells me how often it happens
+
+## 2026-10-17 Which game owns which key
+
+**Changed:**
+- **`mycelium/Runtime/KeyOwnership.cs` (new):** while Minecraft drives, it rebinds Mycelium's
+  "Player" actions in every copy of its input asset, using Input System binding overrides:
+  - Attack, Curio, Dodge, Skill 1, Skill 2, Navigate camera and Reset camera are unbound.
+  - Interact moves from right click to R.
+  - Show/Hide stats move from Space to Tab.
+  - It switches off Mycelium's developer cheat panel (`TestingManager`).
+  - It undoes all of this when Minecraft stops driving.
+  - It logs which Mycelium actions are pressed.
+- **`InputBridge.cs`:** R and Tab are no longer sent to Minecraft.
+- **`McConfig.cs`:** new `keyOwnership=1`. Added to your `work\build\MyceliumCraft.cfg`.
+- **`MinecraftDriver.cs`:** `-mcHoldKeys` now also takes key names (`"space,leftShift,tab"`).
+- DESIGN §5.3.
+- Before this: committed the input bridge and camera work as `fb8e46c`.
+
+**Why:** your key list:
+- **Minecraft:** left click (attack), right click (use), Shift (sneak), Space (jump), E (inventory),
+  Q (drop), Ctrl (sprint).
+- **Mycelium:** R (interact), Tab (show stats).
+- **Unbound:** dodge, skills 1 and 2, navigate camera, reset camera, player list.
+
+**Tested how:**
+1. Read Mycelium's bindings and searched its scripts for direct key reads.
+2. Held E, Q, Space, Shift, Ctrl, Tab and R in Mycelium (`-mcHoldKeys`, `-mcBackground`), with
+   `keyOwnership=0` and `=1`.
+
+**Result:**
+- **11 copies** of Mycelium's input asset were found and changed, 10 bindings each:
+  `Attack=[], Curio=[], Interact=[<Keyboard>/r], Dodge=[], Stat_Skill_1=[], Stat_Skill_2=[],
+  NavigateCamera=[], ResetCamera=[], ShowStats=[<Keyboard>/tab <Keyboard>/backspace]`.
+- **Actions that reacted:** with `keyOwnership=0`, `[Dodge, HideStats, NavigateCamera, ResetCamera,
+  ShowStats, Stat_Skill_1, Stat_Skill_2]`. With `keyOwnership=1`, only `[HideStats, Interact,
+  ShowStats]` (R and Tab).
+- **Direct key reads:** only Mycelium's developer cheat panel (`TestingManager`) reads keys
+  directly: digits 1–0, K, L, Z, X and Minus. It's in `ManagerBundle`, so it's live in builds, and
+  digits are Minecraft's hotbar.
+- **0 focus events** in the test runs.
+
+**Still broken / not tested:**
+- **Not tested with real Minecraft:** clicks, Shift, Space, E, Q and Ctrl doing their Minecraft
+  thing from Mycelium's window.
+- **The cheat panel switch-off isn't seen in my test.** `-mcScene` skips the main menu, where that
+  manager may be loaded. Look for the log line in your play (below).
+- **Nothing damages Mycelium's enemies right now.** Mycelium's attack is unbound, and Minecraft's
+  attack has nothing to hit until combat (Phase 3).
+- **V and middle click** weren't in your list: both games still react to them (Mycelium: subspecies
+  skill, salvage; Minecraft: none, pick block).
+- Uncommitted.
+
+**Next:** you test. Then the later-level checks, or combat.
+
+### Test procedure
+
+1. **No jar copy needed:** only Mycelium changed.
+2. Start Minecraft, then
+   `work\build\MyceliumCraft.exe -screen-fullscreen 0 -screen-width 1280 -screen-height 720`,
+   and play from Mycelium's window.
+3. **You should see:**
+   - **Minecraft's actions:** clicking attacks or uses in Minecraft, with no Mycelium attack swing.
+     Shift sneaks with no roll, Space jumps without showing stats, E opens Minecraft's inventory
+     (in Minecraft's window), Q drops, and Ctrl sprints.
+   - **Mycelium's actions:** R interacts with Mycelium things (where right click used to), and
+     holding Tab shows Mycelium's stats.
+   - **The hotbar:** 1–9 change Minecraft's hotbar slot without Mycelium cheats firing.
+4. **In `work\build\MyceliumCraft.log`:**
+   - `keys: Mycelium input asset #… 10 bindings changed`
+   - `keys: Mycelium's developer cheat keys (TestingManager) off while Minecraft drives`
+   - `keys: Mycelium actions pressed now: [...]`, which should only ever list Interact, ShowStats or
+     HideStats (or Subspecies_Skill / Salvage for V / middle click)
+
 ## 2026-10-17 Camera jitter: Mycelium's own mouse input was still moving the camera
 
 **Changed:**
