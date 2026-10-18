@@ -1,5 +1,47 @@
 # MODLOG
 
+## 2026-10-18 Invisible wall in front of the run start (hub)
+
+**Changed:**
+- **`GroundScanner.cs`:**
+  - When the short upward ray finds no underside, a second ray goes right up to the surface. A hit
+    at least 0.01 below the surface is a real (thin) underside.
+  - The "no underside" threshold went from 0.05 to 0.01. The scan summary counts thin undersides.
+- **New test aids:**
+  - `-mcColumn "x,z;..."` logs what the scan finds in a column (`GroundScanner.DescribeColumn`);
+  - `-mcColliders` lists solid colliders with nothing visible drawn (`ColliderSurvey.cs`).
+- DESIGN §5 and §7.
+
+**Why:** you couldn't reach the trigger that starts a run: an invisible wall stood in front of it
+in Minecraft.
+
+**How I found it:**
+1. **Your first hub log** (saved as `work\user-hub-geometry.log`): no clear spot.
+2. **`-mcColliders`:** listed Mycelium's own invisible fences (`InvisibleWall` ×12,
+   `InvisibleBarrier`, `StartRunBarrier`). The spore collides with their layers, so in principle
+   they belong in Minecraft. That was a side track.
+3. **Your second log** (`work\user-hub-wall.log`), where you pushed into the wall: Minecraft
+   stopped at x −8.80, z −1.5.
+4. **The grid there:** one column (x −9.5..−9.0, z −2.0..−1.5) was solid from the ground to 2.98
+   blocks. Its neighbours had a rock floating at 2.4–3.9 blocks with open space below.
+5. **`-mcColumn` on that column:** a rock `Rok_low` with its top at 4.171 units and its underside
+   at 4.140, only 0.03 thick there. The upward ray stops 0.15 short, so the underside was missed,
+   and the "fill small gaps under one-sided surfaces" rule turned 0–4.17 units into solid.
+
+**Result:**
+- **That column now:** (2.96, 2.98) blocks, a thin rock edge with open space below.
+- **Hub:** 103 thin undersides found. 55 cells around the run start (x −14 to −12.5) got more
+  open space near the ground.
+- **Your walked spots** (where the spore stood), checked against the new grids:
+  - hub: 0 of 272 and 0 of 17 closed;
+  - tutorial (152 thin undersides): 0 of 187, 74, 28 and 90 closed.
+
+**Still broken / not tested:**
+- **Not tested in your real play:** whether you now reach the trigger.
+- **Climbable fences:** Mycelium's invisible fences are still in Minecraft. The big rounded
+  `InvisibleBarrier` can be climbed like stairs in Minecraft (your first hub log, about 84 s, up to
+  9.75 blocks high), while the spore can't climb it in Mycelium. Not fixed.
+
 ## 2026-10-18 Your Minecraft body's shadow in first person too
 
 **Changed:**

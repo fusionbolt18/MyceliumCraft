@@ -393,6 +393,17 @@ namespace MyceliumCraft
                 link.WriteGround(ground.Version, GroundScanner.N, ground.OriginX, ground.OriginZ, GroundScanner.CellBlocks, ground.Pieces);
                 McLog.Info(summary);
                 if (Array.IndexOf(Environment.GetCommandLineArgs(), "-mcDumpGrid") >= 0) DumpGrid();
+                // Test aid: "-mcColumn x,z;x,z" logs what the scan finds in those columns (Minecraft coordinates).
+                string[] cmd = Environment.GetCommandLineArgs();
+                int colArg = Array.IndexOf(cmd, "-mcColumn");
+                if (colArg >= 0 && colArg + 1 < cmd.Length)
+                    foreach (string xz in cmd[colArg + 1].Split(';'))
+                    {
+                        string[] p = xz.Split(',');
+                        if (p.Length == 2 && double.TryParse(p[0], System.Globalization.NumberStyles.Float, System.Globalization.CultureInfo.InvariantCulture, out double cx)
+                                          && double.TryParse(p[1], System.Globalization.NumberStyles.Float, System.Globalization.CultureInfo.InvariantCulture, out double cz))
+                            McLog.Info(ground.DescribeColumn(cx, cz, pos, map));
+                    }
             }
 
             if (phase == Phase.Idle || mc.Epoch != lastEpoch)
@@ -634,6 +645,10 @@ namespace MyceliumCraft
             SetPhase(Phase.Idle, "new player");
             McLog.Info($"found PlayerController on '{controller.gameObject.name}', rigidbody on '{rb.gameObject.name}' (layer {LayerMask.LayerToName(rb.gameObject.layer)}, useGravity={rb.useGravity}, interpolation={rb.interpolation}) at {rb.position:F2}, feet y={FeetY(rb.position.y):F2}");
             McLog.Info($"ground layers: {ground.LayerNames}");
+
+            // Test aid: "-mcColliders" lists the solid colliders around the spore with nothing visible drawn there.
+            if (Array.IndexOf(Environment.GetCommandLineArgs(), "-mcColliders") >= 0)
+                ColliderSurvey.Run(rb.position, 60f, ground.LayerMask);
 
             // Test aid: "-mcSurvey" records the level's surfaces and ceilings, then quits.
             if (Array.IndexOf(Environment.GetCommandLineArgs(), "-mcSurvey") >= 0)

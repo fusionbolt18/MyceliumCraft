@@ -168,11 +168,20 @@ space.
 - **Surfaces:** each cell is raycast straight down from 60 units above the spore. After each hit
   the ray carries on just below it, finding up to 10 surfaces, each the top of something solid.
 - **Undersides:** a ray going *up* from each lower surface, with back faces counted, finds the
-  underside of the piece above. It stops **0.1 units short of the surface above**, and a hit
-  within 0.05 of that surface counts as "none". Otherwise it hits a one-sided surface's own back
+  underside of the piece above. It stops **0.15 units short of the surface above**, and a hit
+  within 0.01 of that surface counts as "none". Otherwise it hits a one-sided surface's own back
   face and reports "underside = top". Those zero-thickness pieces give Minecraft no box at all, so
   the narrow passage's walkway simply **wasn't there in Minecraft**: you fell through it onto the
   hidden terrain 1.8 units below and got wedged. In the tutorial scan, 7,670 pieces were affected.
+- **Thin undersides** (since 2026-10-18):
+  - **What's checked:** if that ray finds nothing, a second one goes right up to the surface. A hit
+    at least 0.01 below the surface counts as a thin underside. A surface's own back face is exactly
+    at the surface (0.000 below) and still doesn't.
+  - **Why:** where a solid tapers to an edge, its underside can be closer than 0.15. In the hub, a
+    rock (`Rok_low`) in front of the run start was 0.03 thick at one column. The underside was
+    missed there, the gap below was "filled", and that column became a 3-block pillar. It blocked
+    the way to the run-start trigger in Minecraft, while the spore walks under the rock in Mycelium.
+  - **Found:** 103 thin undersides in the hub scan and 152 in the tutorial.
 - **Pieces:**
   - Everything below the lowest surface is solid.
   - Each higher surface is a piece from its underside to its top.
@@ -694,6 +703,13 @@ Like SkyCraft's `fake_skyrim.py`:
   against it:
   - Minecraft positions, which flag traps Minecraft got into.
   - With `--spore`, where the spore really stood. Those must all be open.
+
+- **`-mcColumn "x,z;x,z"`** (Minecraft coordinates) logs every surface and underside the scan
+  finds in those columns: what it hit (object, collider type, layer), both upward rays, and the
+  pieces sent. This is how the thin rock edge was found.
+- **`-mcColliders`** lists the solid colliders around the spore that have nothing visible drawn
+  where they are (the hub has a group named `InvisibleColliders`, and a `StartRunBarrier`). The
+  sizes are the axis-aligned boxes around them, which are bigger than the real shape for rotated walls.
 
   **Lesson:** `survey_check.py` checks a *model* of the scanner. The zero-thickness walkway bug was
   in the scanner itself and only showed up in the real grid, so check grid dumps too.

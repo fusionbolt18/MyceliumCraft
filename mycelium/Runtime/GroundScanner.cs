@@ -33,6 +33,7 @@ namespace MyceliumCraft
         const float RayLength = 400f;
         const float SlabBlocks = 0.5f;       // thickness of a surface with no underside found
         const float PlayerBlocks = 1.8f;     // Minecraft player height, for the "too low" count
+        const float ThinUnderside = 0.01f;   // an underside at least this far below its surface is real (units)
 
         // Layers the spore collides with but which are not ground (characters, weapons, effects).
         static readonly string[] NotGround =
@@ -85,7 +86,7 @@ namespace MyceliumCraft
             float scale = (float)map.Scale;
             float rayTop = spore.y + RayStartAbove;
             bool backfaces = Physics.queriesHitBackfaces;
-            int columnsHit = 0, layered = 0, slabs = 0, filled = 0, tooLow = 0, merged = 0, capped = 0, rays = 0;
+            int columnsHit = 0, layered = 0, slabs = 0, filled = 0, tooLow = 0, merged = 0, capped = 0, rays = 0, thinFound = 0;
             float min = float.MaxValue, max = float.MinValue;
 
             for (int j = 0; j < N; j++)
@@ -128,6 +129,21 @@ namespace MyceliumCraft
                         var up = new Vector3((float)x, surfaces[k] + 0.05f, (float)z);
                         if (Physics.Raycast(up, Vector3.up, out RaycastHit u, length, LayerMask, QueryTriggerInteraction.Ignore))
                             undersides[k] = u.point.y;
+                        else
+                        {
+                            // Nothing that far: look right up to the surface. Where a solid tapers to
+                            // a thin edge its underside is closer than 0.15 (a rock in the hub was 0.03
+                            // thick at one column, missed, and that column became a pillar blocking the
+                            // way to the run start). Its own back face is exactly at the surface (0.000
+                            // below) and still doesn't count.
+                            rays++;
+                            if (Physics.Raycast(up, Vector3.up, out RaycastHit thin, surfaces[k - 1] - up.y + 0.01f, LayerMask, QueryTriggerInteraction.Ignore)
+                                && thin.point.y < surfaces[k - 1] - ThinUnderside)
+                            {
+                                undersides[k] = thin.point.y;
+                                thinFound++;
+                            }
+                        }
                     }
 
                     // Pieces, lowest first (Mycelium Y).
@@ -144,7 +160,7 @@ namespace MyceliumCraft
                             float top = surfaces[k];
                             float floor = surfaces[k + 1];
                             float bottom = undersides[k + 1];
-                            if (float.IsNaN(bottom) || bottom > top - 0.05f)
+                            if (float.IsNaN(bottom) || bottom > top - ThinUnderside)
                             {
                                 if (top - floor < FillBelowOneSided)
                                 {
@@ -196,9 +212,57 @@ namespace MyceliumCraft
             map.ToMc(spore.x, spore.y, spore.z, out _, out double sporeMcY, out _);
             float startGround = GroundAt(mcX, mcZ, (float)sporeMcY);
             return $"ground scan v{Version}: {columnsHit}/{N * N} columns hit, {layered} layered (open space under something), " +
-                   $"{filled} small gaps under one-sided surfaces filled (< {FillBelowOneSided:F2} units), {slabs} one-sided pieces made {SlabBlocks}-block slabs, {merged} small gaps closed to fit {Proto.GPieces} pieces, {capped} columns with {MaxSurfaces}+ surfaces, {tooLow} gaps lower than the Minecraft player ({PlayerBlocks} blocks); " +
+                   $"{thinFound} thin undersides found (< 0.15 below their surface), {filled} small gaps under one-sided surfaces filled (< {FillBelowOneSided:F2} units), {slabs} one-sided pieces made {SlabBlocks}-block slabs, {merged} small gaps closed to fit {Proto.GPieces} pieces, {capped} columns with {MaxSurfaces}+ surfaces, {tooLow} gaps lower than the Minecraft player ({PlayerBlocks} blocks); " +
                    $"MC height {(columnsHit > 0 ? $"{min:F1}..{max:F1}" : "-")}, ground at spore {startGround:F2} vs spore {sporeMcY:F2}; " +
                    $"grid MC x {OriginX}..{OriginX + N * CellBlocks} z {OriginZ}..{OriginZ + N * CellBlocks}; {rays} rays, {watch.Elapsed.TotalMilliseconds:F1} ms";
+        }
+
+        /// <summary>
+        /// Test aid (-mcColumn x,z): every surface and underside the scan finds in the column at this
+        /// Minecraft position, with what it hit, and the pieces sent for that cell.
+        /// </summary>
+        public string DescribeColumn(double mcX, double mcZ, Vector3 spore, WorldMapping map)
+        {
+            var sb = new System.Text.StringBuilder($"column at Minecraft ({mcX}, {mcZ}):");
+            map.ToMyc(mcX, 0, mcZ, out double x, out _, out double z);
+            bool backfaces = Physics.queriesHitBackfaces;
+            Physics.queriesHitBackfaces = false;
+            var origin = new Vector3((float)x, spore.y + RayStartAbove, (float)z);
+            float remaining = RayLength;
+            var found = new List<float>();
+            while (found.Count < MaxSurfaces && remaining > 0 && Physics.Raycast(origin, Vector3.down, out RaycastHit hit, remaining, LayerMask, QueryTriggerInteraction.Ignore))
+            {
+                found.Add(hit.point.y);
+                sb.Append($"\n  surface {hit.point.y:F3} ({hit.point.y / map.Scale:F3} blocks) on '{hit.collider.name}' {hit.collider.GetType().Name} layer={UnityEngine.LayerMask.LayerToName(hit.collider.gameObject.layer)} normal {hit.normal:F2}");
+                float step = origin.y - hit.point.y + 0.05f;
+                origin.y -= step;
+                remaining -= step;
+            }
+            Physics.queriesHitBackfaces = true;
+            for (int k = 1; k < found.Count; k++)
+            {
+                var up = new Vector3((float)x, found[k] + 0.05f, (float)z);
+                float full = found[k - 1] - found[k] + 0.01f;
+                sb.Append($"\n  going up from {found[k]:F3}:");
+                foreach (float length in new[] { found[k - 1] - found[k] - 0.15f, full })
+                {
+                    if (length <= 0f) { sb.Append($" [length {length:F3}: no ray]"); continue; }
+                    if (Physics.Raycast(up, Vector3.up, out RaycastHit u, length, LayerMask, QueryTriggerInteraction.Ignore))
+                        sb.Append($" [length {length:F3}: hit {u.point.y:F3} on '{u.collider.name}', {found[k - 1] - u.point.y:F3} below the surface above]");
+                    else
+                        sb.Append($" [length {length:F3}: nothing]");
+                }
+            }
+            Physics.queriesHitBackfaces = backfaces;
+            int i = (int)System.Math.Floor((mcX - OriginX) / CellBlocks), j = (int)System.Math.Floor((mcZ - OriginZ) / CellBlocks);
+            if (i >= 0 && j >= 0 && i < N && j < N)
+            {
+                int c = (j * N + i) * Proto.GFloatsPerCell;
+                sb.Append("\n  pieces sent (blocks):");
+                for (int k = 0; k < Proto.GPieces && Pieces[c + 2 * k + 1] < Proto.Unused; k++)
+                    sb.Append($" ({(Pieces[c + 2 * k] <= Proto.FarBelow ? "far below" : Pieces[c + 2 * k].ToString("F2"))}, {Pieces[c + 2 * k + 1]:F2})");
+            }
+            return sb.ToString();
         }
 
         /// <summary>
