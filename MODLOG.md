@@ -1,5 +1,46 @@
 # MODLOG
 
+## 2026-10-18 Overlay, step 1: Minecraft's picture on top of Mycelium
+
+**Changed:**
+- **Protocol v10:**
+  - The shared memory grows to about 96 MB: 3 picture slots after the first 1 MB.
+  - New Overlay block at 0x600 (a triple buffer, as SkyCraft's).
+  - New `OVERLAY` flag in Mycelium's state.
+- **New `MycOverlay.java`:** copies Minecraft's picture back from the graphics card after every
+  frame and ships it. Adapted from SkyCraft's `FrameExporter`.
+- **New `LevelRendererMixin.java`:** Minecraft skips drawing its world while the overlay is on.
+- **New `McOverlay.cs`** and `Resources/MyceliumCraftOverlay.shader`: draws the picture over
+  Mycelium's screen. New `overlay=` setting (default 1).
+- `MyceliumCraft.Runtime.asmdef`: unsafe code allowed (needed for the shared hand-over counter), and
+  `UnityEngine.UI` referenced.
+- `.gitignore`: `*.shader` added to the whitelist (a source file type).
+- `LinkTestMain.java`: `LINKTEST_OVERLAY=1` test picture. New `-mcOverlayCheck` test aid.
+- PROTOCOL, DESIGN §5.4, README.
+
+**Why:** you asked to start on the overlay, so Minecraft's inventory and HUD show in Mycelium's
+window.
+
+**Tested how:** real Mycelium build, minimized (`-mcScene "New Tutorial" -mcBackground
+-mcOverlayCheck`), with the fake Minecraft sending the test picture. Then the stand-ins together.
+
+**Result:**
+- Mycelium's screen, read back:
+  - **Overlay on:** red box (255,0,0); half white box (128–129), the correct blend over the dark
+    background; the empty spot unchanged.
+  - **Overlay off:** all three show only Mycelium.
+- 60 pictures a second, 0.03–0.08 ms each to upload (640×360).
+- Stand-ins: ground checks PASS, PASS.
+
+**Still broken / not tested:**
+- **Not tested in real Minecraft:**
+  - the capture and the world skip (the code follows SkyCraft's on the same Minecraft 26.3);
+  - whether Minecraft's background really comes out transparent;
+  - the upload time at full window size.
+- **The picture is stretched** if Minecraft's and Mycelium's windows have different shapes.
+- **No cursor in Minecraft's screens yet**, and Escape doesn't reach Minecraft. That's step 2.
+- Minecraft's own window shows only its HUD over black while the overlay is on.
+
 ## 2026-10-17 Mycelium's keys in Minecraft's Controls menu
 
 **Changed:**

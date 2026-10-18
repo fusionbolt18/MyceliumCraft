@@ -8,6 +8,7 @@
   "client": [
     "FramerateLimitTrackerMixin",
     "InputConstantsMixin",
+    "LevelRendererMixin",
     "MinecraftMixin",
     "WindowMixin"
   ],

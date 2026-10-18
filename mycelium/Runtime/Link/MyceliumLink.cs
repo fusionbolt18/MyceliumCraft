@@ -269,6 +269,33 @@ namespace MyceliumCraft.Link
             return -1;
         }
 
+        int overlayFront = 2; // our slot; Minecraft writes into 1 first, the middle starts at 0
+
+        /// <summary>
+        /// Take Minecraft's newest overlay picture, if there is one we haven't taken yet. The pixels
+        /// (RGBA, premultiplied alpha) stay valid until the next call.
+        /// </summary>
+        public unsafe bool TryTakeOverlay(out OverlayFrame frame)
+        {
+            frame = default;
+            int* state = (int*)(view + Proto.OffOverlayCtl + Proto.OcState);
+            if ((Volatile.Read(ref *state) & Proto.OverlayDirty) == 0) return false;
+            int old = Interlocked.Exchange(ref *state, overlayFront);
+            overlayFront = old & 3;
+            if (overlayFront >= Proto.OverlaySlots) return false;
+            int hdr = Proto.OffOverlaySlotHdr + overlayFront * Proto.SlotHdrSize;
+            frame.Width = (int)ReadU32(view, hdr + Proto.ShWidth);
+            frame.Height = (int)ReadU32(view, hdr + Proto.ShHeight);
+            frame.BottomUp = (ReadU32(view, hdr + Proto.ShFlags) & 1) != 0;
+            frame.FrameId = Marshal.ReadInt64(view, hdr + Proto.ShFrameId);
+            frame.Pixels = view + Proto.OffOverlayPixels + overlayFront * Proto.OverlaySlotBytes;
+            if (frame.Width <= 0 || frame.Height <= 0 || frame.Width > Proto.MaxOverlayW || frame.Height > Proto.MaxOverlayH) return false;
+            return true;
+        }
+
+        /// <summary>Pictures Minecraft has published so far.</summary>
+        public long OverlayFramesPublished => Marshal.ReadInt64(view, Proto.OffOverlayCtl + Proto.OcFramesPublished);
+
         public void Dispose()
         {
             if (view != IntPtr.Zero) { UnmapViewOfFile(view); view = IntPtr.Zero; }

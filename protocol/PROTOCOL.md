@@ -9,7 +9,9 @@ If you change anything here, change both files and bump `VERSION`.
 
 ## Basics
 
-- Mapping name: `Local\MyceliumCraft_v1`, size `0x100000` bytes (1 MB).
+- Mapping name: `Local\MyceliumCraft_v1`, size `0x5FEC000` bytes (about 96 MB): the blocks below in
+  the first 1 MB, then 3 overlay picture slots of 3840 × 2160 × 4 bytes each (since version 10).
+  Windows only uses memory for the parts that are written.
 - **Mycelium creates the mapping. Minecraft opens it.** This matches SkyCraft, where the host
   game (Skyrim) owns the mapping.
 - Everything is little-endian.
@@ -24,7 +26,7 @@ a block without locks.
 - **Reader:** read `seq`. If it's odd, try again. Read the fields, then read `seq` again. If it
   changed, try again.
 
-## Layout (version 9)
+## Layout (version 10)
 
 ### Header @ 0x000
 
@@ -42,7 +44,7 @@ a block without locks.
 | Off | Type | Field |
 |---|---|---|
 | 0x00 | u32 | seq |
-| 0x04 | u32 | flags: bit0 `IN_LEVEL` (a spore player exists), bit1 `PAUSED` |
+| 0x04 | u32 | flags: bit0 `IN_LEVEL` (a spore player exists), bit1 `PAUSED`, bit2 `OVERLAY` (Mycelium shows Minecraft's overlay, so Minecraft skips drawing its world; since version 10) |
 | 0x08 | f64 | spore X (**Mycelium** coords) |
 | 0x10 | f64 | spore Y |
 | 0x18 | f64 | spore Z |
@@ -127,6 +129,25 @@ Action ids: 0 interact, 1 show stats (Mycelium's ShowStats and HideStats), 2 sub
 The order is fixed in `MyceliumKeys.java` and `KeyOwnership.cs`.
 
 A key or button bound to a Mycelium action is left out of MycInput (Minecraft never sees it).
+
+### Overlay @ 0x600 (Minecraft → Mycelium, triple buffer). Since version 10
+
+Minecraft's picture: its hand, HUD and open screens on a transparent background, while
+`MycState.flags` has `OVERLAY`. Same scheme as SkyCraft's overlay.
+
+| Off | Type | Field |
+|---|---|---|
+| 0x600 | u32 | state: bits 0–1 = the "middle" slot; bit 2 = the middle slot holds a picture Mycelium hasn't taken |
+| 0x604 | u32 | pad |
+| 0x608 | u64 | pictures published so far |
+| 0x640 + 0x40·n | slot header n (0..2) | 0x00 u32 width, 0x04 u32 height, 0x08 u32 flags (bit0: rows bottom-up), 0x10 u64 frame id |
+| 0x100000 + n·0x1FA4000 | slot n pixels | width × height RGBA bytes, **premultiplied alpha** |
+
+- **Minecraft** writes into its own slot (it starts with 1), then swaps it into the middle:
+  `old = exchange(state, mySlot | 4)`, and takes `old & 3` as its next slot.
+- **Mycelium**, when bit 2 is set, swaps its own slot (it starts with 2) into the middle:
+  `old = exchange(state, mySlot)`, and reads slot `old & 3`. Neither side ever touches the other's
+  slot, so there's no tearing and no waiting.
 
 ### GroundGrid @ 0x1000 (Mycelium → Minecraft, seqlock)
 

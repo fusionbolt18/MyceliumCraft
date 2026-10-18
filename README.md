@@ -65,7 +65,11 @@ Single-player and offline only.
   R interact, Tab show stats, V subspecies skill, middle click salvage, the rest unbound. Tested
   with a fake Minecraft: Mycelium followed the binds it sent, and a change during play was picked
   up within a frame. See DESIGN §5.3.
-- Minecraft's screens (inventory, chat) still open in Minecraft's own window.
+- **Overlay: not tested in real Minecraft.** Minecraft's hand, hotbar, hearts and screens
+  (inventory, chat) are drawn on top of Mycelium, and Minecraft stops drawing its own world
+  (`overlay=0` in `MyceliumCraft.cfg` turns it off). Tested with a fake Minecraft's test picture,
+  which showed with exact colors. **Not built yet:** a mouse cursor in Minecraft's screens, and
+  Escape for Minecraft (to close chat).
 - Nothing damages Mycelium's enemies yet: its own attack is unbound by default, and Minecraft's
   attack has no Mycelium target.
 - Steam achievements probably don't work in the private build (not tested).

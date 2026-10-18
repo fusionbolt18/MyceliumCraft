@@ -60,6 +60,8 @@ public final class MyceliumCraftClient implements ClientModInitializer {
 
 		boolean haveMyc = MycLink.readMycState(MYC);
 		LocalPlayer player = minecraft.player;
+		MycOverlay.setActive(haveMyc && MycLink.myceliumAlive() && MYC.inLevel() && (MYC.flags & Proto.MYC_OVERLAY) != 0
+			&& player != null && minecraft.level != null);
 		if (player == null || minecraft.level == null) {
 			lastLevel = null;
 			MycLink.writeMcState(0, 0, 0, 0, 0, 0, frame, epoch, teleportAck, minecraft.options.getCameraType().ordinal(), 0, null);

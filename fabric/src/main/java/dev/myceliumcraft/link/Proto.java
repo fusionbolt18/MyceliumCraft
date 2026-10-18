@@ -3,9 +3,15 @@ package dev.myceliumcraft.link;
 /** Byte layout of the shared memory. Mirrors protocol/PROTOCOL.md and mycelium/Runtime/Link/Proto.cs. */
 public final class Proto {
 	public static final String MAPPING_NAME = "Local\\MyceliumCraft_v1";
-	public static final long MAPPING_BYTES = 0x100000;
+	// The overlay's 3 picture slots come after the first 1 MB.
+	public static final int MAX_OVERLAY_W = 3840;
+	public static final int MAX_OVERLAY_H = 2160;
+	public static final long OVERLAY_SLOT_BYTES = (long) MAX_OVERLAY_W * MAX_OVERLAY_H * 4;
+	public static final int OVERLAY_SLOTS = 3;
+	public static final long OFF_OVERLAY_PIXELS = 0x100000;
+	public static final long MAPPING_BYTES = OFF_OVERLAY_PIXELS + OVERLAY_SLOTS * OVERLAY_SLOT_BYTES;
 	public static final int MAGIC = 0x4343594D; // "MYCC"
-	public static final int VERSION = 9;
+	public static final int VERSION = 10;
 	/** A side is alive if its heartbeat is younger than this. */
 	public static final long HEARTBEAT_TIMEOUT_MS = 3000;
 
@@ -35,6 +41,7 @@ public final class Proto {
 	public static final long MY_PLAYER_HEIGHT = 0x4C;
 	public static final int MYC_IN_LEVEL = 1 << 0;
 	public static final int MYC_PAUSED = 1 << 1;
+	public static final int MYC_OVERLAY = 1 << 2; // Mycelium shows Minecraft's overlay: Minecraft skips drawing its world
 
 	// McState @0x200 (Minecraft -> Mycelium, seqlock)
 	public static final long OFF_MC_STATE = 0x200;
@@ -85,6 +92,20 @@ public final class Proto {
 	public static final long B_ENTRIES = 0x10; // B_MAX x (u32 kind, u32 code), index = action id
 	public static final int B_MAX = 32;
 	public static final int BIND_NONE = 0, BIND_KEY = 1, BIND_MOUSE = 2; // key: SDL scancode; mouse: SDL button (1 left, 2 middle, 3 right)
+
+	// Overlay @0x600 (Minecraft -> Mycelium): triple buffer of Minecraft's picture (hand, HUD,
+	// screens on a transparent background), like SkyCraft's. state bits 0-1: the "middle" slot;
+	// bit 2: the middle slot holds a picture Mycelium hasn't taken yet.
+	public static final long OFF_OVERLAY_CTL = 0x600;
+	public static final long OC_STATE = 0x00;
+	public static final long OC_FRAMES_PUBLISHED = 0x08;
+	public static final long OFF_OVERLAY_SLOT_HDR = 0x640; // 3 x 0x40
+	public static final long SLOT_HDR_SIZE = 0x40;
+	public static final long SH_WIDTH = 0x00;
+	public static final long SH_HEIGHT = 0x04;
+	public static final long SH_FLAGS = 0x08; // bit0: rows bottom-up
+	public static final long SH_FRAME_ID = 0x10;
+	public static final int OVERLAY_DIRTY = 1 << 2;
 
 	// GroundGrid @0x1000 (Mycelium -> Minecraft, seqlock)
 	public static final long OFF_GROUND = 0x1000;

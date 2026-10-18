@@ -575,8 +575,38 @@ logging which Mycelium actions register as pressed:
 **Consequence:** Mycelium's own attack is unbound, so until combat (Phase 3) **nothing damages
 Mycelium's enemies**. Minecraft's attack has no Mycelium target yet.
 
-**Not yet:** Minecraft's screens (inventory, chat, pause) open in Minecraft's own window, and its
-cursor can't be used from Mycelium. That needs the overlay (Phase 2).
+**Not yet:** Minecraft's screens show in Mycelium (§5.4), but its cursor can't be used from
+Mycelium yet, and Escape doesn't reach Minecraft (to close chat).
+
+## 5.4 Overlay: Minecraft's hand, HUD and screens on top of Mycelium (SkyCraft's overlay)
+
+While Mycelium shows a level (and `overlay=1`), Mycelium sets `OVERLAY` in its state:
+
+- **Minecraft** skips drawing its own world (`LevelRendererMixin` cancels `LevelRenderer.render`,
+  as SkyCraft does). What's left in its picture is the first-person hand and held item, the HUD
+  (hotbar, hearts, hunger, XP, crosshair) and any open screen, on a transparent background.
+  Minecraft's own window then shows only those over black.
+- **Copy:** right after `GameRenderer.render()`, `MycOverlay.java` asks the graphics card to copy
+  the picture into one of 3 staging buffers, and ships the newest finished copy into shared
+  memory (usually a frame later). Adapted from SkyCraft's `FrameExporter` (MIT).
+- **Hand-over:** a triple buffer (PROTOCOL.md, Overlay). Each side has its own slot and swaps it
+  with a shared "middle" slot, so neither waits for the other and a picture is never half-written.
+- **Mycelium** (`McOverlay.cs`) uploads the newest picture into a texture and draws it over the
+  whole screen, above Mycelium's own UI, with a shader for premultiplied alpha
+  (`Resources/MyceliumCraftOverlay.shader`). Premultiplied means the colors are already multiplied
+  by their coverage, which is what Minecraft's drawing produces on a transparent background.
+- **Hidden** while a Mycelium menu, pause or cutscene has the controls, while Minecraft isn't
+  driving, and if no new picture has come for 0.5 s.
+- **Size:** the picture is Minecraft's window size, stretched to Mycelium's window. It looks right
+  when both windows have the same shape; the log warns if they don't.
+
+**Checked** with the fake Minecraft's test picture (`LINKTEST_OVERLAY=1`: an opaque red box, a
+half-transparent white box, the rest transparent) and `-mcOverlayCheck`, which reads back Mycelium's
+finished screen with the overlay on and off:
+- red box (255,0,0)
+- half white box 128–129, the right blend over Mycelium's dark background
+- the empty spot unchanged
+- about 60 pictures a second, 0.03–0.08 ms each to upload at 640×360
 
 ## 6. Logs ("log, don't look")
 
@@ -621,7 +651,7 @@ Like SkyCraft's `fake_skyrim.py`:
 | 0 | **Link** | Walking in a flat Minecraft world moves the spore in Mycelium. ✔ (your test, 2026-10-17) |
 | 1a | **Ground** | Mycelium's ground is in Minecraft's collision, and Minecraft drives X, Y and Z. ← *now* |
 | 1b | **Camera and input** | Mycelium's camera follows Minecraft's look and F5 view (§5.2, tested by you). Input goes from Mycelium's window to Minecraft, so you play in one window (§5.3, built; your test next). |
-| 2 | **Overlay** | Minecraft's hand, hotbar and inventory are drawn over Mycelium's frame. |
+| 2 | **Overlay** | Minecraft's hand, hotbar and inventory are drawn over Mycelium's frame (§5.4: picture built, cursor next). |
 | 3 | **Combat** | Mycelium enemies become hittable stand-in entities in Minecraft. Hits carry over both ways. |
 | 4+ | Blocks, persistence, polish | |
 

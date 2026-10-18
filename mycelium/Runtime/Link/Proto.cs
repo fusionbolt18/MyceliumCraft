@@ -6,9 +6,15 @@ namespace MyceliumCraft.Link
     public static class Proto
     {
         public const string MappingName = "Local\\MyceliumCraft_v1";
-        public const int MappingBytes = 0x100000;
+        // The overlay's 3 picture slots come after the first 1 MB.
+        public const int MaxOverlayW = 3840;
+        public const int MaxOverlayH = 2160;
+        public const int OverlaySlotBytes = MaxOverlayW * MaxOverlayH * 4;
+        public const int OverlaySlots = 3;
+        public const int OffOverlayPixels = 0x100000;
+        public const int MappingBytes = OffOverlayPixels + OverlaySlots * OverlaySlotBytes;
         public const uint Magic = 0x4343594D; // "MYCC"
-        public const uint Version = 9;
+        public const uint Version = 10;
         public const ulong HeartbeatTimeoutMs = 3000;
 
         // Header @0x000
@@ -37,6 +43,7 @@ namespace MyceliumCraft.Link
         public const int MyPlayerHeight = 0x4C;
         public const uint MycInLevel = 1u << 0;
         public const uint MycPaused = 1u << 1;
+        public const uint MycOverlay = 1u << 2; // Mycelium shows Minecraft's overlay: Minecraft skips drawing its world
 
         // McState @0x200 (Minecraft -> Mycelium, seqlock)
         public const int OffMcState = 0x200;
@@ -88,6 +95,20 @@ namespace MyceliumCraft.Link
         public const int BEntries = 0x10;    // BMax x (u32 kind, u32 code), index = action id
         public const int BMax = 32;
         public const uint BindNone = 0, BindKey = 1, BindMouse = 2; // key: SDL scancode; mouse: SDL button (1 left, 2 middle, 3 right)
+
+        // Overlay @0x600 (Minecraft -> Mycelium): triple buffer of Minecraft's picture (hand, HUD,
+        // screens on a transparent background). state bits 0-1: the "middle" slot; bit 2: the
+        // middle slot holds a picture we haven't taken yet.
+        public const int OffOverlayCtl = 0x600;
+        public const int OcState = 0x00;
+        public const int OcFramesPublished = 0x08;
+        public const int OffOverlaySlotHdr = 0x640; // 3 x 0x40
+        public const int SlotHdrSize = 0x40;
+        public const int ShWidth = 0x00;
+        public const int ShHeight = 0x04;
+        public const int ShFlags = 0x08;     // bit0: rows bottom-up
+        public const int ShFrameId = 0x10;
+        public const int OverlayDirty = 1 << 2;
 
         // GroundGrid @0x1000 (Mycelium -> Minecraft, seqlock)
         public const int OffGround = 0x1000;

@@ -33,9 +33,35 @@ public final class LinkTestMain {
 	private static final String PITCH = System.getenv("LINKTEST_PITCH");
 	/** Key binds to send, as Minecraft's Controls menu would: "kind:code" per Mycelium action, in order (0 unbound, 1 key scancode, 2 mouse button). */
 	private static final String BINDS = System.getenv("LINKTEST_BINDS");
+	/** "1": send a 640x360 test picture as the overlay: an opaque red box, a half-transparent white box, the rest transparent. */
+	private static final boolean OVERLAY = "1".equals(System.getenv("LINKTEST_OVERLAY"));
+	private static long overlayFrames;
 	/** Optional: switch to these key binds 5 s in, as if you changed them in the Controls menu while playing. */
 	private static final String BINDS2 = System.getenv("LINKTEST_BINDS2");
 	private static long bindsStart;
+
+	/** The overlay test picture, as Minecraft's would be: RGBA, premultiplied alpha, rows bottom-up. */
+	private static void writeTestPicture() {
+		int w = 640, h = 360;
+		var s = MycLink.segment();
+		long base = MycLink.overlayBackSlotOffset();
+		byte[] row = new byte[w * 4];
+		for (int y = 0; y < h; y++) {
+			int top = h - 1 - y; // bottom-up: row 0 is the bottom of the picture
+			java.util.Arrays.fill(row, (byte) 0);
+			if (top >= 40 && top < 120) {
+				for (int x = 40; x < 200; x++) { // opaque red
+					row[x * 4] = (byte) 255;
+					row[x * 4 + 3] = (byte) 255;
+				}
+				for (int x = 440; x < 600; x++) { // white at half coverage, premultiplied: 128,128,128,128
+					row[x * 4] = row[x * 4 + 1] = row[x * 4 + 2] = row[x * 4 + 3] = (byte) 128;
+				}
+			}
+			java.lang.foreign.MemorySegment.copy(row, 0, s, java.lang.foreign.ValueLayout.JAVA_BYTE, base + (long) y * w * 4, row.length);
+		}
+		MycLink.publishOverlay(w, h, true, ++overlayFrames);
+	}
 
 	public static void main(String[] args) throws InterruptedException {
 		long deadline = System.currentTimeMillis() + 15000;
@@ -152,6 +178,9 @@ public final class LinkTestMain {
 			// LINKTEST_HICCUP=1: one frame of "not in a world" every 2 s, like the moment seen in a real log.
 			int flags = HICCUP && frames % (int) (2000 / FRAME_MS) == 0 && frames > 0 ? 0 : Proto.MC_IN_WORLD | Proto.MC_ON_GROUND;
 			MycLink.writeMcState(flags, px, y, pz, yaw, pitch, frames++, 1, ack, cameraMode, bodyYaw, tick);
+			if (OVERLAY) {
+				writeTestPicture();
+			}
 			if (BINDS != null) {
 				if (bindsStart == 0) {
 					bindsStart = System.currentTimeMillis();

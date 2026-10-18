@@ -35,6 +35,9 @@ namespace MyceliumCraft
         /// <summary>Split the keys between the games while Minecraft drives (KeyOwnership).</summary>
         public static bool KeyOwnership = true;
 
+        /// <summary>Show Minecraft's hand, HUD and screens on top of Mycelium (McOverlay).</summary>
+        public static bool Overlay = true;
+
         /// <summary>Copy Minecraft's F5 view (first person / behind / in front).</summary>
         public static bool MatchF5View = true;
 
@@ -71,6 +74,10 @@ namespace MyceliumCraft
             "# Escape and P, Mycelium's pause keys), and not while a Mycelium menu has the controls.\n" +
             "# 0: play from Minecraft's window as before.\n" +
             "inputBridge=1\n" +
+            "\n" +
+            "# 1: show Minecraft's hand, hotbar, hearts and screens (inventory, chat) on top of Mycelium.\n" +
+            "# Minecraft then stops drawing its own world. 0: Minecraft draws its world in its own window.\n" +
+            "overlay=1\n" +
             "\n" +
             "# Seconds the third-person camera takes to move in front of a wall that gets in the way.\n" +
             "# Mycelium's own is 0 (an instant jump); bigger is smoother but may show a wall's edge briefly.\n" +
@@ -126,6 +133,10 @@ namespace MyceliumCraft
                     {
                         InputBridge = value == "1";
                     }
+                    else if (key == "overlay" && (value == "0" || value == "1"))
+                    {
+                        Overlay = value == "1";
+                    }
                     else if (key == "matchf5view" && (value == "0" || value == "1"))
                     {
                         MatchF5View = value == "1";
@@ -144,7 +155,7 @@ namespace MyceliumCraft
             {
                 McLog.Info($"config: couldn't read {path} ({e.Message}); using defaults");
             }
-            McLog.Info($"config: scale={Scale.ToString(CultureInfo.InvariantCulture)} Mycelium units per block, matchSporeSize={(MatchSporeSize ? 1 : 0)}, syncCamera={(SyncCamera ? 1 : 0)}, cameraPitchOffset={CameraPitchOffset.ToString(CultureInfo.InvariantCulture)}, cameraSmoothing={CameraSmoothing.ToString(CultureInfo.InvariantCulture)}, matchF5View={(MatchF5View ? 1 : 0)}, inputBridge={(InputBridge ? 1 : 0)}, cameraCollisionSmoothing={CameraCollisionSmoothing.ToString(CultureInfo.InvariantCulture)}, keyOwnership={(KeyOwnership ? 1 : 0)}");
+            McLog.Info($"config: scale={Scale.ToString(CultureInfo.InvariantCulture)} Mycelium units per block, matchSporeSize={(MatchSporeSize ? 1 : 0)}, syncCamera={(SyncCamera ? 1 : 0)}, cameraPitchOffset={CameraPitchOffset.ToString(CultureInfo.InvariantCulture)}, cameraSmoothing={CameraSmoothing.ToString(CultureInfo.InvariantCulture)}, matchF5View={(MatchF5View ? 1 : 0)}, inputBridge={(InputBridge ? 1 : 0)}, cameraCollisionSmoothing={CameraCollisionSmoothing.ToString(CultureInfo.InvariantCulture)}, keyOwnership={(KeyOwnership ? 1 : 0)}, overlay={(Overlay ? 1 : 0)}");
         }
     }
 }

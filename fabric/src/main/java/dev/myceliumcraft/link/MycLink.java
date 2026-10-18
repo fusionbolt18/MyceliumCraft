@@ -185,6 +185,34 @@ public final class MycLink {
 		INT.setRelease(s, b + B_SEQ, seq + 2);
 	}
 
+	/** The whole shared memory (null when not linked), for the overlay's picture copy. */
+	public static MemorySegment segment() {
+		return shm;
+	}
+
+	private static int overlayBack = 1; // our private slot; Mycelium's starts at 2, the middle at 0
+
+	/** Where the next overlay picture goes. */
+	public static long overlayBackSlotOffset() {
+		return OFF_OVERLAY_PIXELS + overlayBack * OVERLAY_SLOT_BYTES;
+	}
+
+	/** Publish the picture just written into our slot, and take the old middle slot as the next one. */
+	public static void publishOverlay(int width, int height, boolean bottomUp, long frameId) {
+		MemorySegment s = shm;
+		if (s == null) {
+			return;
+		}
+		long hdr = OFF_OVERLAY_SLOT_HDR + overlayBack * SLOT_HDR_SIZE;
+		s.set(JAVA_INT, hdr + SH_WIDTH, width);
+		s.set(JAVA_INT, hdr + SH_HEIGHT, height);
+		s.set(JAVA_INT, hdr + SH_FLAGS, bottomUp ? 1 : 0);
+		s.set(JAVA_LONG, hdr + SH_FRAME_ID, frameId);
+		int old = (int) INT.getAndSet(s, OFF_OVERLAY_CTL + OC_STATE, overlayBack | OVERLAY_DIRTY);
+		overlayBack = old & 3;
+		LONG.getAndAdd(s, OFF_OVERLAY_CTL + OC_FRAMES_PUBLISHED, 1L);
+	}
+
 	/** Plain snapshot of MycState. */
 	public static final class MycState {
 		public int flags;

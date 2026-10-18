@@ -56,6 +56,7 @@ namespace MyceliumCraft
         readonly CameraSync cameraSync = new CameraSync();
         readonly InputBridge input = new InputBridge();
         readonly KeyOwnership keys = new KeyOwnership();
+        readonly McOverlay overlay = new McOverlay();
         readonly uint[] bindKinds = new uint[Proto.BMax];
         readonly uint[] bindCodes = new uint[Proto.BMax];
         bool heldByMycelium;   // Mycelium has the controls (menu, pause, cutscene): don't drive the spore
@@ -173,6 +174,10 @@ namespace MyceliumCraft
             // Test aid: "-mcHitTest" knocks the spore back every 4 s, as an enemy hit does
             // (PlayerController.Knockback, from in front of the spore).
             hitTest = Array.IndexOf(args, "-mcHitTest") >= 0;
+            // Test aid: "-mcOverlayCheck" reads back Mycelium's finished screen once a second where
+            // the fake Minecraft's test picture (LINKTEST_OVERLAY=1) has its boxes, switching the
+            // overlay on and off each time, and logs the colors.
+            if (Array.IndexOf(args, "-mcOverlayCheck") >= 0) StartCoroutine(OverlayCheck());
             // Test aid: "-mcHoldKeys wasd..." makes Mycelium believe those keys are held (through
             // Unity's Input System), as real keys in Mycelium's focused window would be.
             // Test aid: "-mcMouseTest" moves the mouse up and down (through Unity's Input System), as
@@ -251,6 +256,7 @@ namespace MyceliumCraft
                 yaw = rb.rotation.eulerAngles.y;
             }
             if (IsPaused()) flags |= Proto.MycPaused;
+            if (McConfig.Overlay && rb != null) flags |= Proto.MycOverlay;
             link.WriteMycState(flags, pos.x, pos.y, pos.z, yaw, frame, tp, rb != null ? playerHeightBlocks : 0f);
 
             bool alive = link.MinecraftAlive;
@@ -289,6 +295,8 @@ namespace MyceliumCraft
             }
             else if (!keys.HasBindings) keys.SetBindings(0, null, null); // defaults until Minecraft sends some
             input.Update(link, reason == Proto.ReasonActive, reason, keys.OwnedScancodes, keys.OwnedButtons);
+            // Minecraft's hand, HUD and screens on top, during play (not over Mycelium's own menus).
+            overlay.Update(link, McConfig.Overlay && alive && phase != Phase.Idle && !MyceliumHasControls(out _));
             // Which game owns which key, while Minecraft drives the spore.
             keys.Update(alive && phase == Phase.Driving);
             if (shakeTest && look && Time.realtimeSinceStartup >= nextShakeTime) FireTestShake();
@@ -680,6 +688,36 @@ namespace MyceliumCraft
                        $"ticks={(mc.HasTicks ? $"yes a={lastAlpha:F2} steps={tickSteps}/{tickSteps + fallbackSteps}" : "no")} " +
                        $"camera={(cameraSync.Controlling ? $"synced view={cameraSync.Mode} x={cameraSync.X:F0} y={cameraSync.Y:F2} want down={cameraSync.WantDown:F0} tilt={cameraSync.LastTilt:F0} shake={cameraSync.ShakePos:F2}/{cameraSync.ShakeAngle:F1}deg" : "Mycelium")} mcView={mc.CameraMode} pitch={mc.Pitch:F0} {ViewText()} " +
                        $"| spore={(rb != null ? sporePos.ToString("F2") : "none")} target={lastTarget:F2} error={lastError:F2} vel={(rb != null ? rb.velocity.ToString("F2") : "-")} resyncs={resyncs} grid=v{ground.Version}");
+        }
+
+        /// <summary>Test aid: see "-mcOverlayCheck" in Awake.</summary>
+        System.Collections.IEnumerator OverlayCheck()
+        {
+            // Spots in the test picture (640x360, from the top left): red box, half-transparent
+            // white box, and an empty spot.
+            var spots = new (string name, float x, float y)[] { ("red box", 120, 80), ("half white box", 520, 80), ("empty", 320, 250) };
+            int checks = 0;
+            while (checks < 12)
+            {
+                yield return new WaitForSecondsRealtime(1f);
+                if (overlay.Width == 0) continue;
+                yield return new WaitForEndOfFrame();
+                bool shown = overlay.Visible;
+                Texture2D shot = ScreenCapture.CaptureScreenshotAsTexture();
+                var parts = new System.Collections.Generic.List<string>();
+                foreach (var spot in spots)
+                {
+                    int px = Mathf.Clamp((int)(spot.x / 640f * shot.width), 0, shot.width - 1);
+                    int py = Mathf.Clamp((int)((1f - spot.y / 360f) * shot.height), 0, shot.height - 1);
+                    Color32 c = shot.GetPixel(px, py);
+                    parts.Add($"{spot.name}=({c.r},{c.g},{c.b})");
+                }
+                McLog.Info($"overlay check: overlay {(shown ? "SHOWN" : "hidden")}, screen {shot.width}x{shot.height}: {string.Join(", ", parts)}");
+                Destroy(shot);
+                overlay.ForceHidden = !overlay.ForceHidden;
+                checks++;
+            }
+            overlay.ForceHidden = false;
         }
 
         /// <summary>Test aid: an enemy-style knockback from 1 unit in front of the spore.</summary>
