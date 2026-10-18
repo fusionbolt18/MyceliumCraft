@@ -1,5 +1,251 @@
 # MODLOG
 
+## 2026-10-18 Blurred Mycelium UI looked pixelated
+
+**Changed:**
+- **New `Resources/MyceliumCraftBlur.shader`:** a 9-tap Gaussian blur in one direction.
+- **`McPauseBlur.cs`:** the UI picture is halved, then blurred across and down twice, instead of
+  shrunk to 1/4 and stretched back.
+- **`-mcBlurCheck`:** also logs roughness (how sharply brightness bends between neighbouring
+  pixels).
+- DESIGN §5.3.
+
+**Why:** you saw the blurred UI as very pixelated. Stretching a 1/4-size picture back to full screen
+shows steps on sharp edges like text.
+
+**Tested how:** the real build in the hub, minimized, fake Minecraft with `LINKTEST_PAUSE=1`, pitch
+−30, `-mcBlurCheck`.
+
+**Result:**
+- **Roughness of the HUD corner:** 0.38 blurred, against 5.9 sharp before the pause. The blurred
+  world measures 0.55.
+- The UI picture is 7% non-transparent.
+- The corner still differs with and without the UI: (71,90,60) against (79,81,66).
+
+**Still broken / not tested:**
+- **Not tested in your play.**
+- **The old pixelated version wasn't measured,** so there's no before-and-after roughness for it.
+- **Blur strength** is about 6 screen pixels. Say if you want more or less.
+
+## 2026-10-18 Blurred Mycelium UI vanished in front of the sky
+
+**Changed:**
+- **`McPauseBlur.cs`:** Mycelium's UI is no longer routed through the world's depth-of-field blur.
+  - A hidden camera of ours draws its overlay canvases into a transparent picture.
+  - The picture is shrunk to 1/4 and stretched back, and shown just under the Minecraft overlay.
+  - Mycelium's render effects (SSAO, Fog, RenderIgnoreFogLayer) are switched off just while that
+    camera draws.
+- **`MinecraftDriver.cs`:** updates it every frame.
+- **`MyceliumCraft.Runtime.asmdef`:** references `Unity.RenderPipelines.Universal.Runtime`.
+- DESIGN §5.3.
+
+**Why:** you saw the blurred UI blend into the sky and disappear.
+
+**Cause:** the depth-of-field blur works by depth. UI has none, so it got the blur of the sky behind
+it, and light parts dissolved into the bright sky. My first guess (Mycelium's fog) was wrong: the fog
+is drawn before transparent things like UI.
+
+**Tested how:** the real build in the hub, minimized, fake Minecraft with `LINKTEST_PAUSE=1`,
+`-mcBlurCheck`, at camera pitch 20 and −30 (−30 puts sky behind the health bar).
+
+**Result:**
+- **First try, 1/8 shrink:** the UI picture was 100% solid and covered the screen. Mycelium's
+  single renderer ran its Fog and SSAO on our camera too. Fixed by switching those off for that
+  draw.
+- **Now:** the picture is 5% non-transparent (just the HUD).
+- **Health-bar corner over the sky:** (155,186,169) with the blurred UI, (217,236,239) without.
+- **Level view:** (92,112,71) with, (109,108,82) without.
+- **The world** still blurs (middle sharpness about 8 → 1.8).
+
+**Still broken / not tested:**
+- **Not tested in your play.**
+- **The UI blur is milder** (1/4) than the world's, so light text keeps some outline. Say if you
+  want it stronger.
+
+## 2026-10-18 Mycelium's UI blurs too during Minecraft's pause
+
+**Changed:**
+- **`McPauseBlur.cs`:** while blurred, Mycelium's root overlay canvases (not ours) are drawn by the
+  main camera just in front of everything, so the blur covers them. Their layers are added to the
+  camera's culling mask. Everything is put back afterwards.
+- **`-mcBlurCheck`:**
+  - also measures the health-bar corner (sharpness and average colour);
+  - while blurred, compares that corner with the UI hidden for one frame.
+- DESIGN §5.3, README.
+
+**Why:** you asked for Mycelium's UI to blur too. Screen effects skip overlay UI, which is what
+Mycelium's HUD is.
+
+**Tested how:** the real build in the hub, minimized, fake Minecraft with `LINKTEST_PAUSE=1`,
+`-mcBlurCheck`.
+
+**Result:**
+- "9 of its UI canvases with it".
+- **Health-bar corner sharpness:** about 20 before, 1.5–2.6 during, 18 after (the view had moved a
+  little).
+- **The blurred HUD is really drawn:** the corner's average colour was (108,122,88) with it and
+  (120,125,91) with it hidden.
+- **The world** still blurs (about 9 → 2).
+
+**Still broken / not tested:**
+- **Not tested with real Minecraft's pause menu, or in your own play.** The HUD's position and size
+  while blurred weren't looked at; only that it's blurred and present.
+
+## 2026-10-18 Mycelium blurs during Minecraft's pause menu
+
+**Changed:**
+- **New `McPauseBlur.cs`:** a global Volume with Mycelium's own "BlurVolume Profile", set like the
+  one in Mycelium's PauseMenu prefab (global, priority 0, weight 1). It's on while Minecraft's pause
+  menu is open.
+- **`MinecraftDriver.cs`:** switches the blur with the pause freeze. New `-mcBlurCheck` test aid
+  (screen sharpness twice a second).
+- **`MyceliumCraft.Runtime.asmdef`:** references `Unity.RenderPipelines.Core.Runtime` (for `Volume`).
+- DESIGN §5.3, README.
+
+**Why:** you asked for Mycelium to blur during Minecraft's pause, as it does in its own pause.
+
+**How Mycelium does it:** `PauseMenu.Pause()` switches on the PauseMenu prefab. That has a global
+Volume with "BlurVolume Profile": a depth-of-field blur focused 0.1 units away, so everything is out
+of focus, plus a colour adjustment. Its pause also mutes the sound and fades its HUD; those aren't
+copied.
+
+**Tested how:** the real build in the hub, minimized, fake Minecraft with `LINKTEST_PAUSE=1`,
+`-mcBlurCheck`.
+
+**Result:** screen sharpness was 8.2–9.6 before the pause, 2.1–2.5 during it, and about 10.2 after.
+The blur came on and went off with the pause.
+
+**Still broken / not tested:**
+- **Not tested with real Minecraft's pause menu.**
+- **Not copied from Mycelium's pause:** the sound muffle and the HUD fade.
+
+## 2026-10-18 Windows' own mouse pointer in Minecraft's screens
+
+**Changed:**
+- **`InputBridge.cs`:** while a Minecraft screen is open, the pointer is unlocked and shown
+  (`Cursor.lockState = None`, `visible = true`; again every frame), and its real position is sent.
+  Afterwards it goes back to how Mycelium had it.
+- **`McOverlay.cs`:** the drawn arrow is gone.
+- **`MinecraftDriver.cs`:** no longer draws it.
+- DESIGN §5.3, README.
+
+**Why:** you asked for the mouse to be able to leave the window while the cursor shows, and for the
+normal Windows pointer.
+
+**Checked:**
+- Mycelium locks the pointer only once, in `PlayerController` when the player is created; its
+  `TestingManager` also does in the editor only. Nothing re-locks it every frame.
+- The build runs the fake screen test without errors: overlay shown throughout, controls off during
+  the screen.
+
+**Still broken / not tested:**
+- **The pointer itself isn't tested:** test runs keep the bridge off, so they never touch your mouse.
+- **Clicking outside Mycelium's window** takes the focus away. The bridge stops, and the pointer is
+  set back to locked (Windows applies it when you click back in, and then the screen frees it
+  again).
+
+## 2026-10-18 Overlay vanished when chat opened (my mistake in the previous change)
+
+**Changed:**
+- **`MinecraftDriver.MyceliumHasControls`:** "Player input map off" no longer counts when the map
+  is off because a Minecraft screen is open (`KeyOwnership.SilencedHere`).
+
+**Why:** you saw the whole overlay disappear on T.
+
+**Cause:** turning Mycelium's controls off for Minecraft's screens (previous entry) also turned off
+the Player map. The driver reads that as "Mycelium has the controls" (as in its own menus), so it
+hid the overlay and switched the input bridge off. Your log at 84.31 s: "controls off", then
+"input bridge: off", "overlay: hidden", "hold: ... (Player input map off)".
+
+**My test missed it:** I only looked at the key lines, not the hold and overlay lines.
+
+**Tested how:** same run as before (`-mcHoldKeys "R,V,Tab"`, `LINKTEST_PAUSE=1`), plus the fake
+overlay picture (`LINKTEST_OVERLAY=1`), now also checking the hold and overlay lines.
+
+**Result:**
+- No hold during the screen.
+- The overlay stayed shown from start to end. It hid only after the fake Minecraft stopped sending
+  pictures.
+- Controls still off during the screen (`[]`).
+
+**Still broken / not tested:**
+- **Not tested with your real chat.**
+
+## 2026-10-18 Mycelium's controls off while a Minecraft screen is open
+
+**Changed:**
+- **`KeyOwnership.cs`:** `Silence` switches off every enabled action map of Mycelium's input
+  assets while a Minecraft screen is open (again each frame), and the same maps back on afterwards.
+  `Update` takes `mcScreenOpen`.
+- **`InputBridge.cs`:** while a Minecraft screen is open, P and the Mycelium-bound keys and buttons
+  go to Minecraft too.
+- **`MinecraftDriver.cs`:** passes the screen state on.
+- DESIGN §5.3, README.
+
+**Why:** you saw Mycelium's hotkeys trigger while typing in Minecraft's chat.
+
+**Tested how:** the real build, minimized, holding R, V and Tab (`-mcHoldKeys "R,V,Tab"`), with the
+fake Minecraft's screen "open" from 4 to 7 s (`LINKTEST_PAUSE=1`).
+
+**Result:**
+- **Before:** Mycelium actions pressed `[HideStats, Interact, ShowStats, Subspecies_Skill]`.
+- **Screen open:** "controls off (32 action maps)", then pressed `[]`.
+- **Screen closed:** "controls back (32 action maps)". Stats showed again at once, since Tab was
+  still held; Interact and the skill need a fresh press (button actions).
+
+**Still broken / not tested:**
+- **Not tested with your real chat.**
+- **Possible side effect:** if Mycelium itself switched one of its maps off while a Minecraft screen
+  was open, closing the screen switches it back on. Not seen.
+
+## 2026-10-18 Overlay step 2: cursor in Minecraft's screens; Escape and P pause
+
+**Changed:**
+- **Protocol v13:**
+  - McState flag `PAUSED` (bit 5);
+  - MycInput flag `CURSOR` (bit 1), with the cursor position at 0x170/0x178 (0..1 of the picture).
+- **`InputBridge.cs`:**
+  - Escape is sent to Minecraft (P still isn't).
+  - While a Minecraft screen is open, the mouse moves a cursor (starts in the middle, kept on
+    screen) and its position is sent.
+- **`McOverlay.cs`:** draws the cursor (a 12 × 19 arrow, scaled with the window).
+- **`KeyOwnership.cs`:** Mycelium's Pause action loses its Escape binding while Minecraft drives
+  (P stays).
+- **`MinecraftDriver.cs`:** `FreezeForMinecraftPause` sets Mycelium's time scale to 0 while
+  Minecraft's pause menu is open.
+- **`MycInputBridge.java`:** absolute cursor moves into Minecraft's mouse handler while a screen is
+  open.
+- **`MyceliumCraftClient.java`:**
+  - reports `PAUSED`;
+  - freezes the world's ticking while Mycelium is paused.
+- **Stand-ins:**
+  - FakeMycelium sends a cursor; linkTest checks it.
+  - New `LINKTEST_PAUSE=1`: Minecraft's pause menu "open" from 4 to 7 s.
+- PROTOCOL, DESIGN §5.3, README.
+
+**Why:** you asked for overlay step 2 (using Minecraft's screens from Mycelium), and for Escape to
+pause with Minecraft's menu and P with Mycelium's.
+
+**Tested how and result:**
+- **Stand-ins together:** cursor flag, x 0.25, y 0.75 read back exactly; ground checks PASS, PASS.
+- **Real Mycelium, minimized, fake Minecraft with `LINKTEST_PAUSE=1`:**
+  - "time stopped" at 14.57 s, "runs again" at 17.58 s (the 3 s of the fake pause).
+  - Holding Escape (`-mcHoldKeys "Escape,Escape"`): Mycelium's Pause binding is `[<Keyboard>/p]`,
+    and no Pause press.
+- **First attempt didn't count:** `-mcHoldKeys Escape` was read as the letters E,S,C,A,P,E, so it
+  held P. That correctly paused Mycelium (`[Pause]`) and hid the rest of the test. Use a comma for
+  key names.
+
+**Still broken / not tested:**
+- **Not tested in real Minecraft:**
+  - clicking in Minecraft's screens with the cursor;
+  - Escape opening Minecraft's pause menu;
+  - Minecraft's world freezing during Mycelium's pause.
+- **The cursor can't be tested here:** the bridge is forced off in test runs, so it never uses your
+  keyboard and mouse.
+- **Escape inside Mycelium's own menus** does whatever Mycelium does with it. It doesn't reach
+  Minecraft there.
+
 ## 2026-10-18 Invisible wall in front of the run start (hub)
 
 **Changed:**

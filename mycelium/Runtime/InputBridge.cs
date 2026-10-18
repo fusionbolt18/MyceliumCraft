@@ -15,9 +15,13 @@ namespace MyceliumCraft
     /// same physical key in both games.
     ///
     /// Mycelium still sees all its own keys too (it has the focus); KeyOwnership decides which of
-    /// them its actions react to. Never sent: Escape and P (Mycelium's pause), and the keys and
+    /// them its actions react to. Never sent: P (Mycelium's pause and menu), and the keys and
     /// buttons bound to Mycelium actions in Minecraft's Controls menu (KeyOwnership.OwnedScancodes,
-    /// OwnedButtons). Whether Minecraft should act on the rest is decided by the driver (Active),
+    /// OwnedButtons). Escape is sent: it's Minecraft's pause menu (and closes Minecraft's screens).
+    ///
+    /// While a Minecraft screen is open (inventory, chat, pause menu), Windows' own mouse pointer is
+    /// unlocked and shown (it can leave the window), and its position goes to Minecraft as a
+    /// fraction of the picture. Whether Minecraft should act on the rest is decided by the driver (Active),
     /// e.g. not while a Mycelium menu has the controls.
     /// </summary>
     sealed class InputBridge
@@ -62,6 +66,12 @@ namespace MyceliumCraft
         int keysDown;
 
         public bool Active => wasActive;
+        /// <summary>Windows' mouse pointer is free (a Minecraft screen is open).</summary>
+        public bool CursorShown => cursorShown;
+        bool cursorShown;
+        Vector2 cursor;            // pointer position, Unity screen pixels from the bottom left
+        CursorLockMode lockBefore; // how Mycelium had the pointer, to put back
+        bool visibleBefore;
         public uint Reason => lastReason;
         public int KeysDown => keysDown;
         public double TotalDX => totalDX;
@@ -69,7 +79,8 @@ namespace MyceliumCraft
 
         /// <summary>Call every frame: read the devices and publish. active: Minecraft should play from it.</summary>
         /// owned: keys and buttons that belong to Mycelium actions (not sent).
-        public void Update(MyceliumLink link, bool active, uint reason, HashSet<int> ownedScancodes, uint ownedButtons)
+        /// mcScreenOpen: a Minecraft screen is open (the mouse moves a cursor, not the view).
+        public void Update(MyceliumLink link, bool active, uint reason, HashSet<int> ownedScancodes, uint ownedButtons, bool mcScreenOpen)
         {
             Keyboard kb = Keyboard.current;
             Mouse mouse = Mouse.current;
@@ -86,8 +97,10 @@ namespace MyceliumCraft
             {
                 foreach (var pair in Scancodes)
                 {
-                    // Escape and P: always Mycelium's pause keys. Owned: bound to a Mycelium action.
-                    if (pair.Key == Key.Escape || pair.Key == Key.P || ownedScancodes.Contains(pair.Value)) continue;
+                    // P: Mycelium's pause key. Owned: bound to a Mycelium action. Both still go to
+                    // Minecraft while one of its screens is open (Mycelium's controls are off then,
+                    // and chat needs Tab, for example).
+                    if (!mcScreenOpen && (pair.Key == Key.P || ownedScancodes.Contains(pair.Value))) continue;
                     if (!kb[pair.Key].isPressed) continue;
                     keys[pair.Value >> 3] |= (byte)(1 << (pair.Value & 7));
                     keysDown++;
@@ -102,12 +115,26 @@ namespace MyceliumCraft
                 if (mouse.rightButton.isPressed) buttons |= 1u << 3;
                 if (mouse.backButton.isPressed) buttons |= 1u << 4;
                 if (mouse.forwardButton.isPressed) buttons |= 1u << 5;
-                buttons &= ~ownedButtons;
+                if (!mcScreenOpen) buttons &= ~ownedButtons;
                 Vector2 d = mouse.delta.ReadValue();
                 totalDX += d.x;
                 totalDY -= d.y; // Unity: up is +; Minecraft (screen): down is +
                 totalScroll += mouse.scroll.ReadValue().y / 120.0; // Windows: 120 per wheel notch
+
+                // Minecraft's screens: Windows' own pointer, unlocked and shown, so it can leave the
+                // window. It starts in the middle (Mycelium had it locked there), which is where
+                // Minecraft puts its cursor when a screen opens.
+                bool cursorNow = active && mcScreenOpen;
+                if (cursorNow != cursorShown) SetPointerFree(cursorNow);
+                if (cursorNow)
+                {
+                    // Set every frame in case something in Mycelium locks it again.
+                    UnityEngine.Cursor.lockState = CursorLockMode.None;
+                    UnityEngine.Cursor.visible = true;
+                    cursor = mouse.position.ReadValue();
+                }
             }
+            else if (cursorShown) SetPointerFree(false);
 
             if (active) reason = Proto.ReasonActive;
             if (active != wasActive || reason != lastReason)
@@ -116,8 +143,29 @@ namespace MyceliumCraft
                 lastReason = reason;
                 McLog.Info($"input bridge: {(active ? "ON, Minecraft plays from Mycelium's keyboard and mouse" : $"off ({ReasonText(reason)})")}");
             }
-            link.WriteInput(active ? Proto.InActive : 0u, active ? Proto.ReasonActive : reason, buttons, keys,
-                            totalDX, totalDY, totalScroll, textCount, text);
+            link.WriteInput((active ? Proto.InActive : 0u) | (cursorShown ? Proto.InCursor : 0u), active ? Proto.ReasonActive : reason, buttons, keys,
+                            totalDX, totalDY, totalScroll, textCount, text,
+                            Mathf.Clamp01(cursor.x / Mathf.Max(1, Screen.width)), 1.0 - Mathf.Clamp01(cursor.y / Mathf.Max(1, Screen.height)));
+        }
+
+        /// <summary>Free Windows' mouse pointer for Minecraft's screens, or give it back to Mycelium as it was.</summary>
+        void SetPointerFree(bool free)
+        {
+            cursorShown = free;
+            if (free)
+            {
+                lockBefore = UnityEngine.Cursor.lockState;
+                visibleBefore = UnityEngine.Cursor.visible;
+                UnityEngine.Cursor.lockState = CursorLockMode.None;
+                UnityEngine.Cursor.visible = true;
+                McLog.Info($"input bridge: Minecraft screen open, Windows' mouse pointer freed (was {lockBefore}, {(visibleBefore ? "shown" : "hidden")})");
+            }
+            else
+            {
+                UnityEngine.Cursor.lockState = lockBefore;
+                UnityEngine.Cursor.visible = visibleBefore;
+                McLog.Info($"input bridge: Minecraft screen closed, mouse pointer back to {lockBefore}, {(visibleBefore ? "shown" : "hidden")}; the mouse turns the view again");
+            }
         }
 
         void OnText(char c)

@@ -130,8 +130,11 @@ namespace MyceliumCraft
             }
         }
 
-        /// <summary>Call every frame. driving: Minecraft drives the spore (and the bridge rules apply).</summary>
-        public void Update(bool driving)
+        /// <summary>
+        /// Call every frame. driving: Minecraft drives the spore (and the bridge rules apply).
+        /// mcScreenOpen: a Minecraft screen (chat, inventory, pause menu) has the keyboard and mouse.
+        /// </summary>
+        public void Update(bool driving, bool mcScreenOpen)
         {
             LogPressed();
             if (!McConfig.KeyOwnership) driving = false;
@@ -146,8 +149,60 @@ namespace MyceliumCraft
                 SwitchCheatsOff();
                 nextScan = 0f;
             }
-            if (Time.realtimeSinceStartup < nextScan) return;
-            nextScan = Time.realtimeSinceStartup + 0.5f;
+            if (Time.realtimeSinceStartup >= nextScan)
+            {
+                nextScan = Time.realtimeSinceStartup + 0.5f;
+                ScanAssets();
+            }
+            Silence(mcScreenOpen);
+        }
+
+        // Mycelium's action maps switched off while a Minecraft screen is open, to switch back on after.
+        readonly HashSet<InputActionMap> silenced = new HashSet<InputActionMap>();
+        bool silencing;
+
+        /// <summary>This map is off because a Minecraft screen is open (we switched it off), not because of Mycelium.</summary>
+        public bool SilencedHere(InputActionMap map) => silencing && silenced.Contains(map);
+
+        /// <summary>
+        /// While a Minecraft screen is open, none of Mycelium's controls react: typing "r", "v" or "p"
+        /// in Minecraft's chat triggered Mycelium's interact, skill and pause (your report,
+        /// 2026-10-18). Every map of Mycelium's input assets that's on gets switched off, again every
+        /// frame (in case Mycelium switches one back on), and the same maps back on afterwards.
+        /// </summary>
+        void Silence(bool on)
+        {
+            if (on)
+            {
+                foreach (InputActionAsset asset in done)
+                {
+                    if (asset == null) continue;
+                    foreach (InputActionMap map in asset.actionMaps)
+                    {
+                        if (!map.enabled) continue;
+                        silenced.Add(map);
+                        map.Disable();
+                    }
+                }
+                if (!silencing)
+                {
+                    silencing = true;
+                    McLog.Info($"keys: Minecraft screen open, Mycelium's controls off ({silenced.Count} action maps)");
+                }
+            }
+            else if (silencing)
+            {
+                silencing = false;
+                int back = 0;
+                foreach (InputActionMap map in silenced)
+                    if (map != null) { map.Enable(); back++; }
+                silenced.Clear();
+                McLog.Info($"keys: Minecraft screen closed, Mycelium's controls back ({back} action maps)");
+            }
+        }
+
+        void ScanAssets()
+        {
             // Every copy of Mycelium's input asset with its "Player" actions in use.
             foreach (InputActionAsset asset in InputSystem.ListEnabledActions()
                          .Select(a => a.actionMap?.asset).Where(a => a != null).Distinct())
@@ -178,6 +233,16 @@ namespace MyceliumCraft
                         }
                     }
                 }
+                // Escape is Minecraft's pause menu now; P stays Mycelium's pause and menu.
+                InputAction pause = map.FindAction("Pause");
+                if (pause != null)
+                    for (int i = 0; i < pause.bindings.Count; i++)
+                    {
+                        if (pause.bindings[i].path != "<Keyboard>/escape") continue;
+                        pause.ApplyBindingOverride(i, "");
+                        applied.Add((pause, i));
+                        changed++;
+                    }
                 McLog.Info($"keys: Mycelium input asset #{done.Count} ({asset.name}): {changed} bindings set. Now: {Describe(map)}");
             }
         }
@@ -200,7 +265,7 @@ namespace MyceliumCraft
         static string Describe(InputActionMap map)
         {
             var parts = new List<string>();
-            foreach (string name in Actions.SelectMany(a => a.actions))
+            foreach (string name in Actions.SelectMany(a => a.actions).Append("Pause"))
             {
                 InputAction a = map.FindAction(name);
                 if (a == null) continue;
@@ -238,6 +303,7 @@ namespace MyceliumCraft
 
         void Release()
         {
+            Silence(false);
             int restored = RemoveOverrides();
             if (cheats != null) cheats.enabled = cheatsWereEnabled;
             cheats = null;

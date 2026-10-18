@@ -38,6 +38,8 @@ public final class LinkTestMain {
 	private static long overlayFrames;
 	/** "1": send a test player model (a 0.6 x 1.2 x 0.3 block body with a nose on its +Z side) in third person, like Minecraft's. */
 	private static final boolean MODEL = "1".equals(System.getenv("LINKTEST_MODEL"));
+	/** "1": pretend Minecraft's pause menu is open from 4 to 7 s (Mycelium should freeze). */
+	private static final boolean PAUSE = "1".equals(System.getenv("LINKTEST_PAUSE"));
 	private static boolean modelTextureSent;
 	/** Optional: switch to these key binds 5 s in, as if you changed them in the Controls menu while playing. */
 	private static final String BINDS2 = System.getenv("LINKTEST_BINDS2");
@@ -149,6 +151,9 @@ public final class LinkTestMain {
 		ok &= check("mouse total Y", in.totalDY, -40);
 		ok &= check("wheel total", in.totalScroll, 2);
 		ok &= check("typed text", in.textCount == 2 && in.text[0] == 'h' && in.text[1] == 'i' ? 1 : 0, 1);
+		ok &= check("cursor sent", in.cursor() ? 1 : 0, 1);
+		ok &= check("cursor x", in.cursorX, 0.25);
+		ok &= check("cursor y", in.cursorY, 0.75);
 
 		int ack = myc.teleportSeq;
 		double x = myc.tpX, y = myc.tpY, z = myc.tpZ;
@@ -218,6 +223,10 @@ public final class LinkTestMain {
 			tick.body = bodyYaw;
 			// LINKTEST_HICCUP=1: one frame of "not in a world" every 2 s, like the moment seen in a real log.
 			int flags = HICCUP && frames % (int) (2000 / FRAME_MS) == 0 && frames > 0 ? 0 : Proto.MC_IN_WORLD | Proto.MC_ON_GROUND;
+			// LINKTEST_PAUSE=1: Minecraft's pause menu open from 4 to 7 s.
+			if (PAUSE && t >= 4 && t < 7) {
+				flags |= Proto.MC_PAUSED | Proto.MC_SCREEN_OPEN;
+			}
 			MycLink.writeMcState(flags, px, y, pz, yaw, pitch, frames++, 1, ack, cameraMode, bodyYaw, tick);
 			if (OVERLAY) {
 				writeTestPicture();

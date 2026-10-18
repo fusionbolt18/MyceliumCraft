@@ -363,9 +363,15 @@ public final class MycLink {
 		public double totalDX, totalDY, totalScroll;
 		public int textCount;
 		public final int[] text = new int[IN_TEXT_RING];
+		public double cursorX, cursorY;
 
 		public boolean active() {
 			return (this.flags & IN_ACTIVE) != 0;
+		}
+
+		/** A Minecraft screen is open and Mycelium sends a cursor position (0..1 across, 0..1 down). */
+		public boolean cursor() {
+			return (this.flags & IN_CURSOR) != 0;
 		}
 
 		public boolean key(int scancode) {
@@ -395,6 +401,8 @@ public final class MycLink {
 			out.totalScroll = s.get(JAVA_DOUBLE, b + IN_TOTAL_SCROLL);
 			out.textCount = s.get(JAVA_INT, b + IN_TEXT_COUNT);
 			MemorySegment.copy(s, JAVA_INT, b + IN_TEXT, out.text, 0, IN_TEXT_RING);
+			out.cursorX = s.get(JAVA_DOUBLE, b + IN_CURSOR_X);
+			out.cursorY = s.get(JAVA_DOUBLE, b + IN_CURSOR_Y);
 			VarHandle.loadLoadFence();
 			if ((int) INT.getVolatile(s, b + IN_SEQ) == seq1) {
 				return true;

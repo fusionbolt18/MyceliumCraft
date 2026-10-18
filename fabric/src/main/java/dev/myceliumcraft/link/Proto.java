@@ -36,7 +36,7 @@ public final class Proto {
 
 	public static final long MAPPING_BYTES = OFF_TEXTURES + TEXTURES_BYTES;
 	public static final int MAGIC = 0x4343594D; // "MYCC"
-	public static final int VERSION = 12;
+	public static final int VERSION = 13;
 	/** A side is alive if its heartbeat is younger than this. */
 	public static final long HEARTBEAT_TIMEOUT_MS = 3000;
 
@@ -92,6 +92,7 @@ public final class Proto {
 	public static final int MC_ON_GROUND = 1 << 2;
 	public static final int MC_SNEAKING = 1 << 3;
 	public static final int MC_SPRINTING = 1 << 4;
+	public static final int MC_PAUSED = 1 << 5; // Minecraft's pause menu has paused the game (Mycelium freezes too)
 
 	// MycInput @0x300 (Mycelium -> Minecraft, seqlock): the input bridge
 	public static final long OFF_INPUT = 0x300;
@@ -108,6 +109,9 @@ public final class Proto {
 	public static final int IN_KEY_BYTES = 64;
 	public static final int IN_TEXT_RING = 64;
 	public static final int IN_ACTIVE = 1 << 0;
+	public static final int IN_CURSOR = 1 << 1; // a Minecraft screen is open: cursor position below is valid
+	public static final long IN_CURSOR_X = 0x170; // f64, 0..1 from the left of the picture
+	public static final long IN_CURSOR_Y = 0x178; // f64, 0..1 from the top
 	public static final String[] IN_REASONS = {"active", "Mycelium window not focused", "Mycelium has the controls (menu, pause or cutscene)", "Minecraft isn't driving the spore", "bridge turned off"};
 
 	// Bindings @0x500 (Minecraft -> Mycelium, seqlock): what Mycelium's actions are bound to

@@ -39,7 +39,7 @@ namespace MyceliumCraft.Link
 
         public const int MappingBytes = OffTextures + TexturesBytes;
         public const uint Magic = 0x4343594D; // "MYCC"
-        public const uint Version = 12;
+        public const uint Version = 13;
         public const ulong HeartbeatTimeoutMs = 3000;
 
         // Header @0x000
@@ -94,6 +94,7 @@ namespace MyceliumCraft.Link
         public const uint McOnGround = 1u << 2;
         public const uint McSneaking = 1u << 3;
         public const uint McSprinting = 1u << 4;
+        public const uint McPaused = 1u << 5;    // Minecraft's pause menu has paused the game (Mycelium freezes too)
 
         // MycInput @0x300 (Mycelium -> Minecraft, seqlock): the input bridge
         public const int OffInput = 0x300;
@@ -110,6 +111,9 @@ namespace MyceliumCraft.Link
         public const int InKeyBytes = 64;
         public const int InTextRing = 64;
         public const uint InActive = 1u << 0;
+        public const uint InCursor = 1u << 1;  // a Minecraft screen is open: cursor position below is valid
+        public const int InCursorX = 0x170;    // f64, 0..1 from the left of the picture
+        public const int InCursorY = 0x178;    // f64, 0..1 from the top
         public const uint ReasonActive = 0, ReasonNotFocused = 1, ReasonMyceliumControls = 2, ReasonNotDriving = 3, ReasonOff = 4;
 
         // Bindings @0x500 (Minecraft -> Mycelium, seqlock): what Mycelium's actions are bound to,

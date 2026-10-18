@@ -182,6 +182,9 @@ namespace MyceliumCraft
             // Test aid: "-mcModelCheck" reads back Mycelium's finished screen once a second at the
             // Minecraft body's head, with its depth passes off and on in turn, and logs the colour.
             if (Array.IndexOf(args, "-mcModelCheck") >= 0) StartCoroutine(ModelCheck());
+            // Test aid: "-mcBlurCheck" logs how sharp Mycelium's finished screen is twice a second
+            // (average difference between neighbouring pixels in the middle), to see the pause blur.
+            if (Array.IndexOf(args, "-mcBlurCheck") >= 0) StartCoroutine(BlurCheck());
             // Test aid: "-mcHoldKeys wasd..." makes Mycelium believe those keys are held (through
             // Unity's Input System), as real keys in Mycelium's focused window would be.
             // Test aid: "-mcMouseTest" moves the mouse up and down (through Unity's Input System), as
@@ -298,15 +301,19 @@ namespace MyceliumCraft
                 if (bindCount >= 0) keys.SetBindings(bindCount, bindKinds, bindCodes);
             }
             else if (!keys.HasBindings) keys.SetBindings(0, null, null); // defaults until Minecraft sends some
-            input.Update(link, reason == Proto.ReasonActive, reason, keys.OwnedScancodes, keys.OwnedButtons);
+            bool mcScreenOpen = camFresh2 && (lastCamMc.Flags & Proto.McScreenOpen) != 0;
+            input.Update(link, reason == Proto.ReasonActive, reason, keys.OwnedScancodes, keys.OwnedButtons, mcScreenOpen);
             // Minecraft's hand, HUD and screens on top, during play (not over Mycelium's own menus).
             overlay.Update(link, McConfig.Overlay && alive && phase != Phase.Idle && !MyceliumHasControls(out _));
+            // Minecraft's pause menu (Escape) pauses Mycelium too.
+            FreezeForMinecraftPause(alive && phase == Phase.Driving && camFresh2 && (lastCamMc.Flags & Proto.McPaused) != 0);
+            pauseBlur.Update();
             // Third person: your Minecraft body at the spore's feet, instead of the spore.
             bool bodyWanted = McConfig.Overlay && alive && phase != Phase.Idle && rb != null && cameraSync.Controlling;
             playerModel.Update(link, bodyWanted, rb != null ? rb.transform.position - Vector3.up * feetOffset : Vector3.zero, (float)map.Scale);
             cameraSync.ReplaceSpore = playerModel.Shown;
             // Which game owns which key, while Minecraft drives the spore.
-            keys.Update(alive && phase == Phase.Driving);
+            keys.Update(alive && phase == Phase.Driving, mcScreenOpen);
             if (shakeTest && look && Time.realtimeSinceStartup >= nextShakeTime) FireTestShake();
             if (holdTest && controller != null && (phase == Phase.Driving || holdTestStep > 0)) RunHoldTest();
             if (hitTest && controller != null && phase == Phase.Driving && Time.realtimeSinceStartup >= nextHitTime) RunHitTest();
@@ -680,7 +687,9 @@ namespace MyceliumCraft
                 object actions = actionsField?.GetValue(controller);
                 var asset = actions?.GetType().GetProperty("asset")?.GetValue(actions) as UnityEngine.InputSystem.InputActionAsset;
                 var map = asset?.FindActionMap("Player");
-                if (map != null && !map.enabled) { why = "Player input map off"; return true; }
+                // (Not when it's off because a Minecraft screen is open: KeyOwnership switched it off,
+                // and counting that hid the overlay and stopped the bridge as soon as chat opened.)
+                if (map != null && !map.enabled && !keys.SilencedHere(map)) { why = "Player input map off"; return true; }
             }
             catch (Exception e)
             {
@@ -711,6 +720,111 @@ namespace MyceliumCraft
                        $"ticks={(mc.HasTicks ? $"yes a={lastAlpha:F2} steps={tickSteps}/{tickSteps + fallbackSteps}" : "no")} " +
                        $"camera={(cameraSync.Controlling ? $"synced view={cameraSync.Mode} x={cameraSync.X:F0} y={cameraSync.Y:F2} want down={cameraSync.WantDown:F0} tilt={cameraSync.LastTilt:F0} shake={cameraSync.ShakePos:F2}/{cameraSync.ShakeAngle:F1}deg" : "Mycelium")} mcView={mc.CameraMode} pitch={mc.Pitch:F0} {ViewText()} " +
                        $"| spore={(rb != null ? sporePos.ToString("F2") : "none")} target={lastTarget:F2} error={lastError:F2} vel={(rb != null ? rb.velocity.ToString("F2") : "-")} resyncs={resyncs} grid=v{ground.Version}");
+        }
+
+        bool frozenByMinecraft;
+        float timeScaleBefore = 1f;
+        readonly McPauseBlur pauseBlur = new McPauseBlur();
+
+        /// <summary>
+        /// While Minecraft's pause menu is open, Mycelium's game time stops (Time.timeScale 0), so
+        /// enemies, physics and animations wait, without Mycelium's own pause menu. Set again every
+        /// frame in case Mycelium changes the time scale meanwhile (its hit-stop does); put back after.
+        /// </summary>
+        void FreezeForMinecraftPause(bool freeze)
+        {
+            if (freeze)
+            {
+                if (!frozenByMinecraft)
+                {
+                    frozenByMinecraft = true;
+                    timeScaleBefore = Time.timeScale > 0f ? Time.timeScale : 1f;
+                    McLog.Info($"pause: Minecraft's pause menu is open, Mycelium's time stopped (time scale was {timeScaleBefore:F2})");
+                    pauseBlur.Set(true);
+                }
+                else if (Time.timeScale > 0f) timeScaleBefore = Time.timeScale;
+                Time.timeScale = 0f;
+            }
+            else if (frozenByMinecraft)
+            {
+                frozenByMinecraft = false;
+                pauseBlur.Set(false);
+                if (Time.timeScale == 0f) Time.timeScale = timeScaleBefore;
+                McLog.Info($"pause: Minecraft's pause menu closed, Mycelium's time runs again (time scale {Time.timeScale:F2})");
+            }
+        }
+
+        /// <summary>Test aid: see "-mcBlurCheck" in Awake.</summary>
+        System.Collections.IEnumerator BlurCheck()
+        {
+            for (int n = 0; n < 60; n++)
+            {
+                yield return new WaitForSecondsRealtime(0.5f);
+                yield return new WaitForEndOfFrame();
+                Texture2D shot = ScreenCapture.CaptureScreenshotAsTexture();
+                int w = shot.width, h = shot.height;
+                Color32[] px = shot.GetPixels32();
+                Destroy(shot);
+                // The middle (the world), and the top-left corner (Mycelium's health bar).
+                double middle = Sharpness(px, w, w / 4, w * 3 / 4, h / 4, h * 3 / 4);
+                double hud = Sharpness(px, w, w / 50, w * 3 / 10, h * 8 / 10, h * 49 / 50);
+                // Average colour of the HUD corner: a blur keeps it, a missing HUD would change it.
+                long r = 0, g = 0, b = 0, k = 0;
+                for (int y = h * 8 / 10; y < h * 49 / 50; y++)
+                    for (int x = w / 50; x < w * 3 / 10; x++) { Color32 c = px[y * w + x]; r += c.r; g += c.g; b += c.b; k++; }
+                k = System.Math.Max(1, k);
+                McLog.Info($"blur check: roughness middle {Roughness(px, w, w / 4, w * 3 / 4, h / 4, h * 3 / 4):F2}, HUD corner {Roughness(px, w, w / 50, w * 3 / 10, h * 8 / 10, h * 49 / 50):F2}");
+                McLog.Info($"blur check: sharpness middle {middle:F2}, HUD corner {hud:F2}, HUD corner average colour ({r / k},{g / k},{b / k}) (blur {(pauseBlur.On ? "ON" : "off")}, time scale {Time.timeScale:F2})");
+                if (pauseBlur.On)
+                {
+                    // Same corner with Mycelium's UI hidden for one frame: if it differs, the blurred UI is really drawn.
+                    pauseBlur.TestHideUi(true);
+                    yield return null;
+                    yield return new WaitForEndOfFrame();
+                    Texture2D without = ScreenCapture.CaptureScreenshotAsTexture();
+                    Color32[] q = without.GetPixels32();
+                    Destroy(without);
+                    pauseBlur.TestHideUi(false);
+                    long r2 = 0, g2 = 0, b2 = 0, k2 = 0;
+                    for (int y = h * 8 / 10; y < h * 49 / 50; y++)
+                        for (int x = w / 50; x < w * 3 / 10; x++) { Color32 c = q[y * w + x]; r2 += c.r; g2 += c.g; b2 += c.b; k2++; }
+                    k2 = System.Math.Max(1, k2);
+                    McLog.Info($"blur check:   same corner with Mycelium's UI hidden: average colour ({r2 / k2},{g2 / k2},{b2 / k2})");
+                }
+            }
+        }
+
+        /// <summary>
+        /// Roughness: how sharply brightness bends from pixel to pixel (|left - 2 x middle + right|),
+        /// in a region. Blocky, stepped pictures score high; a smooth blur scores low.
+        /// </summary>
+        static double Roughness(Color32[] px, int w, int x0, int x1, int y0, int y1)
+        {
+            double sum = 0;
+            int count = 0;
+            for (int y = y0; y < y1; y++)
+                for (int x = x0 + 1; x < x1 - 1; x++)
+                {
+                    Color32 a = px[y * w + x - 1], b = px[y * w + x], c = px[y * w + x + 1];
+                    sum += Mathf.Abs((a.r + a.g + a.b) - 2 * (b.r + b.g + b.b) + (c.r + c.g + c.b)) / 3.0;
+                    count++;
+                }
+            return sum / Mathf.Max(1, count);
+        }
+
+        /// <summary>Average colour difference between horizontally neighbouring pixels in a region (rows from the bottom).</summary>
+        static double Sharpness(Color32[] px, int w, int x0, int x1, int y0, int y1)
+        {
+            double sum = 0;
+            int count = 0;
+            for (int y = y0; y < y1; y += 2)
+                for (int x = x0; x < x1 - 1; x += 2)
+                {
+                    Color32 a = px[y * w + x], b = px[y * w + x + 1];
+                    sum += Mathf.Abs(a.r - b.r) + Mathf.Abs(a.g - b.g) + Mathf.Abs(a.b - b.b);
+                    count++;
+                }
+            return sum / Mathf.Max(1, count);
         }
 
         /// <summary>Test aid: see "-mcModelCheck" in Awake.</summary>

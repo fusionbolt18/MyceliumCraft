@@ -53,8 +53,8 @@ Single-player and offline only.
   tutorial's own trigger shake: the camera shakes exactly as much as Mycelium's shake produces. Not
   tested at the real trigger with real Minecraft.
 - **Play from Mycelium's window (input bridge): not tested with real Minecraft.** Mycelium's
-  keyboard and mouse are passed on to Minecraft during normal play, except Escape and P (Mycelium's
-  pause). Stand-in tests pass. `inputBridge=0` goes back to playing from Minecraft's window.
+  keyboard and mouse are passed on to Minecraft during normal play, except P (Mycelium's pause and
+  menu). Escape opens Minecraft's pause menu. Stand-in tests pass. `inputBridge=0` goes back to playing from Minecraft's window.
 - **Mycelium menus keep the controls** (e.g. the hub's Explore/Cancel): the spore is no longer driven
   while a Mycelium menu, pause or cutscene has the controls, and Minecraft gets no input. Tested with
   Mycelium's own `DisableController()`/`EnableController()`, not yet at the real prompt.
@@ -74,8 +74,18 @@ Single-player and offline only.
 - **Overlay: tested by you** (you saw it working in real play). Minecraft's hand, hotbar, hearts and screens
   (inventory, chat) are drawn on top of Mycelium, and Minecraft stops drawing its own world
   (`overlay=0` in `MyceliumCraft.cfg` turns it off). Tested with a fake Minecraft's test picture,
-  which showed with exact colors. **Not built yet:** a mouse cursor in Minecraft's screens, and
-  Escape for Minecraft (to close chat).
+  which showed with exact colors.
+- **Cursor in Minecraft's screens, and pausing: not tested in real Minecraft.**
+  - **Mouse pointer:** while a Minecraft screen is open, Windows' own mouse pointer is free (it can
+    leave the window), and you can click in Minecraft's inventory, chat and menus.
+  - **Escape** pauses with Minecraft's menu, and Mycelium freezes and blurs meanwhile, its HUD
+    included (blur tested with a fake Minecraft).
+  - **P** pauses with Mycelium's menu, and Minecraft's world freezes meanwhile.
+  - While a Minecraft screen is open (chat, inventory), Mycelium's controls are off and every key
+    goes to Minecraft.
+  - **Tested with stand-ins:** the cursor position reaches Minecraft exactly; Mycelium froze for
+    exactly the 3 s the fake Minecraft's pause menu was "open"; holding Escape no longer pauses
+    Mycelium.
 - Nothing damages Mycelium's enemies yet: its own attack is unbound by default, and Minecraft's
   attack has no Mycelium target.
 - Steam achievements probably don't work in the private build (not tested).

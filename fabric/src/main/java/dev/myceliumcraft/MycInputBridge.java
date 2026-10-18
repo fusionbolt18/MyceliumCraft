@@ -31,6 +31,7 @@ public final class MycInputBridge {
 	private static long lastLogMs;
 	private static int keyEvents, buttonEvents;
 	private static double moved;
+	private static boolean cursorMode;
 
 	private MycInputBridge() {
 	}
@@ -108,11 +109,34 @@ public final class MycInputBridge {
 		double dx = IN.totalDX - lastDX, dy = IN.totalDY - lastDY;
 		lastDX = IN.totalDX;
 		lastDY = IN.totalDY;
-		if (dx != 0 || dy != 0) {
-			virtualX += dx;
-			virtualY += dy;
-			moved += Math.abs(dx) + Math.abs(dy);
-			minecraft.mouseHandler.onMove(handle, virtualX, virtualY, dx, dy);
+		if (IN.cursor() && minecraft.gui.screen() != null) {
+			// A Minecraft screen (inventory, chat, pause menu) is open: Mycelium sends where its
+			// cursor is on the overlay, as a fraction of the picture; that's the same fraction of
+			// Minecraft's window. Absolute positions, as Minecraft gets from a real mouse there.
+			var window = minecraft.getWindow();
+			double x = IN.cursorX * window.getScreenWidth(), y = IN.cursorY * window.getScreenHeight();
+			if (!cursorMode || x != virtualX || y != virtualY) {
+				double mx = cursorMode ? x - virtualX : 0, my = cursorMode ? y - virtualY : 0;
+				virtualX = x;
+				virtualY = y;
+				moved += Math.abs(mx) + Math.abs(my);
+				minecraft.mouseHandler.onMove(handle, x, y, mx, my);
+			}
+			if (!cursorMode) {
+				cursorMode = true;
+				MycLink.LOG.info("MyceliumCraft: input bridge: Minecraft screen open, cursor from Mycelium's overlay at ({}, {})", String.format("%.0f", x), String.format("%.0f", y));
+			}
+		} else {
+			if (cursorMode) {
+				cursorMode = false;
+				MycLink.LOG.info("MyceliumCraft: input bridge: back to mouse look");
+			}
+			if (dx != 0 || dy != 0) {
+				virtualX += dx;
+				virtualY += dy;
+				moved += Math.abs(dx) + Math.abs(dy);
+				minecraft.mouseHandler.onMove(handle, virtualX, virtualY, dx, dy);
+			}
 		}
 		double scroll = IN.totalScroll - lastScroll;
 		lastScroll = IN.totalScroll;

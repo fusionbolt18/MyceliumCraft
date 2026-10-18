@@ -29,7 +29,7 @@ a block without locks.
 - **Reader:** read `seq`. If it's odd, try again. Read the fields, then read `seq` again. If it
   changed, try again.
 
-## Layout (version 12)
+## Layout (version 13)
 
 ### Header @ 0x000
 
@@ -67,7 +67,7 @@ Positions are in **Minecraft coordinates**: blocks, Y up, +Z is south.
 | Off | Type | Field |
 |---|---|---|
 | 0x00 | u32 | seq |
-| 0x04 | u32 | flags: bit0 `IN_WORLD`, bit1 `SCREEN_OPEN`, bit2 `ON_GROUND`, bit3 `SNEAKING`, bit4 `SPRINTING` |
+| 0x04 | u32 | flags: bit0 `IN_WORLD`, bit1 `SCREEN_OPEN`, bit2 `ON_GROUND`, bit3 `SNEAKING`, bit4 `SPRINTING`, bit5 `PAUSED` (Minecraft's pause menu has paused the game; Mycelium freezes too; since version 13) |
 | 0x08 | f64 | feet X (interpolated to the rendered frame) |
 | 0x10 | f64 | feet Y |
 | 0x18 | f64 | feet Z |
@@ -101,7 +101,7 @@ lost if a read is missed.
 | Off | Type | Field |
 |---|---|---|
 | 0x00 | u32 | seq |
-| 0x04 | u32 | flags: bit0 `ACTIVE`, meaning Minecraft should play from this input (Mycelium is focused, and it's normal play) |
+| 0x04 | u32 | flags: bit0 `ACTIVE`, meaning Minecraft should play from this input (Mycelium is focused, and it's normal play); bit1 `CURSOR`, a Minecraft screen is open and the cursor position below is valid (since version 13) |
 | 0x08 | u32 | reason when not active: 0 active, 1 Mycelium window not focused, 2 Mycelium has the controls (its menu, pause or cutscene), 3 Minecraft isn't driving the spore, 4 bridge turned off |
 | 0x0C | u32 | mouse buttons held: bit n = SDL button n (1 left, 2 middle, 3 right, 4 back, 5 forward) |
 | 0x10 | u8[64] | keys held: bit n = SDL scancode n (USB HID usage), 0..511 |
@@ -111,9 +111,11 @@ lost if a read is missed.
 | 0x68 | u32 | text count: characters typed so far (total) |
 | 0x6C | u32 | pad |
 | 0x70 | u32[64] | text ring: character n (Unicode) at index n % 64 |
+| 0x170 | f64 | cursor X: 0..1 from the left of the overlay picture (since version 13) |
+| 0x178 | f64 | cursor Y: 0..1 from the top |
 
-Escape and P are never sent: they stay Mycelium's pause keys. Neither are the keys and buttons
-bound to Mycelium actions (Bindings block).
+P is never sent: it's Mycelium's pause and menu. Neither are the keys and buttons bound to
+Mycelium actions (Bindings block). Escape is sent (since version 13): it's Minecraft's pause menu.
 
 ### Bindings @ 0x500 (Minecraft → Mycelium, seqlock). Since version 9
 

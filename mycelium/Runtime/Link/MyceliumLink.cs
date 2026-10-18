@@ -170,7 +170,7 @@ namespace MyceliumCraft.Link
         }
 
         /// <summary>Seqlock write of the input bridge block (see MycInput in protocol/PROTOCOL.md).</summary>
-        public void WriteInput(uint flags, uint reason, uint buttons, byte[] keys, double totalDX, double totalDY, double totalScroll, uint textCount, uint[] textRing)
+        public void WriteInput(uint flags, uint reason, uint buttons, byte[] keys, double totalDX, double totalDY, double totalScroll, uint textCount, uint[] textRing, double cursorX, double cursorY)
         {
             int b = Proto.OffInput;
             uint seq = ReadU32(view, b + Proto.InSeq);
@@ -185,6 +185,8 @@ namespace MyceliumCraft.Link
             WriteF64(view, b + Proto.InTotalScroll, totalScroll);
             WriteU32(view, b + Proto.InTextCount, textCount);
             for (int i = 0; i < Proto.InTextRing; i++) WriteU32(view, b + Proto.InText + 4 * i, textRing[i]);
+            WriteF64(view, b + Proto.InCursorX, cursorX);
+            WriteF64(view, b + Proto.InCursorY, cursorY);
             Thread.MemoryBarrier();
             WriteU32(view, b + Proto.InSeq, seq + 2);
         }

@@ -499,8 +499,8 @@ Minecraft's window.
 **Mycelium side (`InputBridge.cs`):**
 - **Keys:** each frame it reads every key through Unity's Input System and maps it to an **SDL
   scancode**, the USB HID usage number that Minecraft 26.x's SDL input uses. Unity `Key` values
-  are physical positions, so a key means the same physical key in both games. **Escape and P are
-  never sent**: they stay Mycelium's pause keys.
+  are physical positions, so a key means the same physical key in both games. **P is never sent**:
+  it's Mycelium's pause and menu. Escape is sent: it's Minecraft's pause menu (since 2026-10-18).
 - **Mouse:** buttons (SDL 1 left, 2 middle, 3 right, 4/5 side), running totals of movement (screen
   pixels, Y down) and the wheel (notches).
 - **Text:** a 64-character ring of typed text, for Minecraft chat.
@@ -559,7 +559,8 @@ Until Minecraft sends binds (or with an older mod), Mycelium uses the same defau
 | Q | Minecraft | drop item | skill 1 (unbound) |
 | Ctrl | Minecraft | sprint | navigate camera (unbound) |
 | Tab | **Mycelium** | show stats (hold) | reset camera (unbound); Minecraft's player list unbound |
-| Esc, P | **Mycelium** | pause | |
+| Esc | Minecraft | pause menu, closes Minecraft's screens; Mycelium freezes meanwhile | Mycelium's pause (its Escape binding is switched off) |
+| P | **Mycelium** | pause and Mycelium's menu; Minecraft's world freezes meanwhile | |
 | WASD, 1–9, F5, … | Minecraft | as in Minecraft | WASD still read by Mycelium, overridden by the driver |
 | V | **Mycelium** | subspecies skill | (not in your list; unchanged) |
 | Middle click | **Mycelium** | salvage | (not in your list; unchanged). Minecraft's pick block no longer gets it |
@@ -584,8 +585,62 @@ logging which Mycelium actions register as pressed:
 **Consequence:** Mycelium's own attack is unbound, so until combat (Phase 3) **nothing damages
 Mycelium's enemies**. Minecraft's attack has no Mycelium target yet.
 
-**Not yet:** Minecraft's screens show in Mycelium (§5.4), but its cursor can't be used from
-Mycelium yet, and Escape doesn't reach Minecraft (to close chat).
+**Pausing** (your choice, 2026-10-18): Escape pauses with Minecraft's menu, P with Mycelium's.
+Whichever game shows its menu, the other one waits:
+- **Minecraft's pause menu:** Minecraft reports `PAUSED` (`Minecraft.isPaused()`). Mycelium sets
+  its game speed to 0 (`Time.timeScale`, `MinecraftDriver.FreezeForMinecraftPause`), so enemies,
+  physics and animations stop, without Mycelium's own menu. It's set again every frame in case
+  Mycelium changes it meanwhile (its hit-stop does), and put back afterwards.
+  - **Blur:** it also looks like Mycelium's own pause (`McPauseBlur`). A global Volume of ours uses
+    Mycelium's "BlurVolume Profile" (depth-of-field focused 0.1 units away, plus a colour
+    adjustment) with the settings of the Volume in Mycelium's PauseMenu prefab (global, priority 0,
+    weight 1). Minecraft's overlay is drawn after it, so Minecraft's menu stays sharp. Checked with
+    `-mcBlurCheck` (average difference between neighbouring pixels): 8–10 before, 2.1–2.5 during,
+    about 10 after.
+  - **Mycelium's UI blurs too** (your request), separately from the world:
+    - **Why separately:** the world's blur is a depth-of-field effect. UI has no depth, so routed
+      through it, it took the blur of whatever was behind it and vanished in front of the bright sky.
+    - **How:** while blurred, Mycelium's root overlay canvases (9 in the hub; ours excluded) are
+      drawn by a hidden camera of ours (far below the world, drawn by hand, HDR off) into a
+      transparent picture. That's halved and given a Gaussian blur (`Resources/MyceliumCraftBlur.shader`,
+      9 taps, across then down, twice: about 6 screen pixels), and shown with premultiplied alpha
+      just under the Minecraft overlay. Everything is put back afterwards.
+    - **Shrink-and-stretch looked pixelated** (your report): stretching a 1/4 picture back up shows
+      steps. Roughness (`-mcBlurCheck`, how sharply brightness bends between neighbouring pixels):
+      blurred HUD 0.38, blurred world 0.55, sharp HUD 5.9.
+    - **Mycelium's render effects** (SSAO, Fog, RenderIgnoreFogLayer) are switched off just while
+      that camera draws. Mycelium has a single renderer, and its fog painted over the picture's
+      transparent background (the picture was 100% solid).
+    - **Checked:** the UI picture is 5% non-transparent. Looking up, with sky behind the health bar,
+      the corner is (155,186,169) with the blurred UI and (217,236,239) without, so it shows clearly
+      over the sky.
+- **Mycelium's pause menu:** Mycelium reports `PAUSED`. Minecraft freezes its world's ticking on the
+  built-in server (`tickRateManager().setFrozen`, what `/tick freeze` does), and undoes only a
+  freeze it made itself.
+- **Key ownership:** Mycelium's Pause action keeps P and loses Escape while Minecraft drives the
+  spore. While Mycelium's own menu is open, the bridge is off, so Escape there does whatever
+  Mycelium does with it (not Minecraft's menu).
+
+**While a Minecraft screen is open** (chat, inventory, pause menu):
+- **Mycelium's controls are off:** every action map of Mycelium's input assets that's on gets
+  switched off, again every frame, and the same maps come back on when the screen closes
+  (`KeyOwnership.Silence`). Before this, typing "r", "v" or "p" in chat triggered Mycelium's
+  interact, skill and pause.
+- **Every key goes to Minecraft,** P and the Mycelium-bound keys included (chat needs Tab, for
+  example).
+
+**Cursor for Minecraft's screens:**
+- **Mycelium:** while a Minecraft screen is open (inventory, chat, pause menu, crafting), Windows'
+  own mouse pointer is unlocked and shown (your choice, 2026-10-18), so it can also leave the window.
+  - It starts in the middle (Mycelium had it locked there), which is where Minecraft puts its
+    cursor when a screen opens.
+  - When the screen closes, the pointer goes back to how Mycelium had it. Mycelium locks and hides it
+    once, when the player is created (`PlayerController`), and nothing re-locks it every frame.
+  - The unlock is set again every frame anyway, in case.
+- **Sent as:** a fraction of the picture (MycInput `CURSOR`, 0x170/0x178).
+- **Minecraft:** turns it into the same fraction of its window and gives it to its mouse handler as
+  an absolute position, as a real mouse over its window would. Clicks, dragging items and the wheel
+  then work as in Minecraft.
 
 ## 5.4 Overlay: Minecraft's hand, HUD and screens on top of Mycelium (SkyCraft's overlay)
 

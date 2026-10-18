@@ -21,6 +21,7 @@ public final class MyceliumCraftClient implements ClientModInitializer {
 	private static int lastTeleportSeq;
 	private static int teleportAck;
 	private static double appliedScale = Double.NaN; // last scale we asked the server for, in this level
+	private static boolean frozeWorld; // we froze the world's ticking (Mycelium paused)
 	private static final MycLink.MycState MYC = new MycLink.MycState();
 	private static final MycLink.Tick TICK = new MycLink.Tick();
 	private static long qpcFreq;
@@ -83,6 +84,9 @@ public final class MyceliumCraftClient implements ClientModInitializer {
 			teleportAck = MYC.teleportSeq;
 		}
 
+		// Mycelium paused (P, its menu): freeze Minecraft's world too, the way /tick freeze does.
+		freezeWorld(minecraft, haveMyc && MycLink.myceliumAlive() && MYC.inLevel() && (MYC.flags & Proto.MYC_PAUSED) != 0);
+
 		// Body size: as tall as the spore while Mycelium has one in a level; normal size otherwise.
 		boolean sporeActive = haveMyc && MycLink.myceliumAlive() && MYC.inLevel() && MYC.playerHeight > 0;
 		double wantedScale = sporeActive ? Mth.clamp(MYC.playerHeight / 1.8, 0.0625, 16.0) : 1.0;
@@ -96,6 +100,9 @@ public final class MyceliumCraftClient implements ClientModInitializer {
 		int flags = Proto.MC_IN_WORLD;
 		if (minecraft.gui.screen() != null) {
 			flags |= Proto.MC_SCREEN_OPEN;
+		}
+		if (minecraft.isPaused()) {
+			flags |= Proto.MC_PAUSED; // Escape's pause menu: Mycelium freezes too
 		}
 		if (player.onGround()) {
 			flags |= Proto.MC_ON_GROUND;
@@ -127,6 +134,23 @@ public final class MyceliumCraftClient implements ClientModInitializer {
 		// Third person: your Minecraft body, for Mycelium to draw instead of the spore.
 		MycPlayerModel.frame(minecraft, MycOverlay.active(), partial);
 		logOncePerSecond(feet, player.getYRot(), flags);
+	}
+
+	/**
+	 * Freeze or unfreeze the integrated server's world ticking (what /tick freeze does). Only undoes
+	 * a freeze it made itself.
+	 */
+	private static void freezeWorld(Minecraft minecraft, boolean freeze) {
+		if (freeze == frozeWorld) {
+			return;
+		}
+		var server = minecraft.getSingleplayerServer();
+		if (server == null) {
+			return;
+		}
+		frozeWorld = freeze;
+		server.execute(() -> server.tickRateManager().setFrozen(freeze));
+		MycLink.LOG.info("MyceliumCraft: {}", freeze ? "Mycelium is paused: Minecraft's world frozen" : "Mycelium unpaused: Minecraft's world runs again");
 	}
 
 	/** Move the player on the client and on the integrated server (as SkyCraft does), so the server doesn't pull it back. */
