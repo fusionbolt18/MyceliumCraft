@@ -38,6 +38,7 @@ public final class MyceliumCraftClient implements ClientModInitializer {
 	@Override
 	public void onInitializeClient() {
 		MycLink.LOG.info("MyceliumCraft: loaded (protocol v{}, mapping {})", Proto.VERSION, Proto.MAPPING_NAME);
+		MyceliumKeys.init();
 	}
 
 	/** Called by MinecraftMixin once per rendered frame. */
@@ -47,6 +48,7 @@ public final class MyceliumCraftClient implements ClientModInitializer {
 			return;
 		}
 		frame++;
+		MyceliumKeys.publish();
 
 		GroundGrid before = MycCollision.grid();
 		GroundGrid grid = MycLink.readGround(before);

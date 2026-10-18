@@ -519,8 +519,25 @@ Minecraft's window.
     Minecraft dropping from 120 to 30 fps for stretches while bridged.
 - **Stopping:** when it stops being active, every held key and button is released.
 
-**Which game owns which key** (your choice, 2026-10-17; `KeyOwnership.cs`, while Minecraft drives
-the spore; `keyOwnership=0` turns it off):
+**Which game owns which key** (`KeyOwnership.cs`, while Minecraft drives the spore;
+`keyOwnership=0` turns it off). **The keys are set in Minecraft's own menu** (since 2026-10-17):
+Options → Controls → Key Binds has a "Mycelium" section, registered by `MyceliumKeys.java` as
+ordinary Minecraft key binds. Minecraft does the editing, saving (its `options.txt`), the red
+conflict marks and "Reset"; the binds do nothing in Minecraft itself. Every frame Minecraft sends
+what they're bound to (Bindings block, protocol v9). Mycelium then:
+- sets each action's first keyboard/mouse binding to that key, and switches its other
+  keyboard/mouse bindings off (gamepad bindings stay);
+- re-does this within a frame if you change a bind while playing;
+- keeps those keys and buttons out of the input bridge. **A key bound to a Mycelium action
+  belongs to Mycelium only**, even if a Minecraft bind uses it too (Minecraft shows that clash in
+  red). Everything else goes to Minecraft.
+
+Key codes: Minecraft 26.3 stores keyboard binds as SDL scancodes (its W is 26, E is 8, Left Ctrl
+224) and mouse binds as SDL buttons (attack 1, pick block 2, use 3), the same numbers the bridge
+sends, so no translation is needed.
+
+Until Minecraft sends binds (or with an older mod), Mycelium uses the same defaults. The defaults
+(your choice of 2026-10-17):
 
 | Key | Goes to | Does | Mycelium's old action there |
 |---|---|---|---|
@@ -535,7 +552,9 @@ the spore; `keyOwnership=0` turns it off):
 | Tab | **Mycelium** | show stats (hold) | reset camera (unbound); Minecraft's player list unbound |
 | Esc, P | **Mycelium** | pause | |
 | WASD, 1–9, F5, … | Minecraft | as in Minecraft | WASD still read by Mycelium, overridden by the driver |
-| V, middle click | both | Mycelium: subspecies skill, salvage | (not in your list; unchanged) |
+| V | **Mycelium** | subspecies skill | (not in your list; unchanged) |
+| Middle click | **Mycelium** | salvage | (not in your list; unchanged). Minecraft's pick block no longer gets it |
+| (unbound) | | Mycelium's attack, curio, dodge roll, skill 1, skill 2, navigate camera, reset camera | bind them in Minecraft's menu |
 
 **How:**
 - **Mycelium:** Unity Input System *binding overrides* on its "Player" actions. About 20
@@ -545,7 +564,8 @@ the spore; `keyOwnership=0` turns it off):
 - **Cheat panel:** Mycelium's developer cheat panel (`TestingManager`, in `ManagerBundle`) reads
   the digits, K, L, Z, X and Minus directly, and digits are Minecraft's hotbar. It's switched off
   while Minecraft drives.
-- **Minecraft:** the bridge doesn't send R and Tab.
+- **Minecraft:** the bridge doesn't send the keys bound to Mycelium actions (R, Tab, V and middle
+  click by default).
 
 **Checked** by holding E, Q, Space, Shift, Ctrl, Tab and R in Mycelium (`-mcHoldKeys`), and
 logging which Mycelium actions register as pressed:

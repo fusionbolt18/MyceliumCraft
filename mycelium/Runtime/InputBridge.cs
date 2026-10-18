@@ -1,5 +1,6 @@
 using System;
 using System.Collections.Generic;
+using System.Linq;
 using MyceliumCraft.Link;
 using UnityEngine;
 using UnityEngine.InputSystem;
@@ -14,14 +15,19 @@ namespace MyceliumCraft
     /// same physical key in both games.
     ///
     /// Mycelium still sees all its own keys too (it has the focus); KeyOwnership decides which of
-    /// them its actions react to. Escape, P (Mycelium's pause), R (interact) and Tab (show stats)
-    /// are never sent: they're Mycelium's. Whether Minecraft should act on the rest is decided by the
-    /// driver (Active), e.g. not while a Mycelium menu has the controls.
+    /// them its actions react to. Never sent: Escape and P (Mycelium's pause), and the keys and
+    /// buttons bound to Mycelium actions in Minecraft's Controls menu (KeyOwnership.OwnedScancodes,
+    /// OwnedButtons). Whether Minecraft should act on the rest is decided by the driver (Active),
+    /// e.g. not while a Mycelium menu has the controls.
     /// </summary>
     sealed class InputBridge
     {
-        // Unity physical key -> SDL scancode (USB HID usage page 0x07).
+        // Unity physical key -> SDL scancode (USB HID usage page 0x07), and back.
         static readonly Dictionary<Key, int> Scancodes = BuildScancodes();
+        static readonly Dictionary<int, Key> KeysByScancode = Scancodes.ToDictionary(p => p.Value, p => p.Key);
+
+        /// <summary>The Unity key for an SDL scancode (what Minecraft's key binds store).</summary>
+        public static bool KeyOf(int scancode, out Key key) => KeysByScancode.TryGetValue(scancode, out key);
 
         static Dictionary<Key, int> BuildScancodes()
         {
@@ -29,7 +35,7 @@ namespace MyceliumCraft
             for (int i = 0; i < 26; i++) m[Key.A + i] = 4 + i;                 // A..Z
             for (int i = 1; i <= 9; i++) m[Key.Digit1 + (i - 1)] = 29 + i;     // 1..9 -> 30..38
             m[Key.Digit0] = 39;
-            m[Key.Enter] = 40; m[Key.Backspace] = 42; m[Key.Tab] = 43; m[Key.Space] = 44;
+            m[Key.Enter] = 40; m[Key.Escape] = 41; m[Key.Backspace] = 42; m[Key.Tab] = 43; m[Key.Space] = 44;
             m[Key.Minus] = 45; m[Key.Equals] = 46; m[Key.LeftBracket] = 47; m[Key.RightBracket] = 48;
             m[Key.Backslash] = 49; m[Key.Semicolon] = 51; m[Key.Quote] = 52; m[Key.Backquote] = 53;
             m[Key.Comma] = 54; m[Key.Period] = 55; m[Key.Slash] = 56; m[Key.CapsLock] = 57;
@@ -43,12 +49,6 @@ namespace MyceliumCraft
             m[Key.Numpad0] = 98; m[Key.NumpadPeriod] = 99; m[Key.ContextMenu] = 101; m[Key.NumpadEquals] = 103;
             m[Key.LeftCtrl] = 224; m[Key.LeftShift] = 225; m[Key.LeftAlt] = 226; m[Key.LeftMeta] = 227;
             m[Key.RightCtrl] = 228; m[Key.RightShift] = 229; m[Key.RightAlt] = 230; m[Key.RightMeta] = 231;
-            // Never sent: Mycelium's pause keys, and the keys you gave to Mycelium (KeyOwnership):
-            // R interact, Tab show stats (Tab would also open Minecraft's player list, unbound).
-            m.Remove(Key.Escape);
-            m.Remove(Key.P);
-            m.Remove(Key.R);
-            m.Remove(Key.Tab);
             return m;
         }
 
@@ -68,7 +68,8 @@ namespace MyceliumCraft
         public double TotalDY => totalDY;
 
         /// <summary>Call every frame: read the devices and publish. active: Minecraft should play from it.</summary>
-        public void Update(MyceliumLink link, bool active, uint reason)
+        /// owned: keys and buttons that belong to Mycelium actions (not sent).
+        public void Update(MyceliumLink link, bool active, uint reason, HashSet<int> ownedScancodes, uint ownedButtons)
         {
             Keyboard kb = Keyboard.current;
             Mouse mouse = Mouse.current;
@@ -85,6 +86,8 @@ namespace MyceliumCraft
             {
                 foreach (var pair in Scancodes)
                 {
+                    // Escape and P: always Mycelium's pause keys. Owned: bound to a Mycelium action.
+                    if (pair.Key == Key.Escape || pair.Key == Key.P || ownedScancodes.Contains(pair.Value)) continue;
                     if (!kb[pair.Key].isPressed) continue;
                     keys[pair.Value >> 3] |= (byte)(1 << (pair.Value & 7));
                     keysDown++;
@@ -99,6 +102,7 @@ namespace MyceliumCraft
                 if (mouse.rightButton.isPressed) buttons |= 1u << 3;
                 if (mouse.backButton.isPressed) buttons |= 1u << 4;
                 if (mouse.forwardButton.isPressed) buttons |= 1u << 5;
+                buttons &= ~ownedButtons;
                 Vector2 d = mouse.delta.ReadValue();
                 totalDX += d.x;
                 totalDY -= d.y; // Unity: up is +; Minecraft (screen): down is +

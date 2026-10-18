@@ -1,45 +1,68 @@
 using System;
 using System.Collections.Generic;
 using System.Linq;
+using MyceliumCraft.Link;
 using UnityEngine;
 using UnityEngine.InputSystem;
 
 namespace MyceliumCraft
 {
     /// <summary>
-    /// Which game owns which key while Minecraft drives the spore (your choice, 2026-10-17):
+    /// Which game owns which key while Minecraft drives the spore.
     ///
-    ///   Minecraft: left click (attack), right click (use), Shift (sneak), Space (jump), E (inventory),
-    ///              Q (drop), Ctrl (sprint), and everything else the bridge sends.
-    ///   Mycelium:  R (interact), Tab (show stats), plus Escape/P (pause), which the bridge never sends.
-    ///   Unbound:   dodge roll, skill 1, skill 2, navigate camera, reset camera, Minecraft's player list.
+    /// Mycelium's actions are key binds in Minecraft's Options -> Controls -> Key Binds, section
+    /// "Mycelium" (MyceliumKeys.java). Minecraft sends what each is bound to (Bindings block in
+    /// protocol/PROTOCOL.md). Here those become binding overrides on Mycelium's "Player" input
+    /// actions (Unity Input System): each action's first keyboard/mouse binding is set to the chosen
+    /// key, its other keyboard/mouse bindings are switched off, and gamepad bindings stay. They're
+    /// applied to every copy of Mycelium's input asset (about 20 scripts make their own), found
+    /// through InputSystem.ListEnabledActions(), and removed again when Minecraft stops driving.
+    /// Mycelium's code is unchanged.
     ///
-    /// Mycelium side: binding overrides on its "Player" input actions (Unity Input System), applied
-    /// to every copy of its input asset (about 20 scripts make their own), found through
-    /// InputSystem.ListEnabledActions(), and removed again when Minecraft stops driving. Mycelium's
-    /// code is unchanged. Its developer cheat panel (TestingManager reads digits, K, L, Z, X, Minus
-    /// directly; digits are Minecraft's hotbar) is switched off while Minecraft drives.
-    /// Minecraft side: InputBridge doesn't send R and Tab.
+    /// A key bound to a Mycelium action belongs to Mycelium: the input bridge doesn't send it to
+    /// Minecraft (OwnedScancodes, OwnedButtons). Everything else goes to Minecraft. Escape and P
+    /// always stay Mycelium's pause keys. Until Minecraft sends bindings, Defaults are used (your
+    /// choice of 2026-10-17: R interact, Tab show stats).
+    ///
+    /// Mycelium's developer cheat panel (TestingManager reads digits, K, L, Z, X, Minus directly;
+    /// digits are Minecraft's hotbar) is switched off while Minecraft drives.
     /// </summary>
     sealed class KeyOwnership
     {
-        // (action, binding path in Mycelium's asset, new path; "" = unbound)
-        static readonly (string action, string from, string to)[] Rules =
+        // Action id (the order in MyceliumKeys.java) -> Mycelium's action names. Show stats drives
+        // both ShowStats (press) and HideStats (release).
+        static readonly (string id, string[] actions)[] Actions =
         {
-            ("Attack", "<Mouse>/leftButton", ""),          // left click is Minecraft's attack
-            ("Curio", "<Mouse>/leftButton", ""),           // Mycelium's curio (wave) also used left click
-            ("Interact", "<Mouse>/rightButton", "<Keyboard>/r"), // right click is Minecraft's use; interact moves to R
-            ("Dodge", "<Keyboard>/leftShift", ""),         // Shift is Minecraft's sneak
-            ("Stat_Skill_1", "<Keyboard>/q", ""),          // Q is Minecraft's drop
-            ("Stat_Skill_2", "<Keyboard>/e", ""),          // E is Minecraft's inventory
-            ("NavigateCamera", "<Keyboard>/leftCtrl", ""), // Ctrl is Minecraft's sprint
-            ("ResetCamera", "<Keyboard>/tab", ""),         // Tab moves to show stats
-            ("ShowStats", "<Keyboard>/space", "<Keyboard>/tab"), // Space is Minecraft's jump; stats move to Tab
-            ("HideStats", "<Keyboard>/space", "<Keyboard>/tab"),
+            ("interact", new[] { "Interact" }),
+            ("show_stats", new[] { "ShowStats", "HideStats" }),
+            ("subspecies_skill", new[] { "Subspecies_Skill" }),
+            ("salvage", new[] { "Salvage" }),
+            ("attack", new[] { "Attack" }),
+            ("curio", new[] { "Curio" }),
+            ("dodge", new[] { "Dodge" }),
+            ("skill_1", new[] { "Stat_Skill_1" }),
+            ("skill_2", new[] { "Stat_Skill_2" }),
+            ("navigate_camera", new[] { "NavigateCamera" }),
+            ("reset_camera", new[] { "ResetCamera" }),
         };
+
+        // Same as the defaults in MyceliumKeys.java: R, Tab, V, middle mouse, the rest unbound.
+        static readonly (uint kind, uint code)[] Defaults =
+        {
+            (Proto.BindKey, 21), (Proto.BindKey, 43), (Proto.BindKey, 25), (Proto.BindMouse, 2),
+            (Proto.BindNone, 0), (Proto.BindNone, 0), (Proto.BindNone, 0), (Proto.BindNone, 0),
+            (Proto.BindNone, 0), (Proto.BindNone, 0), (Proto.BindNone, 0),
+        };
+
+        static readonly string[] MouseNames = { null, "leftButton", "middleButton", "rightButton", "backButton", "forwardButton" };
 
         readonly HashSet<InputActionAsset> done = new HashSet<InputActionAsset>();
         readonly List<(InputAction action, int index)> applied = new List<(InputAction, int)>();
+        readonly string[] paths = new string[Actions.Length];   // Unity binding path per action id; "" = unbound
+        readonly HashSet<int> ownedScancodes = new HashSet<int>();
+        uint ownedButtons;
+        string signature;
+        bool fromMinecraft;
         Behaviour cheats;
         bool cheatsWereEnabled;
         bool active;
@@ -47,7 +70,65 @@ namespace MyceliumCraft
         string lastPressed = "";
 
         public bool Active => active;
+        public bool HasBindings => signature != null;
         public int Assets => done.Count;
+        /// <summary>SDL scancodes bound to a Mycelium action: not sent to Minecraft.</summary>
+        public HashSet<int> OwnedScancodes => ownedScancodes;
+        /// <summary>Mouse buttons (bit n = SDL button n) bound to a Mycelium action: not sent to Minecraft.</summary>
+        public uint OwnedButtons => ownedButtons;
+
+        public KeyOwnership()
+        {
+            SetBindings(0, null, null);
+        }
+
+        /// <summary>
+        /// Call every frame with what Minecraft sent (count 0: nothing yet, use the defaults).
+        /// Re-applies the overrides if anything changed.
+        /// </summary>
+        public void SetBindings(int count, uint[] kinds, uint[] codes)
+        {
+            bool mc = count > 0;
+            Keyboard kb = Keyboard.current;
+            if (kb == null) return; // no keyboard yet: can't name keys; tried again next frame
+            var newPaths = new string[Actions.Length];
+            var newScancodes = new HashSet<int>();
+            uint newButtons = 0;
+            for (int i = 0; i < Actions.Length; i++)
+            {
+                uint kind = mc ? (i < count ? kinds[i] : Proto.BindNone) : Defaults[i].kind;
+                uint code = mc ? (i < count ? codes[i] : 0) : Defaults[i].code;
+                string path = "";
+                if (kind == Proto.BindKey && InputBridge.KeyOf((int)code, out Key key))
+                {
+                    path = "<Keyboard>/" + kb[key].name;
+                    newScancodes.Add((int)code);
+                }
+                else if (kind == Proto.BindMouse && code < MouseNames.Length && MouseNames[code] != null)
+                {
+                    path = "<Mouse>/" + MouseNames[code];
+                    newButtons |= 1u << (int)code;
+                }
+                newPaths[i] = path;
+            }
+            string sig = string.Join("|", newPaths);
+            if (sig == signature && mc == fromMinecraft) return;
+            signature = sig;
+            fromMinecraft = mc;
+            Array.Copy(newPaths, paths, paths.Length);
+            ownedScancodes.Clear();
+            ownedScancodes.UnionWith(newScancodes);
+            ownedButtons = newButtons;
+            McLog.Info($"keys: Mycelium key binds {(mc ? "from Minecraft's Controls menu" : "(defaults; Minecraft hasn't sent any)")}: " +
+                       string.Join(", ", Actions.Select((a, i) => $"{a.id}={(paths[i] == "" ? "unbound" : paths[i])}")) +
+                       $". Not sent to Minecraft: scancodes [{string.Join(",", ownedScancodes.OrderBy(c => c))}], mouse buttons mask {ownedButtons}");
+            if (active)
+            {
+                // Bindings changed while driving: take the old overrides off and apply the new ones.
+                RemoveOverrides();
+                nextScan = 0f;
+            }
+        }
 
         /// <summary>Call every frame. driving: Minecraft drives the spore (and the bridge rules apply).</summary>
         public void Update(bool driving)
@@ -76,19 +157,28 @@ namespace MyceliumCraft
                 if (map == null || map.FindAction("Dodge") == null) continue; // not Mycelium's player asset
                 done.Add(asset);
                 int changed = 0;
-                foreach (var rule in Rules)
+                for (int id = 0; id < Actions.Length; id++)
                 {
-                    InputAction action = map.FindAction(rule.action);
-                    if (action == null) continue;
-                    for (int i = 0; i < action.bindings.Count; i++)
+                    foreach (string name in Actions[id].actions)
                     {
-                        if (action.bindings[i].path != rule.from) continue;
-                        action.ApplyBindingOverride(i, rule.to);
-                        applied.Add((action, i));
-                        changed++;
+                        InputAction action = map.FindAction(name);
+                        if (action == null) continue;
+                        bool first = true;
+                        for (int i = 0; i < action.bindings.Count; i++)
+                        {
+                            InputBinding binding = action.bindings[i];
+                            if (binding.isComposite || binding.isPartOfComposite) continue;
+                            string from = binding.path ?? "";
+                            if (!from.StartsWith("<Keyboard>") && !from.StartsWith("<Mouse>")) continue; // gamepad etc. stay
+                            string to = first ? paths[id] : "";
+                            first = false;
+                            action.ApplyBindingOverride(i, to);
+                            applied.Add((action, i));
+                            changed++;
+                        }
                     }
                 }
-                McLog.Info($"keys: Mycelium input asset #{done.Count} ({asset.name}): {changed} bindings changed. Now: {Describe(map)}");
+                McLog.Info($"keys: Mycelium input asset #{done.Count} ({asset.name}): {changed} bindings set. Now: {Describe(map)}");
             }
         }
 
@@ -110,13 +200,15 @@ namespace MyceliumCraft
         static string Describe(InputActionMap map)
         {
             var parts = new List<string>();
-            foreach (var rule in Rules.Select(r => r.action).Distinct())
+            foreach (string name in Actions.SelectMany(a => a.actions))
             {
-                InputAction a = map.FindAction(rule);
+                InputAction a = map.FindAction(name);
                 if (a == null) continue;
-                var keys = a.bindings.Where(b => !b.isComposite && !b.isPartOfComposite && (b.effectivePath ?? "").StartsWith("<Keyboard>") || (b.effectivePath ?? "").StartsWith("<Mouse>"))
-                                     .Select(b => b.effectivePath).ToList();
-                parts.Add($"{rule}=[{string.Join(" ", keys)}]");
+                var keys = a.bindings.Where(b => !b.isComposite && !b.isPartOfComposite)
+                                     .Select(b => b.effectivePath ?? "")
+                                     .Where(p => p.StartsWith("<Keyboard>") || p.StartsWith("<Mouse>"))
+                                     .ToList();
+                parts.Add($"{name}=[{string.Join(" ", keys)}]");
             }
             return string.Join(", ", parts);
         }
@@ -131,7 +223,7 @@ namespace MyceliumCraft
             McLog.Info($"keys: Mycelium's developer cheat keys (TestingManager) off while Minecraft drives (was {(cheatsWereEnabled ? "on" : "off")})");
         }
 
-        void Release()
+        int RemoveOverrides()
         {
             int restored = 0;
             foreach (var (action, index) in applied)
@@ -141,6 +233,12 @@ namespace MyceliumCraft
             }
             applied.Clear();
             done.Clear();
+            return restored;
+        }
+
+        void Release()
+        {
+            int restored = RemoveOverrides();
             if (cheats != null) cheats.enabled = cheatsWereEnabled;
             cheats = null;
             active = false;

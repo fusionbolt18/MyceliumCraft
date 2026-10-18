@@ -58,9 +58,16 @@ Single-player and offline only.
 - **Mycelium menus keep the controls** (e.g. the hub's Explore/Cancel): the spore is no longer driven
   while a Mycelium menu, pause or cutscene has the controls, and Minecraft gets no input. Tested with
   Mycelium's own `DisableController()`/`EnableController()`, not yet at the real prompt.
-- Both games react to shared keys (Shift, Space, E, Q, clicks, Ctrl, Tab); see DESIGN §5.3.
-  Minecraft's screens (inventory, chat) still open in Minecraft's own window.
-- Spore attacks, dodges and skills still use Mycelium's own keys.
+- **Mycelium's keys are set in Minecraft's menu: not tested in real Minecraft.** Options →
+  Controls → Key Binds has a "Mycelium" section (Interact, Show Stats, Subspecies Skill, Salvage,
+  Attack, Curio, Dodge Roll, Skill 1, Skill 2, Navigate Camera, Reset Camera). A key bound there
+  belongs to Mycelium and isn't sent to Minecraft; every other key goes to Minecraft. Defaults:
+  R interact, Tab show stats, V subspecies skill, middle click salvage, the rest unbound. Tested
+  with a fake Minecraft: Mycelium followed the binds it sent, and a change during play was picked
+  up within a frame. See DESIGN §5.3.
+- Minecraft's screens (inventory, chat) still open in Minecraft's own window.
+- Nothing damages Mycelium's enemies yet: its own attack is unbound by default, and Minecraft's
+  attack has no Mycelium target.
 - Steam achievements probably don't work in the private build (not tested).
 
 ## Requirements

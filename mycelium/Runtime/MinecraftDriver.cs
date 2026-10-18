@@ -56,6 +56,8 @@ namespace MyceliumCraft
         readonly CameraSync cameraSync = new CameraSync();
         readonly InputBridge input = new InputBridge();
         readonly KeyOwnership keys = new KeyOwnership();
+        readonly uint[] bindKinds = new uint[Proto.BMax];
+        readonly uint[] bindCodes = new uint[Proto.BMax];
         bool heldByMycelium;   // Mycelium has the controls (menu, pause, cutscene): don't drive the spore
         bool checkAfterHold;   // just got the controls back: resync if Mycelium moved the spore
         string controlsWhy = "";
@@ -279,7 +281,14 @@ namespace MyceliumCraft
                         : !(alive && phase == Phase.Driving) ? Proto.ReasonNotDriving
                         : MyceliumHasControls(out _) ? Proto.ReasonMyceliumControls
                         : Proto.ReasonActive;
-            input.Update(link, reason == Proto.ReasonActive, reason);
+            // Mycelium's key binds, as set in Minecraft's Controls menu (kept if Minecraft goes away).
+            if (alive)
+            {
+                int bindCount = link.TryReadBindings(bindKinds, bindCodes);
+                if (bindCount >= 0) keys.SetBindings(bindCount, bindKinds, bindCodes);
+            }
+            else if (!keys.HasBindings) keys.SetBindings(0, null, null); // defaults until Minecraft sends some
+            input.Update(link, reason == Proto.ReasonActive, reason, keys.OwnedScancodes, keys.OwnedButtons);
             // Which game owns which key, while Minecraft drives the spore.
             keys.Update(alive && phase == Phase.Driving);
             if (shakeTest && look && Time.realtimeSinceStartup >= nextShakeTime) FireTestShake();

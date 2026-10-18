@@ -8,7 +8,7 @@ namespace MyceliumCraft.Link
         public const string MappingName = "Local\\MyceliumCraft_v1";
         public const int MappingBytes = 0x100000;
         public const uint Magic = 0x4343594D; // "MYCC"
-        public const uint Version = 8;
+        public const uint Version = 9;
         public const ulong HeartbeatTimeoutMs = 3000;
 
         // Header @0x000
@@ -79,6 +79,15 @@ namespace MyceliumCraft.Link
         public const int InTextRing = 64;
         public const uint InActive = 1u << 0;
         public const uint ReasonActive = 0, ReasonNotFocused = 1, ReasonMyceliumControls = 2, ReasonNotDriving = 3, ReasonOff = 4;
+
+        // Bindings @0x500 (Minecraft -> Mycelium, seqlock): what Mycelium's actions are bound to,
+        // as set in Minecraft's Controls menu
+        public const int OffBindings = 0x500;
+        public const int BSeq = 0x00;
+        public const int BCount = 0x04;      // 0 = Minecraft hasn't sent any yet
+        public const int BEntries = 0x10;    // BMax x (u32 kind, u32 code), index = action id
+        public const int BMax = 32;
+        public const uint BindNone = 0, BindKey = 1, BindMouse = 2; // key: SDL scancode; mouse: SDL button (1 left, 2 middle, 3 right)
 
         // GroundGrid @0x1000 (Mycelium -> Minecraft, seqlock)
         public const int OffGround = 0x1000;

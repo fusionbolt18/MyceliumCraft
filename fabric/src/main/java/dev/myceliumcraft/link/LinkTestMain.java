@@ -31,6 +31,11 @@ public final class LinkTestMain {
 	private static final boolean PITCH_WAVE = "1".equals(System.getenv("LINKTEST_PITCH_WAVE"));
 	/** LINKTEST_PITCH=p: hold this pitch instead of sweeping. */
 	private static final String PITCH = System.getenv("LINKTEST_PITCH");
+	/** Key binds to send, as Minecraft's Controls menu would: "kind:code" per Mycelium action, in order (0 unbound, 1 key scancode, 2 mouse button). */
+	private static final String BINDS = System.getenv("LINKTEST_BINDS");
+	/** Optional: switch to these key binds 5 s in, as if you changed them in the Controls menu while playing. */
+	private static final String BINDS2 = System.getenv("LINKTEST_BINDS2");
+	private static long bindsStart;
 
 	public static void main(String[] args) throws InterruptedException {
 		long deadline = System.currentTimeMillis() + 15000;
@@ -147,6 +152,20 @@ public final class LinkTestMain {
 			// LINKTEST_HICCUP=1: one frame of "not in a world" every 2 s, like the moment seen in a real log.
 			int flags = HICCUP && frames % (int) (2000 / FRAME_MS) == 0 && frames > 0 ? 0 : Proto.MC_IN_WORLD | Proto.MC_ON_GROUND;
 			MycLink.writeMcState(flags, px, y, pz, yaw, pitch, frames++, 1, ack, cameraMode, bodyYaw, tick);
+			if (BINDS != null) {
+				if (bindsStart == 0) {
+					bindsStart = System.currentTimeMillis();
+				}
+				String binds = BINDS2 != null && System.currentTimeMillis() - bindsStart > 5000 ? BINDS2 : BINDS;
+				String[] parts = binds.split(",");
+				int[] kinds = new int[parts.length], codes = new int[parts.length];
+				for (int i = 0; i < parts.length; i++) {
+					String[] kc = parts[i].trim().split(":");
+					kinds[i] = Integer.parseInt(kc[0]);
+					codes[i] = Integer.parseInt(kc[1]);
+				}
+				MycLink.writeBindings(kinds, codes, parts.length);
+			}
 			if (frames % 60 == 0) {
 				boolean read = MycLink.readMycState(myc);
 				System.out.printf("t=%.1f pitch=%.0f mc=(%.2f, %.2f, %.2f) | mycelium alive=%b read=%b flags=%d spore=(%.2f, %.2f, %.2f)%n",

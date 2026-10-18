@@ -24,7 +24,7 @@ a block without locks.
 - **Reader:** read `seq`. If it's odd, try again. Read the fields, then read `seq` again. If it
   changed, try again.
 
-## Layout (version 8)
+## Layout (version 9)
 
 ### Header @ 0x000
 
@@ -107,7 +107,26 @@ lost if a read is missed.
 | 0x6C | u32 | pad |
 | 0x70 | u32[64] | text ring: character n (Unicode) at index n % 64 |
 
-Escape and P are never sent: they stay Mycelium's pause keys.
+Escape and P are never sent: they stay Mycelium's pause keys. Neither are the keys and buttons
+bound to Mycelium actions (Bindings block).
+
+### Bindings @ 0x500 (Minecraft → Mycelium, seqlock). Since version 9
+
+What Mycelium's actions are bound to, as set in Minecraft's Options → Controls → Key Binds,
+section "Mycelium". Written every frame.
+
+| Off | Type | Field |
+|---|---|---|
+| 0x00 | u32 | seq |
+| 0x04 | u32 | count: number of actions (0 = Minecraft hasn't sent any yet; Mycelium uses its defaults) |
+| 0x08 | 8 bytes | reserved |
+| 0x10 | 32 × (u32 kind, u32 code) | per action id: kind 0 unbound, 1 key (code = SDL scancode), 2 mouse (code = SDL button: 1 left, 2 middle, 3 right, 4 back, 5 forward) |
+
+Action ids: 0 interact, 1 show stats (Mycelium's ShowStats and HideStats), 2 subspecies skill,
+3 salvage, 4 attack, 5 curio, 6 dodge, 7 skill 1, 8 skill 2, 9 navigate camera, 10 reset camera.
+The order is fixed in `MyceliumKeys.java` and `KeyOwnership.cs`.
+
+A key or button bound to a Mycelium action is left out of MycInput (Minecraft never sees it).
 
 ### GroundGrid @ 0x1000 (Mycelium → Minecraft, seqlock)
 

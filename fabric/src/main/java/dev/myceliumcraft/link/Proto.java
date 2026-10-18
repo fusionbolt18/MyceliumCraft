@@ -5,7 +5,7 @@ public final class Proto {
 	public static final String MAPPING_NAME = "Local\\MyceliumCraft_v1";
 	public static final long MAPPING_BYTES = 0x100000;
 	public static final int MAGIC = 0x4343594D; // "MYCC"
-	public static final int VERSION = 8;
+	public static final int VERSION = 9;
 	/** A side is alive if its heartbeat is younger than this. */
 	public static final long HEARTBEAT_TIMEOUT_MS = 3000;
 
@@ -77,6 +77,14 @@ public final class Proto {
 	public static final int IN_TEXT_RING = 64;
 	public static final int IN_ACTIVE = 1 << 0;
 	public static final String[] IN_REASONS = {"active", "Mycelium window not focused", "Mycelium has the controls (menu, pause or cutscene)", "Minecraft isn't driving the spore", "bridge turned off"};
+
+	// Bindings @0x500 (Minecraft -> Mycelium, seqlock): what Mycelium's actions are bound to
+	public static final long OFF_BINDINGS = 0x500;
+	public static final long B_SEQ = 0x00;
+	public static final long B_COUNT = 0x04; // 0 = Minecraft hasn't sent any yet
+	public static final long B_ENTRIES = 0x10; // B_MAX x (u32 kind, u32 code), index = action id
+	public static final int B_MAX = 32;
+	public static final int BIND_NONE = 0, BIND_KEY = 1, BIND_MOUSE = 2; // key: SDL scancode; mouse: SDL button (1 left, 2 middle, 3 right)
 
 	// GroundGrid @0x1000 (Mycelium -> Minecraft, seqlock)
 	public static final long OFF_GROUND = 0x1000;

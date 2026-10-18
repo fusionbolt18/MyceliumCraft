@@ -245,6 +245,30 @@ namespace MyceliumCraft.Link
             return false;
         }
 
+        /// <summary>
+        /// Seqlock read of the Bindings block into kinds/codes (each at least Proto.BMax long).
+        /// Returns the number of actions, 0 if Minecraft hasn't sent any, or -1 if the read kept being interrupted.
+        /// </summary>
+        public int TryReadBindings(uint[] kinds, uint[] codes)
+        {
+            int b = Proto.OffBindings;
+            for (int attempt = 0; attempt < 16; attempt++)
+            {
+                uint seq1 = ReadU32(view, b + Proto.BSeq);
+                Thread.MemoryBarrier();
+                if ((seq1 & 1) != 0) { Thread.SpinWait(20); continue; }
+                int count = (int)Math.Min(ReadU32(view, b + Proto.BCount), (uint)Proto.BMax);
+                for (int i = 0; i < count; i++)
+                {
+                    kinds[i] = ReadU32(view, b + Proto.BEntries + 8 * i);
+                    codes[i] = ReadU32(view, b + Proto.BEntries + 8 * i + 4);
+                }
+                Thread.MemoryBarrier();
+                if (ReadU32(view, b + Proto.BSeq) == seq1) return count;
+            }
+            return -1;
+        }
+
         public void Dispose()
         {
             if (view != IntPtr.Zero) { UnmapViewOfFile(view); view = IntPtr.Zero; }

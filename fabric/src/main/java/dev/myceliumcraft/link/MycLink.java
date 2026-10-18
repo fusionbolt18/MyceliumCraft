@@ -166,6 +166,25 @@ public final class MycLink {
 		INT.setRelease(s, b + MC_SEQ, seq + 2); // even: done
 	}
 
+	/** Seqlock write of the Bindings block: kind and code per Mycelium action. */
+	public static void writeBindings(int[] kinds, int[] codes, int count) {
+		MemorySegment s = shm;
+		if (s == null) {
+			return;
+		}
+		count = Math.min(count, B_MAX);
+		long b = OFF_BINDINGS;
+		int seq = s.get(JAVA_INT, b + B_SEQ);
+		INT.setRelease(s, b + B_SEQ, seq + 1);
+		VarHandle.storeStoreFence();
+		s.set(JAVA_INT, b + B_COUNT, count);
+		for (int i = 0; i < count; i++) {
+			s.set(JAVA_INT, b + B_ENTRIES + 8L * i, kinds[i]);
+			s.set(JAVA_INT, b + B_ENTRIES + 8L * i + 4, codes[i]);
+		}
+		INT.setRelease(s, b + B_SEQ, seq + 2);
+	}
+
 	/** Plain snapshot of MycState. */
 	public static final class MycState {
 		public int flags;

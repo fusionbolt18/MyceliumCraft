@@ -1,5 +1,44 @@
 # MODLOG
 
+## 2026-10-17 Mycelium's keys in Minecraft's Controls menu
+
+**Changed:**
+- **New `MyceliumKeys.java`:** registers Mycelium's 11 actions as Minecraft key binds (Fabric's
+  `KeyMappingHelper`), in a "Mycelium" section of Options → Controls → Key Binds. Labels in
+  `assets/myceliumcraft/lang/en_us.json`. Sends what they're bound to every frame.
+- **Protocol v9:** new Bindings block at 0x500 (Minecraft → Mycelium). Both sides need the new
+  build.
+- **`KeyOwnership.cs`:** applies the binds Minecraft sends instead of a fixed list, and re-applies
+  them when they change. Defaults until Minecraft sends any.
+- **`InputBridge.cs`:** doesn't send the keys and buttons bound to Mycelium actions (instead of a
+  fixed R and Tab). Escape and P stay Mycelium's.
+- **`LinkTestMain.java`:** `LINKTEST_BINDS` and `LINKTEST_BINDS2` (switched to 5 s in).
+- PROTOCOL, DESIGN §5.3, README.
+
+**Why:** you asked to edit both Minecraft's and Mycelium's key binds from Minecraft's options
+menu, in preparation for the overlay.
+
+**Tested how:** the real Mycelium build (`-mcScene "New Tutorial" -mcBackground -mcHoldKeys
+"R,F,G,Tab,V,Space"`) with the fake Minecraft sending interact=F, dodge=G, subspecies=V, show
+stats unbound, then after 5 s interact=R, show stats=Tab, salvage=middle click.
+
+**Result:**
+- Before the switch, Mycelium reacted with `[Dodge,Interact,Subspecies_Skill]`: F, G and V, not R,
+  Tab or Space. Not sent to Minecraft: scancodes 9, 10, 25.
+- After the switch the new binds were applied to all 11 input copies within a frame, and Tab
+  showed stats. Not sent to Minecraft: scancodes 21, 43 and middle click.
+- **R didn't fire Interact after the switch.** I think that's the test, not the feature: R was
+  already held when it became the bind, and Unity only reacts to a key going down. Not checked
+  further.
+- Both builds compile; the mod jar contains the key binds and labels.
+
+**Still broken / not tested:**
+- **Not tested in real Minecraft:** the Mycelium section in the Controls menu, saving, and Reset.
+- **Not tested:** that the bridge really holds back the Mycelium keys. The bridge is forced off
+  in test runs so it can't use your keyboard.
+- Middle click is now Mycelium's salvage only; Minecraft's pick block no longer gets it (it did
+  both before). Change either bind in the menu if you want it back.
+
 ## 2026-10-17 One-frame third-person flash in first person
 
 **Changed:**
