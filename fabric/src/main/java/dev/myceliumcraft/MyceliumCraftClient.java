@@ -38,8 +38,12 @@ public final class MyceliumCraftClient implements ClientModInitializer {
 
 	@Override
 	public void onInitializeClient() {
-		MycLink.LOG.info("MyceliumCraft: loaded (protocol v{}, mapping {})", Proto.VERSION, Proto.MAPPING_NAME);
+		String built = net.fabricmc.loader.api.FabricLoader.getInstance().getModContainer("myceliumcraft")
+			.map(m -> m.getMetadata().getCustomValue("myceliumcraft:built"))
+			.map(v -> v.getAsString()).orElse("unknown");
+		MycLink.LOG.info("MyceliumCraft: loaded (protocol v{}, mapping {}), jar built {}", Proto.VERSION, Proto.MAPPING_NAME, built);
 		MyceliumKeys.init();
+		MycLink.LOG.info("MyceliumCraft: rules: no fall damage for players, no natural health regeneration (always, while the mod is installed)");
 	}
 
 	/** Called by MinecraftMixin once per rendered frame. */
@@ -86,6 +90,8 @@ public final class MyceliumCraftClient implements ClientModInitializer {
 
 		// Mycelium paused (P, its menu): freeze Minecraft's world too, the way /tick freeze does.
 		freezeWorld(minecraft, haveMyc && MycLink.myceliumAlive() && MYC.inLevel() && (MYC.flags & Proto.MYC_PAUSED) != 0);
+
+		syncHealth(minecraft, player, haveMyc && MycLink.myceliumAlive() && MYC.inLevel() && MYC.maxHealth > 0f);
 
 		// Body size: as tall as the spore while Mycelium has one in a level; normal size otherwise.
 		boolean sporeActive = haveMyc && MycLink.myceliumAlive() && MYC.inLevel() && MYC.playerHeight > 0;
@@ -141,6 +147,100 @@ public final class MyceliumCraftClient implements ClientModInitializer {
 		// Third person: your Minecraft body, for Mycelium to draw instead of the spore.
 		MycPlayerModel.frame(minecraft, MycOverlay.active(), partial);
 		logOncePerSecond(feet, player.getYRot(), flags);
+	}
+
+	private static float sentMax = Float.NaN, sentHealth = Float.NaN;
+	private static boolean killSent;
+	private static long lastHealthFix, lastRespawn, lastHealthLog, zeroSince;
+
+	/**
+	 * Mycelium's health in charge of Minecraft's: health and max health / 5 (5 Mycelium health = half
+	 * a heart). Applied on the integrated server (which syncs it to the client) when it changes, or
+	 * when Minecraft's drifted (its own damage); MycHealth keeps it above 0 meanwhile. Mycelium at 0
+	 * kills the Minecraft player; Mycelium alive again respawns it.
+	 */
+	private static void syncHealth(Minecraft minecraft, LocalPlayer player, boolean sync) {
+		var server = minecraft.getSingleplayerServer();
+		if (!sync || server == null) {
+			dev.myceliumcraft.world.MycHealth.set(false, 0f);
+			if (!Float.isNaN(sentMax) && server != null) {
+				// Back to Minecraft's normal 10 hearts outside Mycelium's levels.
+				setMaxHealth(server, player, 20f);
+				MycLink.LOG.info("MyceliumCraft: health: not synced any more (Mycelium not in a level); max health back to 20");
+			}
+			sentMax = sentHealth = Float.NaN;
+			killSent = false;
+			zeroSince = 0;
+			return;
+		}
+		float max = Math.max(1f, MYC.maxHealth / dev.myceliumcraft.world.MycHealth.PER_POINT);
+		float health = Math.max(0f, Math.min(MYC.health, MYC.maxHealth)) / dev.myceliumcraft.world.MycHealth.PER_POINT;
+		dev.myceliumcraft.world.MycHealth.set(true, health);
+		long now = System.currentTimeMillis();
+		if (Float.isNaN(sentMax) || Math.abs(max - sentMax) > 0.001f) {
+			sentMax = max;
+			setMaxHealth(server, player, max);
+			MycLink.LOG.info("MyceliumCraft: health: max health {} (Mycelium {})", String.format("%.2f", max), String.format("%.1f", MYC.maxHealth));
+		}
+		if (health <= 0f) {
+			// Mycelium died: so does the Minecraft player (once), after its health has stayed 0 for
+			// a moment, so a single setup frame at 0 can't kill you.
+			if (zeroSince == 0) {
+				zeroSince = now;
+			}
+			if (!killSent && !player.isDeadOrDying() && now - zeroSince >= 250) {
+				killSent = true;
+				var uuid = player.getUUID();
+				server.execute(() -> {
+					ServerPlayer sp = server.getPlayerList().getPlayer(uuid);
+					if (sp != null) {
+						sp.kill(sp.level());
+					}
+				});
+				MycLink.LOG.info("MyceliumCraft: health: Mycelium's health is 0, the Minecraft player dies too");
+			}
+			sentHealth = 0f;
+			return;
+		}
+		killSent = false;
+		zeroSince = 0;
+		if (player.isDeadOrDying()) {
+			// Mycelium alive again (new run, back in the hub): respawn.
+			if (now - lastRespawn > 1000) {
+				lastRespawn = now;
+				player.respawn();
+				MycLink.LOG.info("MyceliumCraft: health: Mycelium is alive ({}), respawning the Minecraft player", String.format("%.1f", MYC.health));
+			}
+			return;
+		}
+		boolean drifted = Math.abs(player.getHealth() - health) > 0.01f && now - lastHealthFix > 250;
+		if (Float.isNaN(sentHealth) || Math.abs(health - sentHealth) > 0.001f || drifted) {
+			sentHealth = health;
+			lastHealthFix = now;
+			var uuid = player.getUUID();
+			server.execute(() -> {
+				ServerPlayer sp = server.getPlayerList().getPlayer(uuid);
+				if (sp != null) {
+					sp.setHealth(health);
+				}
+			});
+			if (now - lastHealthLog > 1000) {
+				lastHealthLog = now;
+				MycLink.LOG.info("MyceliumCraft: health: {} of {} (Mycelium {} of {}){}", String.format("%.2f", health), String.format("%.2f", max),
+					String.format("%.1f", MYC.health), String.format("%.1f", MYC.maxHealth), drifted ? String.format("; Minecraft had drifted to %.2f", player.getHealth()) : "");
+			}
+		}
+	}
+
+	private static void setMaxHealth(net.minecraft.server.MinecraftServer server, LocalPlayer player, float max) {
+		var uuid = player.getUUID();
+		server.execute(() -> {
+			ServerPlayer sp = server.getPlayerList().getPlayer(uuid);
+			AttributeInstance attribute = sp == null ? null : sp.getAttribute(Attributes.MAX_HEALTH);
+			if (attribute != null) {
+				attribute.setBaseValue(max);
+			}
+		});
 	}
 
 	/**

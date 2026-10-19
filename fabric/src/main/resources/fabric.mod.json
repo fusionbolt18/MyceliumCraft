@@ -12,6 +12,9 @@
   "mixins": [
     { "config": "myceliumcraft.mixins.json", "environment": "client" }
   ],
+  "custom": {
+    "myceliumcraft:built": "${built}"
+  },
   "depends": {
     "fabricloader": ">=0.19.5",
     "minecraft": "~26.3",

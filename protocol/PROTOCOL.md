@@ -29,7 +29,7 @@ a block without locks.
 - **Reader:** read `seq`. If it's odd, try again. Read the fields, then read `seq` again. If it
   changed, try again.
 
-## Layout (version 15)
+## Layout (version 16)
 
 ### Header @ 0x000
 
@@ -59,6 +59,8 @@ a block without locks.
 | 0x40 | f64 | teleport target Z |
 | 0x48 | f32 | teleport target yaw (Minecraft degrees) |
 | 0x4C | f32 | wanted Minecraft player height in blocks, to match the spore's body (0 = leave Minecraft's size alone). Since version 4 |
+| 0x50 | f32 | Mycelium's current health (its own units); since version 16 |
+| 0x54 | f32 | Mycelium's max health; 0 = no spore health known (Minecraft's health isn't synced then) |
 
 ### McState @ 0x200 (Minecraft → Mycelium, seqlock)
 

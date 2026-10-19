@@ -3,7 +3,12 @@
   "package": "dev.myceliumcraft.mixin",
   "compatibilityLevel": "JAVA_25",
   "mixins": [
-    "BlockCollisionsMixin"
+    "BlockCollisionsMixin",
+    "FallDamageMixin",
+    "FoodDataMixin",
+    "HealthFloorMixin",
+    "PlayerFallDamageMixin",
+    "ServerPlayerRegenMixin"
   ],
   "client": [
     "CameraAccessor",
@@ -16,6 +21,7 @@
     "SpriteContentsAccessor",
     "TextureBindingAccessor",
     "TextureManagerAccessor",
+    "WaitingForPlayerChunkMixin",
     "WindowMixin"
   ],
   "injectors": { "defaultRequire": 1 }

@@ -228,6 +228,41 @@ player to fix that.
 - Things that move (doors, platforms) aren't rescanned.
 - Holes go all the way down to the superflat world's own ground.
 
+### 5.0.1 Minecraft rules changed by the mod (for combat)
+
+Always, while the mod is installed (your choice, 2026-10-19; `MycRules`, read on the integrated
+server's thread), Minecraft:
+- **doesn't hurt players from falls:** `LivingEntity`/`Player.causeFallDamage` return false.
+  Mobs keep their fall damage.
+- **doesn't heal players naturally:**
+  - `FoodData.tick`'s two `heal` calls are skipped (hunger itself still works);
+  - `ServerPlayer.tickRegeneration`, the Peaceful-difficulty healing, is skipped.
+
+This is in the mod, not Minecraft's game rules (`fallDamage`, `naturalRegeneration`): those are
+saved into your world, and these changes aren't. Without the mod, Minecraft is normal again. Each
+prevented fall or heal is logged at most once a second.
+
+### 5.0.2 Health: Mycelium's is in charge (your choice, 2026-10-19)
+
+- **Mycelium** reads its `PlayerHealth.currentHealth` and `maxHealth` (by reflection) and sends
+  them in MycState (0x50, 0x54).
+- **Minecraft** (`MyceliumCraftClient.syncHealth`, applied on the integrated server):
+  - health = Mycelium's ÷ 5, so 5 Mycelium health is half a heart;
+  - max health = Mycelium's max ÷ 5, through Minecraft's max-health attribute (100 → 20, the
+    normal 10 hearts);
+  - sent when it changes, or when Minecraft's own health has drifted (its own damage), at most
+    every 0.25 s.
+- **Never 0 early:** while Mycelium's health is above 0, `HealthFloorMixin` keeps a player's
+  Minecraft health at least 0.01 (still half a heart on screen). So Minecraft's own damage, `/kill`
+  included, can't kill you. Mycelium's small values still show: 3 health is 0.6, half a heart.
+- **Death:** Mycelium's health at 0 for 0.25 s (so a set-up frame can't do it) kills the Minecraft
+  player (`kill`), with Minecraft's normal death and its item drop.
+- **Respawn:** Mycelium with health again (back in the hub) respawns it (`LocalPlayer.respawn`).
+  Minecraft's "Loading terrain" screen after that would wait for the player's chunk to be prepared
+  for drawing, which never happens while the overlay skips Minecraft's world. So
+  `WaitingForPlayerChunkMixin` makes it not wait while Mycelium is running (as SkyCraft does).
+- **Outside Mycelium's levels** (max 0 or no spore): not synced, and max health is put back to 20.
+
 ### 5.1 Body size: Minecraft's player is shrunk to the spore's height
 
 **The problem:** Minecraft's player is always 1.8 blocks tall. At scale 1.4 that's 2.52 units. The

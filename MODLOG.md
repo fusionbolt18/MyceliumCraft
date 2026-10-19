@@ -1,5 +1,124 @@
 # MODLOG
 
+## 2026-10-19 Still stuck on "Loading Terrain": the old jar was installed
+
+**Changed:**
+- **`build.gradle` and `fabric.mod.json`:** the jar carries its build time (`myceliumcraft:built`).
+- **`MyceliumCraftClient.java`:** logs it at start, "jar built 2026-10-19 10:10", so an old jar in
+  the mods folder is easy to spot.
+
+**Why:** you were still stuck after dying.
+
+**What the logs showed** (Minecraft's `latest.log`, read only):
+- **The jar in the Prism mods folder** was the 09:21 build (76,606 bytes). The "Loading terrain" fix
+  was in the 10:05 build (77,727 bytes), and its log line never appears. So the fix wasn't tested yet.
+- **10:07:51:** "the Minecraft player dies too", "was killed". Then the death screen.
+- **10:08:04:** with Mycelium back in the hub, the player was already alive (health set to 20, no
+  "respawning" line). Most likely Respawn was clicked on Minecraft's death screen through the
+  overlay, and the old build then got stuck on "Loading terrain".
+
+**Tested how:** the jar builds and its `fabric.mod.json` has "myceliumcraft:built":
+"2026-10-19 10:10".
+
+**Still broken / not tested:**
+- **The "Loading terrain" fix** is still not tested in Minecraft.
+
+## 2026-10-19 Minecraft stuck on "Loading Terrain" after dying
+
+**Changed:**
+- **New `WaitingForPlayerChunkMixin`** (`LevelLoadTracker$WaitingForPlayerChunk.isReady` answers
+  true while the overlay is on or Mycelium is running), as SkyCraft does.
+- DESIGN §5.0.2.
+
+**Why:** after you died, Minecraft respawned and then stayed on its "Loading Terrain" screen.
+
+**Cause:** that screen waits until the player's chunk section has been prepared for drawing.
+While the overlay is on, Minecraft doesn't draw its world (`LevelRendererMixin`), so that never
+happens. SkyCraft has the same mixin for the same reason. Your log (saved as
+`work\user-death.log`) ends with "Minecraft not in a world" at 86.89 s.
+
+**Tested how:** the mod builds; the class and method checked with javap (`isReady()`, private, in
+26.3).
+
+**Still broken / not tested:**
+- **Not tested in Minecraft:** the respawn after a Mycelium death.
+- **Joining a world** with Mycelium running now also skips that wait. The terrain may pop in a
+  moment later in Minecraft's own window; that window isn't used for playing.
+
+## 2026-10-19 Minecraft health follows Mycelium's (÷ 5)
+
+**Changed:**
+- **Protocol v16:** MycState 0x50 health, 0x54 max health (Mycelium units).
+- **`MinecraftDriver.cs`:** reads Mycelium's `PlayerHealth` (found on 'PlayerParent') and sends it.
+- **New `world/MycHealth.java`** and **`HealthFloorMixin`:** a player's Minecraft health stays at
+  least 0.01 while Mycelium's is above 0.
+- **`MyceliumCraftClient.syncHealth`:**
+  - health and max health ÷ 5 on the integrated server;
+  - kills the player when Mycelium's health has been 0 for 0.25 s;
+  - respawns it when Mycelium has health again;
+  - max health back to 20 outside Mycelium's levels.
+- **Stand-ins:** FakeMycelium sends 37.5 of 150; linkTest checks it.
+- PROTOCOL, DESIGN §5.0.2, README.
+
+**Why:** you asked for Minecraft's health to follow Mycelium's (5 Mycelium health = half a heart,
+max health too), and for Minecraft's health to reach 0 only when Mycelium's does.
+
+**Tested how and result:**
+- **Stand-ins:** "Mycelium health: got 37.5", "max health: got 150.0"; PASS.
+- **The real build in the tutorial:** "found Mycelium's PlayerHealth on 'PlayerParent'", then
+  "Mycelium 100.0 of 100.0 -> Minecraft 20.00 of 20.00".
+- **The first frame read 0 of 0** while the player was set up. A max of 0 isn't synced, and a 0
+  health now needs 0.25 s before it kills (added after seeing that).
+
+**Still broken / not tested:**
+- **The Minecraft side isn't tested in Minecraft at all:** setting health and max health, the floor,
+  the death, the respawn.
+- **Minecraft's death drops the player's items** (normal Minecraft). Not changed.
+- **`/kill` can't kill you** while Mycelium's health is above 0 (the floor).
+
+## 2026-10-19 Fall damage and regeneration off always, not just with Mycelium
+
+**Changed:**
+- **`MycRules.java`:** always on (no longer tied to Mycelium being alive and in a level).
+- **`MyceliumCraftClient.java`:** no longer sets it; logs the rules once at start.
+- Mixin comments, DESIGN §5.0.1, README.
+
+**Why:** you said these don't need to depend on Mycelium; always on while the mod is installed is
+fine.
+
+**Tested how:** the mod builds.
+
+**Still broken / not tested:**
+- **Not tested in Minecraft** (as in the entry below).
+
+## 2026-10-19 No fall damage and no natural regeneration in Minecraft (for combat)
+
+**Changed:**
+- **New `world/MycRules.java`:** on while Mycelium is alive and has you in a level. Logs prevented
+  falls and heals (once a second at most).
+- **New mixins (common, so the integrated server gets them):**
+  - `FallDamageMixin` (`LivingEntity.causeFallDamage`, players only);
+  - `PlayerFallDamageMixin` (`Player.causeFallDamage`);
+  - `FoodDataMixin` (skips the two `heal` calls in `FoodData.tick`);
+  - `ServerPlayerRegenMixin` (cancels `ServerPlayer.tickRegeneration`, Peaceful's healing).
+- **`MyceliumCraftClient.java`:** sets `MycRules` every frame.
+- DESIGN §5.0.1, README.
+
+**Why:** you asked for fall damage and passive health regeneration off in Minecraft, in
+preparation for combat.
+
+**Why not Minecraft's game rules:** `fallDamage` and `naturalRegeneration` are saved into the world;
+these changes only apply while Mycelium drives.
+
+**Tested how:** the mod builds; the Minecraft names checked with javap
+(`causeFallDamage(DFLDamageSource;)Z` on LivingEntity and Player, two `ServerPlayer.heal(F)` calls in
+`FoodData.tick`, `ServerPlayer.tickRegeneration()`).
+
+**Still broken / not tested:**
+- **Not tested in Minecraft at all.** The fake Minecraft doesn't run Minecraft's code. Whether the
+  mixins attach is only checked when Minecraft starts; if one doesn't, Minecraft won't start, and
+  its log will say which.
+
 ## 2026-10-19 Overlay still hid on some hits (longer than before)
 
 **Changed:**

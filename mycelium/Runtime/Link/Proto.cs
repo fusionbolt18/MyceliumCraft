@@ -39,7 +39,7 @@ namespace MyceliumCraft.Link
 
         public const int MappingBytes = OffTextures + TexturesBytes;
         public const uint Magic = 0x4343594D; // "MYCC"
-        public const uint Version = 15;
+        public const uint Version = 16;
         public const ulong HeartbeatTimeoutMs = 3000;
 
         // Header @0x000
@@ -66,6 +66,8 @@ namespace MyceliumCraft.Link
         public const int MyTpZ = 0x40;
         public const int MyTpYaw = 0x48;
         public const int MyPlayerHeight = 0x4C;
+        public const int MyHealth = 0x50;      // Mycelium's current health (its own units); since v16
+        public const int MyMaxHealth = 0x54;   // Mycelium's max health; 0 = no spore health known
         public const uint MycInLevel = 1u << 0;
         public const uint MycPaused = 1u << 1;
         public const uint MycOverlay = 1u << 2; // Mycelium shows Minecraft's overlay: Minecraft skips drawing its world

@@ -143,6 +143,8 @@ public final class LinkTestMain {
 		grid.forEachBox(0, 10, 0, (a, b, c, d, e, f) -> top.add(new double[] {a, b, c, d, e, f}));
 		ok &= check("box top in block (0,10,0)", top.isEmpty() ? -1 : top.get(0)[4], 0.5);
 		ok &= check("wanted player height (blocks)", Math.round(myc.playerHeight * 1000) / 1000.0, 0.964);
+		ok &= check("Mycelium health", myc.health, 37.5);
+		ok &= check("Mycelium max health", myc.maxHealth, 150);
 		MycLink.MycInput in = new MycLink.MycInput();
 		ok &= check("input block read", MycLink.readInput(in) ? 1 : 0, 1);
 		ok &= check("input bridge active", in.active() ? 1 : 0, 1);

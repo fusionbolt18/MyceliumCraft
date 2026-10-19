@@ -269,7 +269,10 @@ namespace MyceliumCraft
             }
             if (IsPaused()) flags |= Proto.MycPaused;
             if (McConfig.Overlay && rb != null) flags |= Proto.MycOverlay;
-            link.WriteMycState(flags, pos.x, pos.y, pos.z, yaw, frame, tp, rb != null ? playerHeightBlocks : 0f);
+            // Mycelium's health, which Minecraft's follows (/ 5).
+            float health = 0f, maxHealth = 0f;
+            if (rb != null) ReadHealth(out health, out maxHealth);
+            link.WriteMycState(flags, pos.x, pos.y, pos.z, yaw, frame, tp, rb != null ? playerHeightBlocks : 0f, health, maxHealth);
 
             bool alive = link.MinecraftAlive;
             if (alive != mcWasAlive)
@@ -752,6 +755,41 @@ namespace MyceliumCraft
         }
 
         bool wasCovered;
+        // Mycelium's PlayerHealth (currentHealth, maxHealth), found by name.
+        Component playerHealth;
+        FieldInfo currentHealthField, maxHealthField;
+        float nextHealthLook;
+        string lastHealthLog = "";
+
+        void ReadHealth(out float health, out float max)
+        {
+            health = max = 0f;
+            if (playerHealth == null && Time.realtimeSinceStartup >= nextHealthLook)
+            {
+                nextHealthLook = Time.realtimeSinceStartup + 1f;
+                Type t = Type.GetType("PlayerHealth, Assembly-CSharp");
+                if (t != null)
+                {
+                    playerHealth = (rb != null ? rb.GetComponentInParent(t) ?? rb.GetComponentInChildren(t) : null) ?? UnityEngine.Object.FindObjectOfType(t) as Component;
+                    currentHealthField = t.GetField("currentHealth", BindingFlags.Public | BindingFlags.Instance);
+                    maxHealthField = t.GetField("maxHealth", BindingFlags.Public | BindingFlags.Instance);
+                    if (playerHealth != null) McLog.Info($"health: found Mycelium's PlayerHealth on '{playerHealth.gameObject.name}'");
+                }
+            }
+            if (playerHealth == null || currentHealthField == null || maxHealthField == null) return;
+            try
+            {
+                health = (float)currentHealthField.GetValue(playerHealth);
+                max = (float)maxHealthField.GetValue(playerHealth);
+            }
+            catch (Exception) { return; }
+            string now = $"{health:F0}/{max:F0}";
+            if (now != lastHealthLog)
+            {
+                lastHealthLog = now;
+                McLog.Info($"health: Mycelium {health:F1} of {max:F1} -> Minecraft {health / 5f:F2} of {max / 5f:F2} (half hearts)");
+            }
+        }
         const float OverlayControlsGrace = 0.3f; // Mycelium must keep the controls this long before the overlay hides
         float controlsSince = -1f;
         bool frozenByMinecraft;

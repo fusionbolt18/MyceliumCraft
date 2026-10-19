@@ -34,6 +34,14 @@ Single-player and offline only.
 
 ## What doesn't work / not tested
 
+- **Minecraft health follows Mycelium's: not tested in Minecraft.**
+  - Every 5 Mycelium health is half a heart; Minecraft's max health follows Mycelium's max.
+  - Minecraft can't kill you while Mycelium's health is above 0.
+  - Mycelium's death kills the Minecraft player (it drops its items, as Minecraft does), and it
+    respawns when Mycelium has health again.
+- **No fall damage and no natural health regeneration in Minecraft, always while the mod is
+  installed: not tested in Minecraft.** Done in the mod, so nothing is saved to your worlds.
+
 - **Tunnels in real Minecraft: not tested** since the fix. See the newest MODLOG entry for the test.
 - **Body size: not tested in Minecraft.** Minecraft's player is now shrunk to the spore's height
   (scale 0.674, 1.214 blocks) using Minecraft's own scale setting; `matchSporeSize=0` in

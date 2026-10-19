@@ -285,6 +285,8 @@ public final class MycLink {
 		public float tpYaw;
 		/** Wanted Minecraft player height in blocks (0 = leave it alone). */
 		public float playerHeight;
+		/** Mycelium's health and max health, in its own units (max 0 = not known). */
+		public float health, maxHealth;
 
 		public boolean inLevel() {
 			return (this.flags & MYC_IN_LEVEL) != 0;
@@ -316,6 +318,8 @@ public final class MycLink {
 			out.tpZ = s.get(JAVA_DOUBLE, b + MY_TP_Z);
 			out.tpYaw = s.get(JAVA_FLOAT, b + MY_TP_YAW);
 			out.playerHeight = s.get(JAVA_FLOAT, b + MY_PLAYER_HEIGHT);
+			out.health = s.get(JAVA_FLOAT, b + MY_HEALTH);
+			out.maxHealth = s.get(JAVA_FLOAT, b + MY_MAX_HEALTH);
 			VarHandle.loadLoadFence();
 			int seq2 = (int) INT.getVolatile(s, b + MY_SEQ);
 			if (seq1 == seq2) {

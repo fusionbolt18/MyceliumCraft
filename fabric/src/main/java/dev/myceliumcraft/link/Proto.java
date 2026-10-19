@@ -36,7 +36,7 @@ public final class Proto {
 
 	public static final long MAPPING_BYTES = OFF_TEXTURES + TEXTURES_BYTES;
 	public static final int MAGIC = 0x4343594D; // "MYCC"
-	public static final int VERSION = 15;
+	public static final int VERSION = 16;
 	/** A side is alive if its heartbeat is younger than this. */
 	public static final long HEARTBEAT_TIMEOUT_MS = 3000;
 
@@ -64,6 +64,8 @@ public final class Proto {
 	public static final long MY_TP_Z = 0x40;
 	public static final long MY_TP_YAW = 0x48;
 	public static final long MY_PLAYER_HEIGHT = 0x4C;
+	public static final long MY_HEALTH = 0x50;     // Mycelium's current health (its own units); since v16
+	public static final long MY_MAX_HEALTH = 0x54; // Mycelium's max health; 0 = no spore health known
 	public static final int MYC_IN_LEVEL = 1 << 0;
 	public static final int MYC_PAUSED = 1 << 1;
 	public static final int MYC_OVERLAY = 1 << 2; // Mycelium shows Minecraft's overlay: Minecraft skips drawing its world

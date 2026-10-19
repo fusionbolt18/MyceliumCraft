@@ -19,9 +19,12 @@ dependencies {
 
 processResources {
 	def version = project.version
+	// When this jar was built, logged at start so an old jar in the mods folder is easy to spot.
+	def built = new Date().format("yyyy-MM-dd HH:mm")
 	inputs.property "version", version
+	inputs.property "built", built
 	filesMatching("fabric.mod.json") {
-		expand "version": version
+		expand "version": version, "built": built
 	}
 }
 
