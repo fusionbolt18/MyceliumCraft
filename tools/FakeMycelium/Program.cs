@@ -53,7 +53,7 @@ var lastPrint = DateTime.MinValue;
 while (DateTime.Now < deadline)
 {
     link.Beat();
-    link.WriteMycState(Proto.MycInLevel, sx, sy, sz, 0, frame++, tp, 0.964f, 37.5f, 150f); // a spore 1.35 units tall at scale 1.4, health 37.5 of 150
+    link.WriteMycState(Proto.MycInLevel, sx, sy, sz, 0, frame++, tp, 0.964f, 37.5f, 150f, 42); // a spore 1.35 units tall at scale 1.4, health 37.5 of 150
     bool alive = link.MinecraftAlive;
     if (alive != linked)
     {

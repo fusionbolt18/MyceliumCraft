@@ -29,6 +29,12 @@ public abstract class MinecraftMixin {
 		MycOverlay.capture((Minecraft) (Object) this);
 	}
 
+	/** Start of every client tick, before the crosshair pick: enemy stand-ins exactly where Mycelium's enemies are. */
+	@Inject(method = "tick", at = @At("HEAD"))
+	private void myceliumcraft$beforeTick(CallbackInfo ci) {
+		dev.myceliumcraft.combat.EnemyProxies.clientSnap(((Minecraft) (Object) this).level);
+	}
+
 	@Inject(method = "renderFrame", at = @At("TAIL"))
 	private void myceliumcraft$afterFrame(boolean advanceGameTime, CallbackInfo ci) {
 		MyceliumCraftClient.afterFrame((Minecraft) (Object) this);

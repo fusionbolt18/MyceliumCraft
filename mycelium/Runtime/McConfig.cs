@@ -35,6 +35,9 @@ namespace MyceliumCraft
         /// <summary>Split the keys between the games while Minecraft drives (KeyOwnership).</summary>
         public static bool KeyOwnership = true;
 
+        /// <summary>Mycelium damage per Minecraft damage point when Minecraft hits an enemy (EnemyCombat).</summary>
+        public static float DamageScale = 5f;
+
         /// <summary>In third person, draw your Minecraft body instead of the spore (McPlayerModel).</summary>
         public static bool PlayerModel = true;
 
@@ -81,6 +84,10 @@ namespace MyceliumCraft
             "# 1: show Minecraft's hand, hotbar, hearts and screens (inventory, chat) on top of Mycelium.\n" +
             "# Minecraft then stops drawing its own world. 0: Minecraft draws its world in its own window.\n" +
             "overlay=1\n" +
+            "\n" +
+            "# Mycelium damage per Minecraft damage point when you hit an enemy. 5 matches health (5 Mycelium\n" +
+            "# health = half a heart): an iron sword (6) does 30, a beetle has 30.\n" +
+            "damageScale=5\n" +
             "\n" +
             "# 1: in third person, show your Minecraft body (skin, armour) instead of the spore. Needs overlay=1.\n" +
             "playerModel=1\n" +
@@ -139,6 +146,10 @@ namespace MyceliumCraft
                     {
                         InputBridge = value == "1";
                     }
+                    else if (key == "damagescale" && float.TryParse(value, NumberStyles.Float, CultureInfo.InvariantCulture, out float ds) && ds >= 0f)
+                    {
+                        DamageScale = ds;
+                    }
                     else if (key == "playermodel" && (value == "0" || value == "1"))
                     {
                         PlayerModel = value == "1";
@@ -165,7 +176,7 @@ namespace MyceliumCraft
             {
                 McLog.Info($"config: couldn't read {path} ({e.Message}); using defaults");
             }
-            McLog.Info($"config: scale={Scale.ToString(CultureInfo.InvariantCulture)} Mycelium units per block, matchSporeSize={(MatchSporeSize ? 1 : 0)}, syncCamera={(SyncCamera ? 1 : 0)}, cameraPitchOffset={CameraPitchOffset.ToString(CultureInfo.InvariantCulture)}, cameraSmoothing={CameraSmoothing.ToString(CultureInfo.InvariantCulture)}, matchF5View={(MatchF5View ? 1 : 0)}, inputBridge={(InputBridge ? 1 : 0)}, cameraCollisionSmoothing={CameraCollisionSmoothing.ToString(CultureInfo.InvariantCulture)}, keyOwnership={(KeyOwnership ? 1 : 0)}, overlay={(Overlay ? 1 : 0)}, playerModel={(PlayerModel ? 1 : 0)}");
+            McLog.Info($"config: scale={Scale.ToString(CultureInfo.InvariantCulture)} Mycelium units per block, matchSporeSize={(MatchSporeSize ? 1 : 0)}, syncCamera={(SyncCamera ? 1 : 0)}, cameraPitchOffset={CameraPitchOffset.ToString(CultureInfo.InvariantCulture)}, cameraSmoothing={CameraSmoothing.ToString(CultureInfo.InvariantCulture)}, matchF5View={(MatchF5View ? 1 : 0)}, inputBridge={(InputBridge ? 1 : 0)}, cameraCollisionSmoothing={CameraCollisionSmoothing.ToString(CultureInfo.InvariantCulture)}, keyOwnership={(KeyOwnership ? 1 : 0)}, overlay={(Overlay ? 1 : 0)}, playerModel={(PlayerModel ? 1 : 0)}, damageScale={DamageScale.ToString(CultureInfo.InvariantCulture)}");
         }
     }
 }

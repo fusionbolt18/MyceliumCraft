@@ -27,6 +27,7 @@ namespace MyceliumCraft
     ///  - Mycelium's camera shakes (Cinemachine impulses) are kept: ShakeTap records what the
     ///    shake added, the tilt is worked out from the unshaken view, and first person adds the
     ///    shake to the eye camera.
+    ///  - Minecraft's hurt tilt (HurtTilt) leans the finished view toward a hit, in every view.
     /// Everything is restored when Minecraft stops driving. Cutscene and "reset/navigate" cameras
     /// still take over as they normally do (no tilt is applied while another camera is live).
     /// </summary>
@@ -89,6 +90,8 @@ namespace MyceliumCraft
         public bool Controlling => controlling;
         /// <summary>Set while your Minecraft body is drawn instead of the spore (McPlayerModel): hide the spore then too.</summary>
         public bool ReplaceSpore;
+        /// <summary>Minecraft's hurt tilt, put on top of the finished view (set by the driver).</summary>
+        public HurtTilt Hurt;
         int sporeHidden; // 0 drawn, 1 shadow only, 2 not drawn at all
 
         /// <summary>Forget the camera (new scene; the old one is gone with its scene).</summary>
@@ -440,6 +443,7 @@ namespace MyceliumCraft
                 Quaternion eyeRot = Quaternion.Euler(wantDown, smoothYaw, 0f);
                 Vector3 localShake = Quaternion.Inverse(t.rotation) * shakePos;
                 t.SetPositionAndRotation(spore.position + Vector3.up * eyeOffset * eyeScale + eyeRot * localShake, eyeRot * shakeRot);
+                if (Hurt != null) t.rotation *= Hurt.Rotation(smoothYaw);
                 lastTilt = 0f;
                 WriteTrace(t, wantDown, smoothYaw);
                 return;
@@ -457,6 +461,8 @@ namespace MyceliumCraft
             t.rotation = Quaternion.AngleAxis(lastTilt, right.normalized) * t.rotation;
             // Crouching: Minecraft's third-person camera turns around the eyes, so it drops as much as they do.
             t.position += Vector3.up * eyeOffset * (eyeScale - 1f);
+            // Minecraft's hurt tilt, measured from where the player faces (in front view too, as Minecraft does).
+            if (Hurt != null) t.rotation *= Hurt.Rotation(smoothYaw);
             WriteTrace(t, down, unshakenYaw);
         }
     }

@@ -37,9 +37,19 @@ namespace MyceliumCraft.Link
         public const int TData = 0x2000;
         public const int TDataBytes = TexturesBytes - TData;
 
-        public const int MappingBytes = OffTextures + TexturesBytes;
+        // HitBoxes (Minecraft -> Mycelium, seqlock): each stand-in's box as Minecraft's client has it
+        // (what the crosshair picks), for -mcShowHitboxes. Minecraft coordinates.
+        public const int OffHitBoxes = OffTextures + TexturesBytes;
+        public const int HitBoxesBytes = 0x1000;
+        public const int HbSeq = 0x00;
+        public const int HbCount = 0x04;
+        public const int HbList = 0x10;
+        public const int HbMax = 64;
+        public const int HbSize = 0x20;       // u32 enemy id, f32 min x, y, z, max x, y, z, pad
+
+        public const int MappingBytes = OffHitBoxes + HitBoxesBytes;
         public const uint Magic = 0x4343594D; // "MYCC"
-        public const uint Version = 16;
+        public const uint Version = 20;
         public const ulong HeartbeatTimeoutMs = 3000;
 
         // Header @0x000
@@ -68,6 +78,7 @@ namespace MyceliumCraft.Link
         public const int MyPlayerHeight = 0x4C;
         public const int MyHealth = 0x50;      // Mycelium's current health (its own units); since v16
         public const int MyMaxHealth = 0x54;   // Mycelium's max health; 0 = no spore health known
+        public const int MyNutrients = 0x58;   // Mycelium's nutrients (i32); -1 = not known; since v19
         public const uint MycInLevel = 1u << 0;
         public const uint MycPaused = 1u << 1;
         public const uint MycOverlay = 1u << 2; // Mycelium shows Minecraft's overlay: Minecraft skips drawing its world
@@ -93,6 +104,7 @@ namespace MyceliumCraft.Link
         public const int McBodyYawO = 0x7C, McBodyYawCur = 0x80;        // body yaw at the previous / latest tick
         public const int McFovScale = 0x84;   // Minecraft's FOV multiplier now (sprint, speed, bow, spyglass); 0 = not sent
         public const int McEyeScale = 0x88;   // eye height now / standing eye height (crouching ~0.78); 0 = not sent
+        public const int McDamageTilt = 0x8C; // Minecraft's "Damage Tilt" setting, 0 (off) .. 1; since v20
         public const uint McInWorld = 1u << 0;
         public const uint McScreenOpen = 1u << 1;
         public const uint McOnGround = 1u << 2;
@@ -142,6 +154,26 @@ namespace MyceliumCraft.Link
         public const int ShFlags = 0x08;     // bit0: rows bottom-up
         public const int ShFrameId = 0x10;
         public const int OverlayDirty = 1 << 2;
+
+        // Enemies @0x700 (Mycelium -> Minecraft, seqlock): Mycelium's enemies near the spore, for
+        // Minecraft's invisible stand-ins. Positions in Minecraft coordinates (feet), sizes in blocks.
+        public const int OffEnemies = 0x700;
+        public const int ESeq = 0x00;
+        public const int ECount = 0x04;
+        public const int EList = 0x10;
+        public const int EMax = 40;
+        public const int ESize = 0x30;          // u32 id, u32 flags, f32 x, y, z, width, height, health, max health, yaw
+        public const int EnId = 0x00, EnFlags = 0x04, EnX = 0x08, EnY = 0x0C, EnZ = 0x10, EnWidth = 0x14, EnHeight = 0x18,
+                         EnHealth = 0x1C, EnMaxHealth = 0x20, EnYaw = 0x24;
+        public const uint EnAlive = 1u << 0;
+
+        // Hits @0xF00 (Minecraft -> Mycelium): a ring of the last 8 hits on stand-ins.
+        public const int OffHits = 0xF00;
+        public const int HCount = 0x00;          // hits written so far (u32)
+        public const int HList = 0x10;
+        public const int HRing = 8;
+        public const int HSize = 0x10;           // u32 enemy id, f32 damage (Minecraft points), u32 flags, pad
+        public const uint HitCrit = 1u << 0;
 
         // GroundGrid @0x1000 (Mycelium -> Minecraft, seqlock)
         public const int OffGround = 0x1000;

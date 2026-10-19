@@ -141,6 +141,12 @@ public final class MycLink {
 	/** Seqlock write of McState, with Minecraft's FOV multiplier and eye-height ratio for Mycelium's camera. */
 	public static void writeMcState(int flags, double x, double y, double z, float yaw, float pitch, long frame, int epoch, int teleportAck, int cameraMode, float bodyYaw, Tick tick,
 		float fovScale, float eyeScale) {
+		writeMcState(flags, x, y, z, yaw, pitch, frame, epoch, teleportAck, cameraMode, bodyYaw, tick, fovScale, eyeScale, 1f);
+	}
+
+	/** Seqlock write of McState, with Minecraft's camera feel and its "Damage Tilt" setting (0..1). */
+	public static void writeMcState(int flags, double x, double y, double z, float yaw, float pitch, long frame, int epoch, int teleportAck, int cameraMode, float bodyYaw, Tick tick,
+		float fovScale, float eyeScale, float damageTilt) {
 		MemorySegment s = shm;
 		if (s == null) {
 			return;
@@ -172,6 +178,7 @@ public final class MycLink {
 		s.set(JAVA_FLOAT, b + MC_BODY_YAW_CUR, tick == null ? bodyYaw : tick.body);
 		s.set(JAVA_FLOAT, b + MC_FOV_SCALE, fovScale);
 		s.set(JAVA_FLOAT, b + MC_EYE_SCALE, eyeScale);
+		s.set(JAVA_FLOAT, b + MC_DAMAGE_TILT, damageTilt);
 		INT.setRelease(s, b + MC_SEQ, seq + 2); // even: done
 	}
 
@@ -273,6 +280,85 @@ public final class MycLink {
 		LONG.getAndAdd(s, OFF_OVERLAY_CTL + OC_FRAMES_PUBLISHED, 1L);
 	}
 
+	/** One of Mycelium's enemies, as Minecraft's stand-in should be. */
+	public static final class Enemy {
+		public int id, flags;
+		public float x, y, z, width, height, health, maxHealth, yaw;
+	}
+
+	/** Seqlock read of the enemy table into out (reused). Returns the count, or -1 if not readable. */
+	public static int readEnemies(Enemy[] out) {
+		MemorySegment s = shm;
+		if (s == null) {
+			return -1;
+		}
+		long b = OFF_ENEMIES;
+		for (int attempt = 0; attempt < 16; attempt++) {
+			int seq1 = (int) INT.getAcquire(s, b + E_SEQ);
+			if ((seq1 & 1) != 0) {
+				Thread.onSpinWait();
+				continue;
+			}
+			int count = Math.min(Math.max(0, s.get(JAVA_INT, b + E_COUNT)), Math.min(E_MAX, out.length));
+			for (int i = 0; i < count; i++) {
+				long e = b + E_LIST + i * E_SIZE;
+				Enemy en = out[i];
+				en.id = s.get(JAVA_INT, e + EN_ID);
+				en.flags = s.get(JAVA_INT, e + EN_FLAGS);
+				en.x = s.get(JAVA_FLOAT, e + EN_X);
+				en.y = s.get(JAVA_FLOAT, e + EN_Y);
+				en.z = s.get(JAVA_FLOAT, e + EN_Z);
+				en.width = s.get(JAVA_FLOAT, e + EN_WIDTH);
+				en.height = s.get(JAVA_FLOAT, e + EN_HEIGHT);
+				en.health = s.get(JAVA_FLOAT, e + EN_HEALTH);
+				en.maxHealth = s.get(JAVA_FLOAT, e + EN_MAX_HEALTH);
+				en.yaw = s.get(JAVA_FLOAT, e + EN_YAW);
+			}
+			VarHandle.loadLoadFence();
+			if ((int) INT.getVolatile(s, b + E_SEQ) == seq1) {
+				return count;
+			}
+		}
+		return -1;
+	}
+
+	/** Report a hit on a stand-in: entry first, then the count (any thread; synchronized). */
+	public static synchronized void writeHit(int enemyId, float damage, int flags) {
+		MemorySegment s = shm;
+		if (s == null) {
+			return;
+		}
+		int n = s.get(JAVA_INT, OFF_HITS + H_COUNT);
+		long e = OFF_HITS + H_LIST + (Integer.remainderUnsigned(n, H_RING)) * H_SIZE;
+		s.set(JAVA_INT, e, enemyId);
+		s.set(JAVA_FLOAT, e + 4, damage);
+		s.set(JAVA_INT, e + 8, flags);
+		VarHandle.storeStoreFence();
+		INT.setRelease(s, OFF_HITS + H_COUNT, n + 1);
+	}
+
+	/** Seqlock write of the stand-ins' hit boxes: ids[i] and 6 floats per box (min x, y, z, max x, y, z). */
+	public static void writeHitBoxes(int count, int[] ids, float[] boxes) {
+		MemorySegment s = shm;
+		if (s == null) {
+			return;
+		}
+		count = Math.min(count, HB_MAX);
+		long b = OFF_HIT_BOXES;
+		int seq = s.get(JAVA_INT, b + HB_SEQ);
+		INT.setRelease(s, b + HB_SEQ, seq + 1);
+		VarHandle.storeStoreFence();
+		s.set(JAVA_INT, b + HB_COUNT, count);
+		for (int i = 0; i < count; i++) {
+			long e = b + HB_LIST + i * HB_SIZE;
+			s.set(JAVA_INT, e, ids[i]);
+			for (int k = 0; k < 6; k++) {
+				s.set(JAVA_FLOAT, e + 4 + 4L * k, boxes[i * 6 + k]);
+			}
+		}
+		INT.setRelease(s, b + HB_SEQ, seq + 2);
+	}
+
 	/** Plain snapshot of MycState. */
 	public static final class MycState {
 		public int flags;
@@ -287,6 +373,8 @@ public final class MycLink {
 		public float playerHeight;
 		/** Mycelium's health and max health, in its own units (max 0 = not known). */
 		public float health, maxHealth;
+		/** Mycelium's nutrients (-1 = not known). */
+		public int nutrients = -1;
 
 		public boolean inLevel() {
 			return (this.flags & MYC_IN_LEVEL) != 0;
@@ -320,6 +408,7 @@ public final class MycLink {
 			out.playerHeight = s.get(JAVA_FLOAT, b + MY_PLAYER_HEIGHT);
 			out.health = s.get(JAVA_FLOAT, b + MY_HEALTH);
 			out.maxHealth = s.get(JAVA_FLOAT, b + MY_MAX_HEALTH);
+			out.nutrients = s.get(JAVA_INT, b + MY_NUTRIENTS);
 			VarHandle.loadLoadFence();
 			int seq2 = (int) INT.getVolatile(s, b + MY_SEQ);
 			if (seq1 == seq2) {

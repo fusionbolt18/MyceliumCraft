@@ -34,9 +34,19 @@ public final class Proto {
 	public static final long T_DATA = 0x2000;
 	public static final long T_DATA_BYTES = TEXTURES_BYTES - T_DATA;
 
-	public static final long MAPPING_BYTES = OFF_TEXTURES + TEXTURES_BYTES;
+	// HitBoxes (Minecraft -> Mycelium, seqlock): each stand-in's box as Minecraft's client has it
+	// (what the crosshair picks), for -mcShowHitboxes. Minecraft coordinates.
+	public static final long OFF_HIT_BOXES = OFF_TEXTURES + TEXTURES_BYTES;
+	public static final long HIT_BOXES_BYTES = 0x1000;
+	public static final long HB_SEQ = 0x00;
+	public static final long HB_COUNT = 0x04;
+	public static final long HB_LIST = 0x10;
+	public static final int HB_MAX = 64;
+	public static final long HB_SIZE = 0x20; // u32 enemy id, f32 min x, y, z, max x, y, z, pad
+
+	public static final long MAPPING_BYTES = OFF_HIT_BOXES + HIT_BOXES_BYTES;
 	public static final int MAGIC = 0x4343594D; // "MYCC"
-	public static final int VERSION = 16;
+	public static final int VERSION = 20;
 	/** A side is alive if its heartbeat is younger than this. */
 	public static final long HEARTBEAT_TIMEOUT_MS = 3000;
 
@@ -66,6 +76,7 @@ public final class Proto {
 	public static final long MY_PLAYER_HEIGHT = 0x4C;
 	public static final long MY_HEALTH = 0x50;     // Mycelium's current health (its own units); since v16
 	public static final long MY_MAX_HEALTH = 0x54; // Mycelium's max health; 0 = no spore health known
+	public static final long MY_NUTRIENTS = 0x58;  // Mycelium's nutrients (i32); -1 = not known; since v19
 	public static final int MYC_IN_LEVEL = 1 << 0;
 	public static final int MYC_PAUSED = 1 << 1;
 	public static final int MYC_OVERLAY = 1 << 2; // Mycelium shows Minecraft's overlay: Minecraft skips drawing its world
@@ -91,6 +102,7 @@ public final class Proto {
 	public static final long MC_BODY_YAW_O = 0x7C, MC_BODY_YAW_CUR = 0x80; // body yaw at the previous / latest tick
 	public static final long MC_FOV_SCALE = 0x84; // Minecraft's FOV multiplier now (sprint, speed, bow, spyglass); 0 = not sent
 	public static final long MC_EYE_SCALE = 0x88; // eye height now / standing eye height (crouching ~0.78); 0 = not sent
+	public static final long MC_DAMAGE_TILT = 0x8C; // Minecraft's "Damage Tilt" setting, 0 (off) .. 1; since v20
 	public static final int MC_IN_WORLD = 1 << 0;
 	public static final int MC_SCREEN_OPEN = 1 << 1;
 	public static final int MC_ON_GROUND = 1 << 2;
@@ -139,6 +151,27 @@ public final class Proto {
 	public static final long SH_FLAGS = 0x08; // bit0: rows bottom-up
 	public static final long SH_FRAME_ID = 0x10;
 	public static final int OVERLAY_DIRTY = 1 << 2;
+
+	// Enemies @0x700 (Mycelium -> Minecraft, seqlock): Mycelium's enemies near the spore, for
+	// Minecraft's invisible stand-ins. Positions in Minecraft coordinates (feet), sizes in blocks.
+	public static final long OFF_ENEMIES = 0x700;
+	public static final long E_SEQ = 0x00;
+	public static final long E_COUNT = 0x04;
+	public static final long E_LIST = 0x10;
+	public static final int E_MAX = 40;
+	public static final long E_SIZE = 0x30; // u32 id, u32 flags, f32 x, y, z, width, height, health, max health, yaw
+	public static final long EN_ID = 0x00, EN_FLAGS = 0x04, EN_X = 0x08, EN_Y = 0x0C, EN_Z = 0x10, EN_WIDTH = 0x14, EN_HEIGHT = 0x18,
+		EN_HEALTH = 0x1C, EN_MAX_HEALTH = 0x20, EN_YAW = 0x24;
+	public static final int EN_ALIVE = 1 << 0;
+
+	// Hits @0xF00 (Minecraft -> Mycelium): a ring of the last 8 hits on stand-ins. Minecraft writes
+	// the entry, then bumps the count; Mycelium handles every entry up to the count.
+	public static final long OFF_HITS = 0xF00;
+	public static final long H_COUNT = 0x00; // hits written so far (u32)
+	public static final long H_LIST = 0x10;
+	public static final int H_RING = 8;
+	public static final long H_SIZE = 0x10; // u32 enemy id, f32 damage (Minecraft points, after Minecraft's own sums), u32 flags, pad
+	public static final int HIT_CRIT = 1 << 0;
 
 	// GroundGrid @0x1000 (Mycelium -> Minecraft, seqlock)
 	public static final long OFF_GROUND = 0x1000;

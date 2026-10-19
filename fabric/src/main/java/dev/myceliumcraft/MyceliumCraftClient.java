@@ -43,6 +43,9 @@ public final class MyceliumCraftClient implements ClientModInitializer {
 			.map(v -> v.getAsString()).orElse("unknown");
 		MycLink.LOG.info("MyceliumCraft: loaded (protocol v{}, mapping {}), jar built {}", Proto.VERSION, Proto.MAPPING_NAME, built);
 		MyceliumKeys.init();
+		// Combat: invisible stand-ins for Mycelium's enemies, drawn by nothing.
+		dev.myceliumcraft.combat.EnemyProxies.init();
+		net.fabricmc.fabric.api.client.rendering.v1.EntityRendererRegistry.register(dev.myceliumcraft.combat.EnemyProxies.TYPE, net.minecraft.client.renderer.entity.NoopRenderer::new);
 		MycLink.LOG.info("MyceliumCraft: rules: no fall damage for players, no natural health regeneration (always, while the mod is installed)");
 	}
 
@@ -92,6 +95,7 @@ public final class MyceliumCraftClient implements ClientModInitializer {
 		freezeWorld(minecraft, haveMyc && MycLink.myceliumAlive() && MYC.inLevel() && (MYC.flags & Proto.MYC_PAUSED) != 0);
 
 		syncHealth(minecraft, player, haveMyc && MycLink.myceliumAlive() && MYC.inLevel() && MYC.maxHealth > 0f);
+		syncLevel(minecraft, player, haveMyc && MycLink.myceliumAlive() && MYC.inLevel() && MYC.nutrients >= 0);
 
 		// Body size: as tall as the spore while Mycelium has one in a level; normal size otherwise.
 		boolean sporeActive = haveMyc && MycLink.myceliumAlive() && MYC.inLevel() && MYC.playerHeight > 0;
@@ -143,13 +147,91 @@ public final class MyceliumCraftClient implements ClientModInitializer {
 		float standingEye = player.getEyeHeight(net.minecraft.world.entity.Pose.STANDING);
 		float eye = Mth.lerp(partial, camera.myceliumcraft$eyeHeightOld(), camera.myceliumcraft$eyeHeight());
 		float eyeScale = standingEye > 0.01f ? eye / standingEye : 1f;
-		MycLink.writeMcState(flags, feet.x, feet.y, feet.z, player.getYRot(), player.getXRot(), frame, epoch, teleportAck, minecraft.options.getCameraType().ordinal(), bodyYaw, TICK, fovScale, eyeScale);
+		MycLink.writeMcState(flags, feet.x, feet.y, feet.z, player.getYRot(), player.getXRot(), frame, epoch, teleportAck, minecraft.options.getCameraType().ordinal(), bodyYaw, TICK, fovScale, eyeScale,
+			minecraft.options.damageTiltStrength().get().floatValue()); // Mycelium's camera tilts on hits by this much
+		dev.myceliumcraft.combat.EnemyProxies.clientSnap(minecraft.level);
+		sendHitBoxes(minecraft);
 		// Third person: your Minecraft body, for Mycelium to draw instead of the spore.
 		MycPlayerModel.frame(minecraft, MycOverlay.active(), partial);
 		logOncePerSecond(feet, player.getYRot(), flags);
 	}
 
+	private static final int[] BOX_IDS = new int[Proto.HB_MAX];
+	private static final float[] BOXES = new float[Proto.HB_MAX * 6];
+	private static int lastBoxCount = -1;
+
+	/**
+	 * Each enemy stand-in's box as this client has it: what the crosshair actually picks (its
+	 * bounding box, grown by its pick radius). Mycelium draws these with -mcShowHitboxes.
+	 */
+	private static void sendHitBoxes(Minecraft minecraft) {
+		int n = 0;
+		for (var entity : minecraft.level.entitiesForRendering()) {
+			if (n >= Proto.HB_MAX) {
+				break;
+			}
+			if (!(entity instanceof dev.myceliumcraft.combat.EnemyProxy proxy) || proxy.isRemoved()) {
+				continue;
+			}
+			var box = proxy.getBoundingBox().inflate(proxy.getPickRadius());
+			BOX_IDS[n] = proxy.enemyId();
+			int o = n * 6;
+			BOXES[o] = (float) box.minX;
+			BOXES[o + 1] = (float) box.minY;
+			BOXES[o + 2] = (float) box.minZ;
+			BOXES[o + 3] = (float) box.maxX;
+			BOXES[o + 4] = (float) box.maxY;
+			BOXES[o + 5] = (float) box.maxZ;
+			n++;
+		}
+		MycLink.writeHitBoxes(n, BOX_IDS, BOXES);
+		if (n != lastBoxCount) {
+			lastBoxCount = n;
+			MycLink.LOG.info("MyceliumCraft: combat: {} enemy stand-ins on the client{}", n,
+				n > 0 ? String.format("; first #%d box %.2f x %.2f x %.2f blocks", BOX_IDS[0], BOXES[3] - BOXES[0], BOXES[4] - BOXES[1], BOXES[5] - BOXES[2]) : "");
+		}
+	}
+
+	private static int sentLevel = -1;
+	private static long lastLevelFix;
+
+	/**
+	 * Minecraft's experience level = Mycelium's nutrients (your choice, 2026-10-19), with an empty
+	 * XP bar. Mycelium is in charge: Minecraft's own XP (orbs, enchanting) is put back. Applied on the
+	 * integrated server when it changes, or when Minecraft's has drifted (at most every 0.25 s).
+	 */
+	private static void syncLevel(Minecraft minecraft, LocalPlayer player, boolean sync) {
+		var server = minecraft.getSingleplayerServer();
+		if (!sync || server == null || player.isDeadOrDying()) {
+			sentLevel = -1;
+			return;
+		}
+		int level = MYC.nutrients;
+		long now = System.currentTimeMillis();
+		boolean drifted = (player.experienceLevel != level || player.experienceProgress != 0f) && now - lastLevelFix > 250;
+		if (level == sentLevel && !drifted) {
+			return;
+		}
+		lastLevelFix = now;
+		if (level != sentLevel) {
+			MycLink.LOG.info("MyceliumCraft: level: Minecraft experience level {} (Mycelium nutrients)", level);
+		} else {
+			MycLink.LOG.info("MyceliumCraft: level: Minecraft's level had drifted to {} ({} of the bar); back to {}", player.experienceLevel,
+				String.format("%.2f", player.experienceProgress), level);
+		}
+		sentLevel = level;
+		var uuid = player.getUUID();
+		server.execute(() -> {
+			ServerPlayer sp = server.getPlayerList().getPlayer(uuid);
+			if (sp != null) {
+				sp.setExperienceLevels(level);
+				sp.setExperiencePoints(0); // empty bar within the level
+			}
+		});
+	}
+
 	private static float sentMax = Float.NaN, sentHealth = Float.NaN;
+	private static float lastMycHealth = Float.NaN;
 	private static boolean killSent;
 	private static long lastHealthFix, lastRespawn, lastHealthLog, zeroSince;
 
@@ -169,10 +251,19 @@ public final class MyceliumCraftClient implements ClientModInitializer {
 				MycLink.LOG.info("MyceliumCraft: health: not synced any more (Mycelium not in a level); max health back to 20");
 			}
 			sentMax = sentHealth = Float.NaN;
+			lastMycHealth = Float.NaN;
 			killSent = false;
 			zeroSince = 0;
 			return;
 		}
+		// Mycelium's health dropped: Minecraft's red hurt flash on the body (its own animation; the
+		// captured player model shows it), as when Minecraft itself hurts you.
+		if (!Float.isNaN(lastMycHealth) && MYC.health < lastMycHealth - 0.01f && MYC.health > 0f) {
+			player.hurtDuration = 10;
+			player.hurtTime = 10;
+			MycLink.LOG.info("MyceliumCraft: health: Mycelium took {} damage; Minecraft's hurt flash", String.format("%.1f", lastMycHealth - MYC.health));
+		}
+		lastMycHealth = MYC.health;
 		float max = Math.max(1f, MYC.maxHealth / dev.myceliumcraft.world.MycHealth.PER_POINT);
 		float health = Math.max(0f, Math.min(MYC.health, MYC.maxHealth)) / dev.myceliumcraft.world.MycHealth.PER_POINT;
 		dev.myceliumcraft.world.MycHealth.set(true, health);

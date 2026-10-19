@@ -20,6 +20,7 @@ namespace MyceliumCraft.Link
         public float TickMs;    // milliseconds per tick; 0 = no tick data
         public float BodyYawO, BodyYawCur;
         public float FovScale, EyeScale; // Minecraft's FOV multiplier and eye height / standing (0: not sent)
+        public float DamageTilt;         // Minecraft's "Damage Tilt" setting, 0 (off) .. 1
 
         public bool HasTicks => TickMs > 0f && TickQpc != 0;
 
@@ -148,7 +149,7 @@ namespace MyceliumCraft.Link
         }
 
         /// <summary>Seqlock write of MycState.</summary>
-        public void WriteMycState(uint flags, double x, double y, double z, float yaw, ulong frame, in Teleport tp, float playerHeightBlocks, float health = 0f, float maxHealth = 0f)
+        public void WriteMycState(uint flags, double x, double y, double z, float yaw, ulong frame, in Teleport tp, float playerHeightBlocks, float health = 0f, float maxHealth = 0f, int nutrients = -1)
         {
             int b = Proto.OffMycState;
             uint seq = ReadU32(view, b + Proto.MySeq);
@@ -168,6 +169,7 @@ namespace MyceliumCraft.Link
             WriteF32(view, b + Proto.MyPlayerHeight, playerHeightBlocks);
             WriteF32(view, b + Proto.MyHealth, health);
             WriteF32(view, b + Proto.MyMaxHealth, maxHealth);
+            Marshal.WriteInt32(view, b + Proto.MyNutrients, nutrients);
             Thread.MemoryBarrier();
             WriteU32(view, b + Proto.MySeq, seq + 2); // even: done
         }
@@ -245,6 +247,7 @@ namespace MyceliumCraft.Link
                 s.BodyYawCur = ReadF32(view, b + Proto.McBodyYawCur);
                 s.FovScale = ReadF32(view, b + Proto.McFovScale);
                 s.EyeScale = ReadF32(view, b + Proto.McEyeScale);
+                s.DamageTilt = ReadF32(view, b + Proto.McDamageTilt);
                 Thread.MemoryBarrier();
                 if (ReadU32(view, b + Proto.McSeq) == seq1) return true;
             }
@@ -352,6 +355,61 @@ namespace MyceliumCraft.Link
             if (width <= 0 || height <= 0 || offset < 0 || offset + (long)width * height * 4 > Proto.TDataBytes) return false;
             pixels = view + Proto.OffTextures + Proto.TData + (int)offset;
             return true;
+        }
+
+        /// <summary>Seqlock write of the enemy table (count entries of ids/flags/values).</summary>
+        public void WriteEnemies(int count, uint[] ids, uint[] flags, float[] values)
+        {
+            int b = Proto.OffEnemies;
+            uint seq = ReadU32(view, b + Proto.ESeq);
+            WriteU32(view, b + Proto.ESeq, seq + 1);
+            Thread.MemoryBarrier();
+            count = Math.Min(count, Proto.EMax);
+            WriteU32(view, b + Proto.ECount, (uint)count);
+            for (int i = 0; i < count; i++)
+            {
+                int e = b + Proto.EList + i * Proto.ESize;
+                WriteU32(view, e + Proto.EnId, ids[i]);
+                WriteU32(view, e + Proto.EnFlags, flags[i]);
+                for (int k = 0; k < 8; k++) WriteF32(view, e + Proto.EnX + 4 * k, values[i * 8 + k]); // x, y, z, width, height, health, max, yaw
+            }
+            Thread.MemoryBarrier();
+            WriteU32(view, b + Proto.ESeq, seq + 2);
+        }
+
+        /// <summary>Hits Minecraft has reported so far (the ring holds the last Proto.HRing).</summary>
+        public uint HitCount => ReadU32(view, Proto.OffHits + Proto.HCount);
+
+        /// <summary>Hit number n (0-based, total count), if still in the ring.</summary>
+        public void ReadHit(uint n, out uint enemyId, out float damage, out uint flags)
+        {
+            int e = Proto.OffHits + Proto.HList + (int)(n % Proto.HRing) * Proto.HSize;
+            Thread.MemoryBarrier();
+            enemyId = ReadU32(view, e);
+            damage = ReadF32(view, e + 4);
+            flags = ReadU32(view, e + 8);
+        }
+
+        /// <summary>Seqlock read of the stand-ins' hit boxes: ids and 6 floats each (min x, y, z, max x, y, z). Count, or -1.</summary>
+        public int TryReadHitBoxes(uint[] ids, float[] boxes)
+        {
+            int b = Proto.OffHitBoxes;
+            for (int attempt = 0; attempt < 16; attempt++)
+            {
+                uint seq1 = ReadU32(view, b + Proto.HbSeq);
+                Thread.MemoryBarrier();
+                if ((seq1 & 1) != 0) { Thread.SpinWait(20); continue; }
+                int count = (int)Math.Min(ReadU32(view, b + Proto.HbCount), (uint)Math.Min(Proto.HbMax, ids.Length));
+                for (int i = 0; i < count; i++)
+                {
+                    int e = b + Proto.HbList + i * Proto.HbSize;
+                    ids[i] = ReadU32(view, e);
+                    for (int k = 0; k < 6; k++) boxes[i * 6 + k] = ReadF32(view, e + 4 + 4 * k);
+                }
+                Thread.MemoryBarrier();
+                if (ReadU32(view, b + Proto.HbSeq) == seq1) return count;
+            }
+            return -1;
         }
 
         /// <summary>Pictures Minecraft has published so far.</summary>

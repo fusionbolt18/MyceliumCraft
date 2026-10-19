@@ -55,10 +55,12 @@ namespace MyceliumCraft
         WorldMapping map;
         readonly GroundScanner ground = new GroundScanner();
         readonly CameraSync cameraSync = new CameraSync();
+        readonly HurtTilt hurtTilt = new HurtTilt();
         readonly InputBridge input = new InputBridge();
         readonly KeyOwnership keys = new KeyOwnership();
         readonly McOverlay overlay = new McOverlay();
         readonly McPlayerModel playerModel = new McPlayerModel();
+        readonly EnemyCombat combat = new EnemyCombat();
         readonly uint[] bindKinds = new uint[Proto.BMax];
         readonly uint[] bindCodes = new uint[Proto.BMax];
         bool heldByMycelium;   // Mycelium has the controls (menu, pause, cutscene): don't drive the spore
@@ -177,6 +179,9 @@ namespace MyceliumCraft
             // Test aid: "-mcHitTest" knocks the spore back every 4 s, as an enemy hit does
             // (PlayerController.Knockback, from in front of the spore).
             hitTest = Array.IndexOf(args, "-mcHitTest") >= 0;
+            // Test aid: "-mcHurtTest" damages the spore by 1 every 3 s from a test hitter 1.5 units
+            // away, going round it: in front, right, behind, left (for the hurt tilt).
+            hurtTest = Array.IndexOf(args, "-mcHurtTest") >= 0;
             // Test aid: "-mcOverlayCheck" reads back Mycelium's finished screen once a second where
             // the fake Minecraft's test picture (LINKTEST_OVERLAY=1) has its boxes, switching the
             // overlay on and off each time, and logs the colors.
@@ -187,6 +192,9 @@ namespace MyceliumCraft
             // Test aid: "-mcLoadTest" starts a scene change through Mycelium's own SceneLoader (with
             // its fade and loading screen) after 4 s of driving, to the tutorial.
             if (Array.IndexOf(args, "-mcLoadTest") >= 0) StartCoroutine(LoadTest());
+            // Test aid: "-mcFlashCheck" reads back the screen around an enemy while its hurt flash is
+            // on and just after, and logs colour and detail (neighbouring-pixel contrast) for both.
+            if (Array.IndexOf(args, "-mcFlashCheck") >= 0) StartCoroutine(FlashCheck());
             // Test aid: "-mcBlurCheck" logs how sharp Mycelium's finished screen is twice a second
             // (average difference between neighbouring pixels in the middle), to see the pause blur.
             if (Array.IndexOf(args, "-mcBlurCheck") >= 0) StartCoroutine(BlurCheck());
@@ -272,7 +280,8 @@ namespace MyceliumCraft
             // Mycelium's health, which Minecraft's follows (/ 5).
             float health = 0f, maxHealth = 0f;
             if (rb != null) ReadHealth(out health, out maxHealth);
-            link.WriteMycState(flags, pos.x, pos.y, pos.z, yaw, frame, tp, rb != null ? playerHeightBlocks : 0f, health, maxHealth);
+            link.WriteMycState(flags, pos.x, pos.y, pos.z, yaw, frame, tp, rb != null ? playerHeightBlocks : 0f, health, maxHealth,
+                               rb != null ? ReadNutrients() : -1);
 
             bool alive = link.MinecraftAlive;
             if (alive != mcWasAlive)
@@ -293,6 +302,9 @@ namespace MyceliumCraft
             bool camFresh2 = lastCamMcTime >= 0f && Time.realtimeSinceStartup - lastCamMcTime <= HiccupSeconds;
             bool look = alive && phase != Phase.Idle && camFresh2;
             cameraSync.Update(look, lastCamMc);
+            // Minecraft's hurt tilt: when the spore loses health, lean the view toward what hit it.
+            cameraSync.Hurt = hurtTilt;
+            hurtTilt.Update(health, maxHealth, rb, playerHealth, camFresh2 ? lastCamMc.DamageTilt : 1f);
 
             // Input bridge: Minecraft plays from Mycelium's keyboard and mouse during normal play.
             // In test runs (-mcBackground) the bridge never uses your keyboard and mouse, even if
@@ -338,10 +350,15 @@ namespace MyceliumCraft
             playerModel.Update(link, bodyWanted, rb != null ? rb.transform.position - Vector3.up * feetOffset : Vector3.zero, (float)map.Scale);
             cameraSync.ReplaceSpore = playerModel.Shown;
             // Which game owns which key, while Minecraft drives the spore.
-            keys.Update(alive && phase == Phase.Driving, mcScreenOpen);
+            // (Re-sync teleports count as driving: giving Mycelium its keys back for those few frames
+            // let a click become Mycelium's attack right after a hit, your report 2026-10-19.)
+            keys.Update(alive && phase != Phase.Idle, mcScreenOpen);
+            // Combat: Mycelium's enemies to Minecraft's stand-ins, and their hits back.
+            if (rb != null) combat.Update(link, rb.position, map);
             if (shakeTest && look && Time.realtimeSinceStartup >= nextShakeTime) FireTestShake();
             if (holdTest && controller != null && (phase == Phase.Driving || holdTestStep > 0)) RunHoldTest();
             if (hitTest && controller != null && phase == Phase.Driving && Time.realtimeSinceStartup >= nextHitTime) RunHitTest();
+            if (hurtTest && playerHealth != null && phase == Phase.Driving && Time.realtimeSinceStartup >= nextHurtTime) RunHurtTest();
             if (mouseTest && phase == Phase.Driving && UnityEngine.InputSystem.Mouse.current != null)
             {
                 // About what a hand does: up and down, 20 px per frame at most, 1.5 s period.
@@ -761,6 +778,37 @@ namespace MyceliumCraft
         float nextHealthLook;
         string lastHealthLog = "";
 
+        // Mycelium's NutrientTracker.currentNutrients, found by name: Minecraft's experience level follows it.
+        Component nutrientTracker;
+        FieldInfo nutrientsField;
+        float nextNutrientLook;
+        int lastNutrientsLog = int.MinValue;
+
+        int ReadNutrients()
+        {
+            if (nutrientTracker == null && Time.realtimeSinceStartup >= nextNutrientLook)
+            {
+                nextNutrientLook = Time.realtimeSinceStartup + 1f;
+                Type t = Type.GetType("NutrientTracker, Assembly-CSharp");
+                if (t != null)
+                {
+                    nutrientTracker = UnityEngine.Object.FindObjectOfType(t) as Component;
+                    nutrientsField = t.GetField("currentNutrients", BindingFlags.Public | BindingFlags.Instance);
+                    if (nutrientTracker != null) McLog.Info($"nutrients: found Mycelium's NutrientTracker on '{nutrientTracker.gameObject.name}'");
+                }
+            }
+            if (nutrientTracker == null || nutrientsField == null) return -1;
+            int n;
+            try { n = (int)nutrientsField.GetValue(nutrientTracker); }
+            catch (Exception) { return -1; }
+            if (n != lastNutrientsLog)
+            {
+                lastNutrientsLog = n;
+                McLog.Info($"nutrients: {n} -> Minecraft experience level {n}");
+            }
+            return n;
+        }
+
         void ReadHealth(out float health, out float max)
         {
             health = max = 0f;
@@ -822,6 +870,57 @@ namespace MyceliumCraft
                 if (Time.timeScale == 0f) Time.timeScale = timeScaleBefore;
                 McLog.Info($"pause: Minecraft's pause menu closed, Mycelium's time runs again (time scale {Time.timeScale:F2})");
             }
+        }
+
+        /// <summary>Test aid: see "-mcFlashCheck" in Awake.</summary>
+        System.Collections.IEnumerator FlashCheck()
+        {
+            Component seen = null;
+            int checks = 0;
+            while (checks < 6)
+            {
+                yield return null;
+                Component enemy = combat.Hurt.LastFlashed;
+                if (enemy == null || enemy == seen || Camera.main == null) continue;
+                seen = enemy;
+                yield return new WaitForSecondsRealtime(0.05f);
+                yield return new WaitForEndOfFrame();
+                string during = ScreenAround(combat.Hurt.LastBounds);
+                yield return new WaitForSecondsRealtime(0.6f); // the flash is 0.5 s
+                yield return new WaitForEndOfFrame();
+                string after = ScreenAround(combat.Hurt.LastBounds);
+                McLog.Info($"flash check: '{enemy.name}' during the flash {during}; after it {after}");
+                checks++;
+                seen = null; // the next hit on the same enemy counts too
+                combat.Hurt.LastFlashed = null;
+            }
+        }
+
+        /// <summary>Average colour and neighbouring-pixel contrast of the screen inside these world bounds.</summary>
+        string ScreenAround(Bounds b)
+        {
+            Camera cam = Camera.main;
+            Vector3 lo = new Vector3(float.MaxValue, float.MaxValue), hi = new Vector3(float.MinValue, float.MinValue);
+            for (int i = 0; i < 8; i++)
+            {
+                Vector3 corner = new Vector3((i & 1) == 0 ? b.min.x : b.max.x, (i & 2) == 0 ? b.min.y : b.max.y, (i & 4) == 0 ? b.min.z : b.max.z);
+                Vector3 s = cam.WorldToScreenPoint(corner);
+                if (s.z <= 0f) return "(behind the camera)";
+                lo = Vector3.Min(lo, s);
+                hi = Vector3.Max(hi, s);
+            }
+            Texture2D shot = ScreenCapture.CaptureScreenshotAsTexture();
+            int w = shot.width, h = shot.height;
+            Color32[] px = shot.GetPixels32();
+            Destroy(shot);
+            int x0 = Mathf.Clamp((int)(lo.x / Screen.width * w), 0, w - 2), x1 = Mathf.Clamp((int)(hi.x / Screen.width * w), x0 + 1, w - 1);
+            int y0 = Mathf.Clamp((int)(lo.y / Screen.height * h), 0, h - 1), y1 = Mathf.Clamp((int)(hi.y / Screen.height * h), y0 + 1, h);
+            long r = 0, g = 0, bl = 0, k = 0;
+            for (int y = y0; y < y1; y++)
+                for (int x = x0; x < x1; x++) { Color32 c = px[y * w + x]; r += c.r; g += c.g; bl += c.b; k++; }
+            k = Math.Max(1, k);
+            double contrast = Sharpness(px, w, x0, x1, y0, y1);
+            return $"colour ({r / k},{g / k},{bl / k}), detail {contrast:F2} ({x1 - x0}x{y1 - y0} px)";
         }
 
         /// <summary>Test aid: see "-mcLoadTest" in Awake.</summary>
@@ -1070,6 +1169,48 @@ namespace MyceliumCraft
             }
         }
 
+        bool hurtTest;
+        float nextHurtTime;
+        int hurtTestStep;
+        GameObject testHitter;
+
+        /// <summary>
+        /// Test aid: 1 damage through Mycelium's own PlayerTakeDamage, from a test hitter (a small
+        /// trigger with a "TestDamageSource" script, so the hurt tilt finds it as it finds an
+        /// enemy's hitbox) 1.5 units in front, right, behind, then left of where the spore faces.
+        /// </summary>
+        void RunHurtTest()
+        {
+            nextHurtTime = Time.realtimeSinceStartup + 3f;
+            if (testHitter == null)
+            {
+                testHitter = new GameObject("MyceliumCraft test hitter");
+                var sphere = testHitter.AddComponent<SphereCollider>();
+                sphere.isTrigger = true;
+                sphere.radius = 0.2f;
+                testHitter.AddComponent<TestDamageSource>();
+            }
+            string[] sides = { "in front", "right", "behind", "left" };
+            int side = hurtTestStep++ % 4;
+            Vector3 dir = Quaternion.Euler(0f, rb.rotation.eulerAngles.y + 90f * side, 0f) * Vector3.forward;
+            testHitter.transform.position = rb.worldCenterOfMass + dir * 1.5f;
+            testHitter.SetActive(true);
+            Physics.SyncTransforms();
+            MethodInfo take = playerHealth.GetType().GetMethod("PlayerTakeDamage", BindingFlags.Public | BindingFlags.Instance);
+            try
+            {
+                take.Invoke(playerHealth, new object[] { 1f });
+                McLog.Info($"hurt test: 1 damage from the test hitter {sides[side]} of the spore");
+            }
+            catch (Exception e)
+            {
+                McLog.Info("hurt test: PlayerTakeDamage failed: " + (e.InnerException?.Message ?? e.Message));
+            }
+        }
+
+        /// <summary>Marks -mcHurtTest's hitter as something that deals damage (its name has "Damage" in it).</summary>
+        sealed class TestDamageSource : MonoBehaviour { }
+
         /// <summary>Test aid: DisableController after 3 s of driving, EnableController 3 s later, as Mycelium's menus do.</summary>
         void RunHoldTest()
         {
@@ -1081,6 +1222,9 @@ namespace MyceliumCraft
             MethodInfo m = playerControllerType.GetMethod(method, BindingFlags.Public | BindingFlags.Instance);
             object[] callArgs = m != null && m.GetParameters().Length == 1 ? new object[] { null } : new object[0];
             m?.Invoke(controller, callArgs);
+            // While Mycelium has the controls, push the spore 1 unit (as a knockback does), so giving
+            // them back needs a re-sync teleport.
+            if (method == "DisableController" && rb != null) rb.position += rb.transform.right * 1f;
             McLog.Info($"hold test: called PlayerController.{method}() (found={m != null})");
         }
 

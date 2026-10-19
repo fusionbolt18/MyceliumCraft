@@ -263,6 +263,97 @@ prevented fall or heal is logged at most once a second.
   `WaitingForPlayerChunkMixin` makes it not wait while Mycelium is running (as SkyCraft does).
 - **Outside Mycelium's levels** (max 0 or no spore): not synced, and max health is put back to 20.
 
+### 5.0.2.1 Experience level = nutrients (since 2026-10-19)
+
+Mycelium reads `NutrientTracker.currentNutrients` (found by name; on 'NutrientCounter') and sends it
+(MycState 0x58). Minecraft sets its experience level to that number with an empty bar
+(`setExperienceLevels`, `setExperiencePoints(0)`). Mycelium is in charge: if Minecraft's level
+drifts (XP orbs, enchanting), it's put back within 0.25 s.
+
+### 5.0.3 Combat: your Minecraft attacks hit Mycelium's enemies (since 2026-10-19)
+
+Following SkyCraft's actor proxies.
+- **Mycelium** (`EnemyCombat`): every frame it sends its live enemies within 64 units (`EnemyHealth`,
+  found by name; up to 40). Each has an id, feet position, size and health; the size comes from the
+  enemy's solid colliders.
+- **Minecraft** (`combat/EnemyProxies`, every server tick): keeps one invisible stand-in
+  (`EnemyProxy`, a real creature: no AI, no gravity, not pushable, not saved, drawn by nothing) per
+  enemy, moved and resized to match.
+  - Minecraft's own attack rules work on it: weapon damage, cooldown, critical hits, sweeping,
+    enchantments, arrows.
+  - When a player hurts it, the final damage goes to Mycelium (Hits ring). The stand-in loses
+    nothing, and other damage (fire, mobs) is ignored.
+- **Back in Mycelium:** each hit becomes `EnemyTakeDamage(damage × damageScale, wasFromWeapon:
+  true)`, so Mycelium's armour, damage numbers, blood, sound and death all happen as for the spore's
+  own hits.
+- **`damageScale`** defaults to 5, the same rate as health: 1 Minecraft point = 5 Mycelium damage,
+  an iron sword (6) does 30, a beetle has 30.
+- **Enemies hitting you** already work through Mycelium: its health drops, and Minecraft's follows
+  (§5.0.2).
+
+**The stand-in's size reaches Minecraft's client** (since 2026-10-19): the enemy id, width and
+height are synced creature data (`SynchedEntityData`), and the client resizes its copy when they
+change. The crosshair picks on the client's copy, which before this kept Minecraft's default
+0.6 × 0.6 box.
+
+**Fast enemies' hitboxes keep up** (since 2026-10-19):
+- **The problem:** Minecraft moves a creature's client copy from server updates (by default every 3
+  ticks for this kind) and glides it over a few ticks, so fast enemies' hitboxes lagged behind.
+- **The fix:** at the start of every client tick (before Minecraft picks what the crosshair is on),
+  `EnemyProxies.clientSnap` puts each client copy exactly at Mycelium's current enemy position
+  (read straight from the enemy table) and cancels the glide.
+- **The server's copy,** which Minecraft uses to check a hit, is updated every tick
+  (`updateInterval(1)`).
+
+**Red hurt flash, as Minecraft's** (since 2026-10-19):
+- **Your Minecraft body:** when Mycelium's health drops, Minecraft's client hurt animation is
+  started (`hurtTime = hurtDuration = 10`). The captured player model then carries Minecraft's own
+  red tint for those 10 ticks. Minecraft's own `hurtTo` on a lower synced health does this too;
+  this makes sure of it.
+- **Mycelium's enemies** (`HurtFlash`): when an enemy's health drops (from anything), its renderers
+  get an extra material for 0.5 s that draws the mesh again in two steps
+  (`Resources/MyceliumCraftHurtTint.shader`):
+  1. multiply the colours already there by (1, 0.72, 0.72), so red stays and green and blue dim,
+     and every detail of the enemy's look stays visible (a flat 40 % red layer covered them);
+  2. add (0.12, 0.03, 0.03) of red light, so the flash isn't darker than the enemy.
+
+  The two passes are tagged SRPDefaultUnlit and UniversalForward, so URP draws both. Taking it away removes only that material. `-mcFlashCheck` logs the colour and
+  detail on screen around an enemy during and after its flash.
+
+**Hurt camera tilt, as Minecraft's** (since 2026-10-19, `HurtTilt`): when the spore loses health
+(and doesn't die), Mycelium's camera leans toward whatever hit it and swings back, in every view.
+- **The shape is Minecraft's** (`GameRenderer.bobHurt`): over 0.5 s (10 ticks), with f = time left
+  ÷ 0.5 s, the lean is sin(f⁴ × π) × 10°, so it peaks within the first 0.08 s and eases back.
+  Minecraft's is 14°; you found that a little strong, so it's 10° here.
+  The top of the view leans toward the hit: a hit from the left rolls the view left, from in
+  front it nods down. The direction is measured from where the player faces.
+- **How far** is Minecraft's own "Damage Tilt" accessibility setting (0–100 %), sent in McState
+  (0x8C, protocol v20).
+- **What hit you:** Mycelium's `PlayerTakeDamage` takes only an amount, so at the moment health
+  drops the mod looks for the hitter:
+  1. the nearest collider within 4 units that belongs to an enemy, or has an attack-looking script
+     (Attack, Hitbox, Projectile, Damage, Shell, Tail or Collision in its name, not the spore's own
+     weapon). The direction is to the enemy itself (or the middle of the hitbox): a beetle touching
+     the spore gave a nearest point only 0.1 units from the spore's middle.
+  2. Otherwise, the nearest live enemy within 15 units.
+  3. Otherwise none: the view rolls to the left (what Minecraft does with hurt direction 0).
+
+  It can guess wrong. Falling into a death plane near an enemy leans toward the enemy.
+- **Applied** after Cinemachine and the pitch correction, as a turn in the camera's own space
+  (`CameraSync.AfterCinemachine`). Cinemachine sets the camera again every frame, so nothing builds up.
+- **Not copied:** Minecraft's death roll (the view tips over sideways when you die).
+- **`-mcHurtTest`** (test aid): 1 damage every 3 s through `PlayerTakeDamage`, from a test hitter
+  1.5 units in front, right, behind, then left of the spore.
+
+**`-mcShowHitboxes`** (test aid, `HitboxView`): the box Minecraft's client really has for each
+stand-in (its bounding box grown by its pick radius) is sent back every frame (HitBoxes block) and
+drawn in Mycelium's window as a wireframe. Green, red for 0.3 s after a hit lands, on top of
+everything (`Resources/MyceliumCraftLine.shader`).
+
+**Checked** with the fake Minecraft (`LINKTEST_HIT=1`) in Daybreak Arboretum: the beetle 36 blocks
+away arrived (1.6 × 0.7 blocks, 30/30); three 2-point hits did 10 damage each (30 → 20 → 10 → 0),
+and the dead beetle left the table. The tutorial has no enemies at its start.
+
 ### 5.1 Body size: Minecraft's player is shrunk to the spore's height
 
 **The problem:** Minecraft's player is always 1.8 blocks tall. At scale 1.4 that's 2.52 units. The
@@ -623,7 +714,9 @@ Until Minecraft sends binds (or with an older mod), Mycelium uses the same defau
 - **Mycelium:** Unity Input System *binding overrides* on its "Player" actions. About 20
   Mycelium scripts each create their own copy of its input asset; every copy with Player actions
   in use is found through `InputSystem.ListEnabledActions()` (11 in the tutorial) and changed.
-  The overrides are removed when Minecraft stops driving. Mycelium's code is unchanged.
+  The overrides are removed when Minecraft stops driving, but only after 0.5 s without it.
+  Re-sync teleports count as driving (since 2026-10-19: a 20 ms gap after a hit's re-sync let a
+  click become Mycelium's attack). Mycelium's code is unchanged.
 - **Cheat panel:** Mycelium's developer cheat panel (`TestingManager`, in `ManagerBundle`) reads
   the digits, K, L, Z, X and Minus directly, and digits are Minecraft's hotbar. It's switched off
   while Minecraft drives.

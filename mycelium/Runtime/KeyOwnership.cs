@@ -70,6 +70,8 @@ namespace MyceliumCraft
         string lastPressed = "";
 
         public bool Active => active;
+        const float ReleaseAfterSeconds = 0.5f;
+        float notDrivingSince = -1f;
         public bool HasBindings => signature != null;
         public int Assets => done.Count;
         /// <summary>SDL scancodes bound to a Mycelium action: not sent to Minecraft.</summary>
@@ -140,9 +142,16 @@ namespace MyceliumCraft
             if (!McConfig.KeyOwnership) driving = false;
             if (!driving)
             {
-                if (active) Release();
+                // Give Mycelium its keys back only once Minecraft has really stopped driving for a
+                // moment (as the camera does), never for a brief gap.
+                if (active)
+                {
+                    if (notDrivingSince < 0f) notDrivingSince = Time.realtimeSinceStartup;
+                    else if (Time.realtimeSinceStartup - notDrivingSince >= ReleaseAfterSeconds || !McConfig.KeyOwnership) Release();
+                }
                 return;
             }
+            notDrivingSince = -1f;
             if (!active)
             {
                 active = true;
@@ -308,6 +317,7 @@ namespace MyceliumCraft
             if (cheats != null) cheats.enabled = cheatsWereEnabled;
             cheats = null;
             active = false;
+            notDrivingSince = -1f;
             McLog.Info($"keys: Mycelium's own key bindings back ({restored} restored)");
         }
     }

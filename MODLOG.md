@@ -1,5 +1,285 @@
 # MODLOG
 
+## 2026-10-19 Hurt tilt a little less strong
+
+**Changed:**
+- **`HurtTilt.cs`:** the full lean is 10° instead of Minecraft's 14°. It's still scaled by
+  Minecraft's "Damage Tilt" setting.
+- DESIGN §5.0.3.
+
+**Why:** you found the tilt slightly too intense.
+
+**Tested how:** the real build with the fake Minecraft in Daybreak Arboretum, using `-mcHurtTest`.
+
+**Result:** four hits, from in front, right, behind and left. Each peaked at 10.0° and ended after 0.5 s.
+
+**Still broken / not tested:**
+- **How it looks on screen isn't checked**, and it isn't tested in Minecraft.
+
+## 2026-10-19 Camera tilts toward what hurt you, as Minecraft's (protocol v20)
+
+**Changed:**
+- **New `mycelium/Runtime/HurtTilt.cs`:**
+  - When the spore's health drops, finds the hitter: the nearest enemy or attack-looking collider
+    within 4 units, else the nearest live enemy within 15, else none (rolls left).
+  - Leans the view toward it with Minecraft's curve: sin(f⁴π) × 14° over 0.5 s.
+- **`CameraSync.cs`:** puts the lean on the finished view, in first person and both third-person views.
+- **`MinecraftDriver.cs`:** feeds it the health each frame; new test aid `-mcHurtTest`.
+- **Protocol v20:** McState 0x8C carries Minecraft's "Damage Tilt" setting
+  (`MyceliumCraftClient`, `MycLink`, `Proto` on both sides, PROTOCOL.md).
+- DESIGN §5.0.3, README.
+
+**Why:** you asked for Minecraft's hurt camera tilt toward the source of damage.
+
+**Tested how:** the real Mycelium build with the fake Minecraft (`LINKTEST_STILL=1`) in Daybreak
+Arboretum, `-mcHurtTest`, in first person (`LINKTEST_VIEW=0`) and third person (`LINKTEST_VIEW=1`).
+
+**Result:**
+- Hits from in front, right, behind and left were each found on the right side, while the player
+  was facing different ways. Each lean peaked at 14.0° and ended after 0.5 s.
+- In the first run a real beetle attacked. It was found as the hitter, but its direction came from
+  a point 0.1 units from the spore. Fixed: the direction now comes from the enemy's own position.
+- With Minecraft gone, no lean is put on Mycelium's own camera (0 frames), as intended.
+
+**Still broken / not tested:**
+- **Not tested in Minecraft.** Reading the real "Damage Tilt" setting is untested: the stand-in
+  always sends 100 %.
+- **How the lean looks on screen isn't checked.**
+- **The beetle's direction after the fix isn't checked:** no beetle attacked in the second run.
+- The hitter is a guess and can be wrong.
+- Minecraft's death roll isn't copied.
+
+## 2026-10-19 Enemy hurt flash a little brighter
+
+**Changed:**
+- **`Resources/MyceliumCraftHurtTint.shader`:** multiply by (1, 0.72, 0.72) instead of (1, 0.6, 0.6),
+  then add (0.12, 0.03, 0.03) of red light. Two passes, tagged for URP.
+- **`HurtFlash.cs`:** logs the tint's pass count.
+- DESIGN §5.0.3.
+
+**Why:** you liked the hue and see-through look but found it a little dark. A multiply only takes
+light away.
+
+**Tested how:** the real build in Daybreak Arboretum with fake hits.
+
+**Result:** "hurt flash: tint ready, 2 passes"; flashes on every hit.
+
+**Still broken / not tested:**
+- **The look on screen isn't checked.**
+
+## 2026-10-19 Enemy hurt flash keeps the model's details visible
+
+**Changed:**
+- **`Resources/MyceliumCraftHurtTint.shader`:** the flash now multiplies the enemy's colours by
+  (1, 0.6, 0.6) (`Blend DstColor Zero`), instead of drawing see-through red over them (40 %).
+- **New `-mcFlashCheck` test aid:** reads back the screen around a flashing enemy, during and after
+  the flash (colour and neighbouring-pixel contrast). `HurtFlash` remembers the last enemy flashed.
+- DESIGN §5.0.3.
+
+**Why:** you wanted the red tint to be see-through enough that the model's details still show.
+
+**Tested how:** the real build in Daybreak Arboretum with the fake Minecraft's hits and
+`-mcFlashCheck`.
+
+**Result:** **inconclusive.** The fake Minecraft can't face the enemies: they were 1 pixel wide in
+the distance, or behind the camera. The flashes themselves still happen ("hurt flash" lines as
+before).
+
+**Still broken / not tested:**
+- **The look on screen isn't checked.** Running `-mcFlashCheck` while facing an enemy logs real
+  numbers.
+
+## 2026-10-19 Red hurt flash on your body and on enemies, as in Minecraft
+
+**Changed:**
+- **`MyceliumCraftClient.syncHealth`:** when Mycelium's health drops, Minecraft's hurt animation
+  starts on the client (`hurtTime`/`hurtDuration` 10). The captured body shows Minecraft's red tint.
+- **New `HurtFlash.cs`** and `Resources/MyceliumCraftHurtTint.shader`: an enemy whose health
+  dropped (any cause) gets a see-through light-red copy of its mesh drawn on top for 0.5 s.
+- **`EnemyCombat.cs`:** watches every enemy's health each frame and flashes those that dropped.
+- DESIGN §5.0.3.
+
+**Why:** you asked for the light red flash when enemies and the player take damage, as Minecraft
+does.
+
+**Tested how:** the real build in Daybreak Arboretum, minimized, fake Minecraft hitting the nearest
+enemy every 2 s.
+
+**Result:** after every hit, "hurt flash: 1 enemy flashes in the last second", with no errors
+(stickbug, then beetles). The mod builds.
+
+**Still broken / not tested:**
+- **The look on screen isn't checked** (the colour and strength of the red, and enemies whose model
+  has several parts).
+- **Your body's flash** isn't tested in Minecraft.
+
+## 2026-10-19 A click right after a hit became Mycelium's attack
+
+**Changed:**
+- **`MinecraftDriver.cs`:** key ownership stays on through re-sync teleports (`phase != Idle`, was
+  `== Driving`).
+- **`KeyOwnership.cs`:** Mycelium gets its own keys back only after 0.5 s without Minecraft driving.
+- **`-mcHoldTest`:** also pushes the spore 1 unit while Mycelium has the controls, so a re-sync
+  teleport follows.
+- DESIGN §5.3.
+
+**Why:** you got hit right before clicking, and the click did a Mycelium attack.
+
+**Cause:** your log (saved as `work\user-attack-slip.log`):
+- **284.22 s:** after the hit's knockback, "Mycelium moved the spore 0.5 units", so a re-sync
+  teleport.
+- **284.26 s:** "Mycelium's own key bindings back" (not "driving" during the teleport).
+- **284.27 s:** "Mycelium actions pressed now: [Attack,Curio]".
+- **284.28 s:** Minecraft's keys set again.
+
+That's a 20 ms window.
+
+**Tested how:** the real build in the tutorial, minimized, `-mcHoldTest` with the push, fake
+Minecraft.
+
+**Result:** "Mycelium moved the spore 0.9 units" → WaitingForTeleport → Driving in 20 ms, and **no**
+"own key bindings back" (before the fix, the same sequence gave one).
+
+**Still broken / not tested:**
+- **Not tested with real hits in your play.**
+
+## 2026-10-19 Minecraft experience level = Mycelium's nutrients
+
+**Changed:**
+- **Protocol v19:** MycState 0x58 nutrients (i32, −1 unknown).
+- **`MinecraftDriver.ReadNutrients`:** reads `NutrientTracker.currentNutrients`.
+- **`MyceliumCraftClient.syncLevel`:** sets Minecraft's level to it with an empty bar on the
+  integrated server, and puts it back if it drifts.
+- **Stand-ins:** FakeMycelium sends 42; linkTest checks it.
+- PROTOCOL, DESIGN §5.0.2.1, README.
+
+**Why:** you asked for Minecraft's player level to match the nutrients.
+
+**Tested how and result:**
+- **Stand-ins:** "Mycelium nutrients: got 42.0"; PASS.
+- **Real build in the hub:** "found Mycelium's NutrientTracker on 'NutrientCounter'",
+  "nutrients: 3587 -> Minecraft experience level 3587".
+
+**Still broken / not tested:**
+- **Not tested in Minecraft:** the level shown.
+- **Spending levels in Minecraft** (enchanting, anvil) doesn't spend nutrients; the level is just
+  put back. XP orbs don't add nutrients.
+
+## 2026-10-19 Fast enemies' hitboxes lagged behind them
+
+**Changed:**
+- **`EnemyProxies.clientSnap`:** every client copy of a stand-in is put exactly at Mycelium's
+  current enemy position and its glide cancelled. It runs:
+  - at the start of every client tick (new `MinecraftMixin` hook on `Minecraft.tick`, before the
+    crosshair pick);
+  - before the boxes are sent for `-mcShowHitboxes`.
+
+  It logs how far off they were before each snap, as a once-a-second average.
+- **The stand-in type** is updated every tick from the server (`updateInterval(1)`, was 3).
+- DESIGN §5.0.3.
+
+**Why:** you saw fast enemies' real hitboxes lag behind them.
+
+**Cause:** Minecraft moves a client copy from server updates, every 3 ticks for this kind, and
+glides it there over a few more ticks. That's a few hundred ms behind a fast enemy.
+
+**Tested how:** the mod builds. Minecraft's pick happens at the start of `Minecraft.tick`, before
+`tickEntities` (checked with javap).
+
+**Still broken / not tested:**
+- **Not tested in Minecraft.** Minecraft's log shows "client stand-ins snapped ... N blocks off on
+  average before the snap"; that's the lag the snap removes.
+- **The server's copy** can still be up to a tick (50 ms) behind. Minecraft's own reach check
+  allows some slack.
+
+## 2026-10-19 Hitboxes: show what Minecraft really hits, and give the client the right size
+
+**Changed:**
+- **`EnemyProxy.java`:** the enemy id, width and height are synced creature data, so Minecraft's
+  client knows them and resizes its copy (`onSyncedDataUpdated`).
+- **Protocol v18:** new HitBoxes block after the textures (Minecraft → Mycelium).
+- **`MyceliumCraftClient.sendHitBoxes`:** every frame, each stand-in's box as the client has it
+  (bounding box + pick radius).
+- **`EnemyCombat`/`HitboxView`:** `-mcShowHitboxes` draws those boxes instead of Mycelium's own
+  numbers.
+- **`LinkTestMain`:** with `LINKTEST_HIT=1`, also sends boxes built the way the client would.
+- PROTOCOL, DESIGN §5.0.3.
+
+**Why:** you asked for the hitbox of the part Minecraft's hits can actually reach.
+
+**Found:** the stand-in's size was only set on the integrated server. The client, where the
+crosshair picks, never got it and kept Minecraft's default 0.6 × 0.6 box. That's likely why hits
+seemed hard to land.
+
+**Tested how:** the real build in Daybreak Arboretum, minimized, fake Minecraft with `LINKTEST_HIT=1`.
+
+**Result:** "hitboxes: 7 shown", then down to 6, 5, 4, 3 and back up as enemies came and went,
+matching the boxes the fake sent back; hits applied as before. Stand-ins and builds pass.
+
+**Still broken / not tested:**
+- **Not tested in Minecraft:**
+  - the client's copy resizing;
+  - the real boxes sent back (Minecraft's log: "N enemy stand-ins on the client; first #… box W x H
+    x D blocks").
+
+## 2026-10-19 -mcShowHitboxes: see the enemies' Minecraft hitboxes in Mycelium
+
+**Changed:**
+- **New `HitboxView.cs`** and `Resources/MyceliumCraftLine.shader`: with `-mcShowHitboxes`, each
+  enemy's stand-in is drawn as a wireframe box in Mycelium's window, exactly as Minecraft sizes it:
+  - green, red for 0.3 s after a hit lands;
+  - drawn through walls.
+- **`EnemyCombat.cs`:** feeds it the same numbers it sends to Minecraft.
+- DESIGN §5.0.3.
+
+**Why:** you asked for an argument that shows the enemies' hitboxes.
+
+**Tested how:** the real build in Daybreak Arboretum, minimized, fake Minecraft with `LINKTEST_HIT=1`.
+
+**Result:**
+- "hitboxes: 2 shown" (a stickbug, 1.25 × 0.57 blocks, and a beetle). The stickbug was hit
+  20 → 10 → 0, then "1 shown". The beetle 30 → 20 → 10 → 0, then "0 shown".
+- **What the boxes look like on screen** wasn't checked (log only).
+
+## 2026-10-19 Combat, step 1: your Minecraft attacks hurt Mycelium's enemies
+
+**Changed:**
+- **Protocol v17:** Enemies table at 0x700 (Mycelium → Minecraft), Hits ring at 0xF00
+  (Minecraft → Mycelium).
+- **New `EnemyCombat.cs`:** sends live enemies within 64 units (id, feet, size from solid
+  colliders, health), and applies hits with `EnemyTakeDamage(damage × damageScale, false, true)`.
+  It logs why no enemies are sent.
+- **New `combat/EnemyProxy.java`:** an invisible stand-in creature that reports player hits and
+  stays alive.
+- **New `combat/EnemyProxies.java`:** registers it (`myceliumcraft:enemy_proxy`, NoopRenderer),
+  and keeps one per enemy every server tick.
+- **New `damageScale=` setting** (default 5).
+- **`LinkTestMain.java`:** `LINKTEST_HIT=1` hits the nearest enemy for 2 points every 2 s.
+- PROTOCOL, DESIGN §5.0.3, README.
+
+**Why:** you asked to start the combat step. Enemy hits on you already worked through the health
+sync; this is the other way round.
+
+**Damage scale chosen:** ×5, the same rate as health (beetle 30 health, spore base damage 10, iron
+sword 6 → 30).
+
+**Tested how and result:**
+- **Tutorial:** no enemies exist at its start ("0 enemy objects in the scene").
+- **Daybreak Arboretum:** "1 Mycelium enemies sent; first 'Beetle' 1.61 x 0.71 blocks, health
+  30/30". The fake Minecraft saw it 36 blocks away and hit it.
+  - "Minecraft hit 'Beetle' for 2.00 points -> 10.0 Mycelium damage; health now 20.0", then 10.0,
+    then 0.0.
+  - Then "no enemies near: 17 enemy objects, 16 live, nearest 86 units away".
+- Stand-ins PASS; the mod builds.
+
+**Still broken / not tested:**
+- **The Minecraft side isn't tested in Minecraft at all:** the creature registration, stand-ins
+  appearing and following, hits reaching them. If the registration fails, Minecraft won't start;
+  its log will say why.
+- **Critical hits** aren't marked in the hit (the damage already includes them).
+- **Knockback** on Mycelium's enemies isn't sent.
+- **Enemies further than 64 units** have no stand-in (an arrow from further away can't hit them).
+
 ## 2026-10-19 Still stuck on "Loading Terrain": the old jar was installed
 
 **Changed:**

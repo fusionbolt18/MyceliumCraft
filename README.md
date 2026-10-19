@@ -34,6 +34,15 @@ Single-player and offline only.
 
 ## What doesn't work / not tested
 
+- **The camera tilts toward what hit you, as Minecraft's does: not tested in Minecraft.** It follows
+  Minecraft's "Damage Tilt" setting. Mycelium doesn't say what hit you, so the mod guesses (the
+  nearest enemy or hitbox) and can be wrong. Minecraft's death roll isn't copied.
+- **Your Minecraft attacks hurt Mycelium's enemies: not tested in Minecraft.** Each nearby enemy has
+  an invisible stand-in in Minecraft. Minecraft's own attack rules (weapon, cooldown, crits,
+  enchantments, arrows) decide the damage, ×5 in Mycelium (`damageScale=` in `MyceliumCraft.cfg`).
+  The Mycelium half is tested with a fake Minecraft.
+- **Minecraft's experience level = Mycelium's nutrients: not tested in Minecraft.** XP orbs and
+  enchanting don't change it (put back).
 - **Minecraft health follows Mycelium's: not tested in Minecraft.**
   - Every 5 Mycelium health is half a heart; Minecraft's max health follows Mycelium's max.
   - Minecraft can't kill you while Mycelium's health is above 0.

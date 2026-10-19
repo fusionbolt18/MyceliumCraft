@@ -29,7 +29,7 @@ a block without locks.
 - **Reader:** read `seq`. If it's odd, try again. Read the fields, then read `seq` again. If it
   changed, try again.
 
-## Layout (version 16)
+## Layout (version 20)
 
 ### Header @ 0x000
 
@@ -61,6 +61,7 @@ a block without locks.
 | 0x4C | f32 | wanted Minecraft player height in blocks, to match the spore's body (0 = leave Minecraft's size alone). Since version 4 |
 | 0x50 | f32 | Mycelium's current health (its own units); since version 16 |
 | 0x54 | f32 | Mycelium's max health; 0 = no spore health known (Minecraft's health isn't synced then) |
+| 0x58 | i32 | Mycelium's nutrients; −1 = not known (Minecraft's experience level follows it); since version 19 |
 
 ### McState @ 0x200 (Minecraft → Mycelium, seqlock)
 
@@ -88,6 +89,7 @@ Positions are in **Minecraft coordinates**: blocks, Y up, +Z is south.
 | 0x80 | f32 | body yaw at the latest tick |
 | 0x84 | f32 | FOV multiplier now: Minecraft's own (sprinting, speed, bow, spyglass; scaled by its "FOV Effects" setting). 0 = not sent (since version 14) |
 | 0x88 | f32 | eye height now ÷ standing eye height: Minecraft's smoothed camera eye height (crouching about 0.78). 0 = not sent |
+| 0x8C | f32 | Minecraft's "Damage Tilt" accessibility setting, 0 (off) to 1 (full): how far Mycelium's camera tilts toward a hit. Since version 20 |
 
 Like SkyCraft: with the raw ticks and their time, Mycelium can work out where Minecraft's player is at
 *any* moment on its own clock, as Minecraft's renderer does with partial ticks:
@@ -187,6 +189,39 @@ Since version 15 a texture can also be one picture ("sprite") of Minecraft's ite
 for held items. The model's u, v then run 0..1 across that sprite.
 
 A new Minecraft run uses new version numbers, so Mycelium reloads a texture whose version changed.
+
+### Enemies @ 0x700 (Mycelium → Minecraft, seqlock). Since version 17
+
+Mycelium's live enemies within 64 units of the spore, for Minecraft's invisible stand-ins.
+
+| Off | Type | Field |
+|---|---|---|
+| 0x00 | u32 | seq |
+| 0x04 | u32 | count (at most 40) |
+| 0x10 + 0x30·i | entry | u32 id (Unity instance id), u32 flags (bit0 alive), f32 x, y, z (feet, Minecraft coordinates), f32 width, height (blocks), f32 health, max health (Mycelium units), f32 yaw (Minecraft degrees) |
+
+### Hits @ 0xF00 (Minecraft → Mycelium). Since version 17
+
+A ring of the last 8 hits on stand-ins.
+
+| Off | Type | Field |
+|---|---|---|
+| 0x00 | u32 | hits written so far |
+| 0x10 + 0x10·(n % 8) | entry | u32 enemy id, f32 damage (Minecraft points, after Minecraft's own sums), u32 flags (bit0 critical; not set yet), pad |
+
+Minecraft writes the entry, then the count. Mycelium handles every entry up to the count, and
+multiplies the damage by `damageScale` (default 5).
+
+### HitBoxes @ 0x68EC000 (Minecraft → Mycelium, seqlock). Since version 18
+
+Each enemy stand-in's box as Minecraft's client has it (what its crosshair picks: bounding box
+grown by its pick radius), for `-mcShowHitboxes`. After the textures; the mapping grows by 0x1000.
+
+| Off | Type | Field |
+|---|---|---|
+| 0x00 | u32 | seq |
+| 0x04 | u32 | count (at most 64) |
+| 0x10 + 0x20·i | entry | u32 enemy id, f32 min x, y, z, max x, y, z (Minecraft coordinates), pad |
 
 ### GroundGrid @ 0x1000 (Mycelium → Minecraft, seqlock)
 

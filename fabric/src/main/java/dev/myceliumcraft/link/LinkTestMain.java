@@ -42,10 +42,59 @@ public final class LinkTestMain {
 	private static final boolean PAUSE = "1".equals(System.getenv("LINKTEST_PAUSE"));
 	/** "1": sprint FOV and crouch eye height from 4 to 7 s. */
 	private static final boolean FOVEYE = "1".equals(System.getenv("LINKTEST_FOVEYE"));
+	/** "1": log Mycelium's enemy table once a second, and hit the nearest enemy for 2 points (10 Mycelium damage) every 2 s. */
+	private static final boolean HIT = "1".equals(System.getenv("LINKTEST_HIT"));
+	private static final MycLink.Enemy[] ENEMIES = new MycLink.Enemy[Proto.E_MAX];
+	private static long nextHit, nextEnemyLog;
 	private static boolean modelTextureSent;
 	/** Optional: switch to these key binds 5 s in, as if you changed them in the Controls menu while playing. */
 	private static final String BINDS2 = System.getenv("LINKTEST_BINDS2");
 	private static long bindsStart;
+
+	/** Like Minecraft hitting a stand-in: the nearest live enemy, 2 points every 2 s. */
+	private static void hitNearest(double px, double py, double pz) {
+		if (ENEMIES[0] == null) {
+			for (int i = 0; i < ENEMIES.length; i++) {
+				ENEMIES[i] = new MycLink.Enemy();
+			}
+		}
+		int n = MycLink.readEnemies(ENEMIES);
+		long now = System.currentTimeMillis();
+		MycLink.Enemy best = null;
+		double bestD = Double.MAX_VALUE;
+		for (int i = 0; i < n; i++) {
+			MycLink.Enemy e = ENEMIES[i];
+			double d = (e.x - px) * (e.x - px) + (e.y - py) * (e.y - py) + (e.z - pz) * (e.z - pz);
+			if ((e.flags & Proto.EN_ALIVE) != 0 && d < bestD) {
+				bestD = d;
+				best = e;
+			}
+		}
+		// The stand-ins' boxes, as Minecraft's client would have them (centred, square footprint).
+		int[] boxIds = new int[Math.max(n, 0)];
+		float[] boxes = new float[Math.max(n, 0) * 6];
+		for (int i = 0; i < n; i++) {
+			MycLink.Enemy e = ENEMIES[i];
+			boxIds[i] = e.id;
+			boxes[i * 6] = e.x - e.width / 2;
+			boxes[i * 6 + 1] = e.y;
+			boxes[i * 6 + 2] = e.z - e.width / 2;
+			boxes[i * 6 + 3] = e.x + e.width / 2;
+			boxes[i * 6 + 4] = e.y + e.height;
+			boxes[i * 6 + 5] = e.z + e.width / 2;
+		}
+		MycLink.writeHitBoxes(Math.max(n, 0), boxIds, boxes);
+		if (now >= nextEnemyLog) {
+			nextEnemyLog = now + 1000;
+			System.out.printf("enemies: %d; nearest %s%n", n, best == null ? "none" : String.format("#%d at (%.1f, %.1f, %.1f), %.2f x %.2f blocks, health %.1f/%.1f, %.1f blocks away",
+				best.id, best.x, best.y, best.z, best.width, best.height, best.health, best.maxHealth, Math.sqrt(bestD)));
+		}
+		if (best != null && now >= nextHit) {
+			nextHit = now + 2000;
+			MycLink.writeHit(best.id, 2f, 0);
+			System.out.printf("hit enemy #%d for 2 points%n", best.id);
+		}
+	}
 
 	/** The test player model: two boxes relative to the feet, Minecraft blocks and axes. Marked first person in first person, as Minecraft's is. */
 	private static void writeTestModel(boolean thirdPerson) {
@@ -145,6 +194,7 @@ public final class LinkTestMain {
 		ok &= check("wanted player height (blocks)", Math.round(myc.playerHeight * 1000) / 1000.0, 0.964);
 		ok &= check("Mycelium health", myc.health, 37.5);
 		ok &= check("Mycelium max health", myc.maxHealth, 150);
+		ok &= check("Mycelium nutrients", myc.nutrients, 42);
 		MycLink.MycInput in = new MycLink.MycInput();
 		ok &= check("input block read", MycLink.readInput(in) ? 1 : 0, 1);
 		ok &= check("input bridge active", in.active() ? 1 : 0, 1);
@@ -239,6 +289,9 @@ public final class LinkTestMain {
 			}
 			if (MODEL) {
 				writeTestModel(cameraMode != 0);
+			}
+			if (HIT) {
+				hitNearest(px, y, pz);
 			}
 			if (BINDS != null) {
 				if (bindsStart == 0) {
