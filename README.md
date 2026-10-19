@@ -46,6 +46,9 @@ Single-player and offline only.
   from −72° to 72°, and its heading matched the spore's facing. Up/down jitter (reported by you)
   is fixed and measured smooth with a per-frame trace. `syncCamera=0` turns it off;
   `cameraPitchOffset=` sets the straight-ahead view, and `cameraSmoothing=` trades smoothness for lag.
+- **Sprint FOV and crouch camera: not tested with real Minecraft.** Mycelium's camera widens its
+  field of view when Minecraft's does (sprinting, speed, bow; spyglass zooms in), and drops when you
+  crouch, in every view. Tested with a fake Minecraft.
 - **Camera copies Minecraft's F5 view (first person / behind / in front): not tested with real
   Minecraft.** With a fake Minecraft, all three place and aim the camera correctly. In first person
   the spore is drawn as shadow only. `matchF5View=0` keeps the camera behind.

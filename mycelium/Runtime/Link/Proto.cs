@@ -39,7 +39,7 @@ namespace MyceliumCraft.Link
 
         public const int MappingBytes = OffTextures + TexturesBytes;
         public const uint Magic = 0x4343594D; // "MYCC"
-        public const uint Version = 13;
+        public const uint Version = 14;
         public const ulong HeartbeatTimeoutMs = 3000;
 
         // Header @0x000
@@ -89,6 +89,8 @@ namespace MyceliumCraft.Link
         public const int McCurX = 0x60, McCurY = 0x68, McCurZ = 0x70;    // feet at the latest tick
         public const int McTickMs = 0x78;     // milliseconds per tick; 0 = no tick data
         public const int McBodyYawO = 0x7C, McBodyYawCur = 0x80;        // body yaw at the previous / latest tick
+        public const int McFovScale = 0x84;   // Minecraft's FOV multiplier now (sprint, speed, bow, spyglass); 0 = not sent
+        public const int McEyeScale = 0x88;   // eye height now / standing eye height (crouching ~0.78); 0 = not sent
         public const uint McInWorld = 1u << 0;
         public const uint McScreenOpen = 1u << 1;
         public const uint McOnGround = 1u << 2;

@@ -135,6 +135,12 @@ public final class MycLink {
 
 	/** Seqlock write of McState. */
 	public static void writeMcState(int flags, double x, double y, double z, float yaw, float pitch, long frame, int epoch, int teleportAck, int cameraMode, float bodyYaw, Tick tick) {
+		writeMcState(flags, x, y, z, yaw, pitch, frame, epoch, teleportAck, cameraMode, bodyYaw, tick, 1f, 1f);
+	}
+
+	/** Seqlock write of McState, with Minecraft's FOV multiplier and eye-height ratio for Mycelium's camera. */
+	public static void writeMcState(int flags, double x, double y, double z, float yaw, float pitch, long frame, int epoch, int teleportAck, int cameraMode, float bodyYaw, Tick tick,
+		float fovScale, float eyeScale) {
 		MemorySegment s = shm;
 		if (s == null) {
 			return;
@@ -164,6 +170,8 @@ public final class MycLink {
 		s.set(JAVA_FLOAT, b + MC_TICK_MS, tick == null ? 0f : tick.ms);
 		s.set(JAVA_FLOAT, b + MC_BODY_YAW_O, tick == null ? bodyYaw : tick.bodyO);
 		s.set(JAVA_FLOAT, b + MC_BODY_YAW_CUR, tick == null ? bodyYaw : tick.body);
+		s.set(JAVA_FLOAT, b + MC_FOV_SCALE, fovScale);
+		s.set(JAVA_FLOAT, b + MC_EYE_SCALE, eyeScale);
 		INT.setRelease(s, b + MC_SEQ, seq + 2); // even: done
 	}
 

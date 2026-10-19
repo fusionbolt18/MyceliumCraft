@@ -130,7 +130,14 @@ public final class MyceliumCraftClient implements ClientModInitializer {
 		TICK.curZ = player.getZ();
 		TICK.bodyO = player.yBodyRotO;
 		TICK.body = player.yBodyRot;
-		MycLink.writeMcState(flags, feet.x, feet.y, feet.z, player.getYRot(), player.getXRot(), frame, epoch, teleportAck, minecraft.options.getCameraType().ordinal(), bodyYaw, TICK);
+		// Minecraft's own camera feel: its FOV multiplier (sprinting, speed, bow, spyglass; already
+		// scaled by your "FOV Effects" setting) and its smoothed eye height (crouching lowers it).
+		var camera = (dev.myceliumcraft.mixin.CameraAccessor) minecraft.gameRenderer.mainCamera();
+		float fovScale = Mth.lerp(partial, camera.myceliumcraft$oldFovModifier(), camera.myceliumcraft$fovModifier());
+		float standingEye = player.getEyeHeight(net.minecraft.world.entity.Pose.STANDING);
+		float eye = Mth.lerp(partial, camera.myceliumcraft$eyeHeightOld(), camera.myceliumcraft$eyeHeight());
+		float eyeScale = standingEye > 0.01f ? eye / standingEye : 1f;
+		MycLink.writeMcState(flags, feet.x, feet.y, feet.z, player.getYRot(), player.getXRot(), frame, epoch, teleportAck, minecraft.options.getCameraType().ordinal(), bodyYaw, TICK, fovScale, eyeScale);
 		// Third person: your Minecraft body, for Mycelium to draw instead of the spore.
 		MycPlayerModel.frame(minecraft, MycOverlay.active(), partial);
 		logOncePerSecond(feet, player.getYRot(), flags);

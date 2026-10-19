@@ -40,6 +40,8 @@ public final class LinkTestMain {
 	private static final boolean MODEL = "1".equals(System.getenv("LINKTEST_MODEL"));
 	/** "1": pretend Minecraft's pause menu is open from 4 to 7 s (Mycelium should freeze). */
 	private static final boolean PAUSE = "1".equals(System.getenv("LINKTEST_PAUSE"));
+	/** "1": sprint FOV and crouch eye height from 4 to 7 s. */
+	private static final boolean FOVEYE = "1".equals(System.getenv("LINKTEST_FOVEYE"));
 	private static boolean modelTextureSent;
 	/** Optional: switch to these key binds 5 s in, as if you changed them in the Controls menu while playing. */
 	private static final String BINDS2 = System.getenv("LINKTEST_BINDS2");
@@ -227,7 +229,9 @@ public final class LinkTestMain {
 			if (PAUSE && t >= 4 && t < 7) {
 				flags |= Proto.MC_PAUSED | Proto.MC_SCREEN_OPEN;
 			}
-			MycLink.writeMcState(flags, px, y, pz, yaw, pitch, frames++, 1, ack, cameraMode, bodyYaw, tick);
+			// LINKTEST_FOVEYE=1: sprint FOV (x1.15) and crouch eye height (x0.78) from 4 to 7 s.
+			boolean feel = FOVEYE && t >= 4 && t < 7;
+			MycLink.writeMcState(flags, px, y, pz, yaw, pitch, frames++, 1, ack, cameraMode, bodyYaw, tick, feel ? 1.15f : 1f, feel ? 0.78f : 1f);
 			if (OVERLAY) {
 				writeTestPicture();
 			}

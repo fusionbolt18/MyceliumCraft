@@ -19,6 +19,7 @@ namespace MyceliumCraft.Link
         public double PrevX, PrevY, PrevZ, CurX, CurY, CurZ; // feet at the previous / latest tick
         public float TickMs;    // milliseconds per tick; 0 = no tick data
         public float BodyYawO, BodyYawCur;
+        public float FovScale, EyeScale; // Minecraft's FOV multiplier and eye height / standing (0: not sent)
 
         public bool HasTicks => TickMs > 0f && TickQpc != 0;
 
@@ -240,6 +241,8 @@ namespace MyceliumCraft.Link
                 s.TickMs = ReadF32(view, b + Proto.McTickMs);
                 s.BodyYawO = ReadF32(view, b + Proto.McBodyYawO);
                 s.BodyYawCur = ReadF32(view, b + Proto.McBodyYawCur);
+                s.FovScale = ReadF32(view, b + Proto.McFovScale);
+                s.EyeScale = ReadF32(view, b + Proto.McEyeScale);
                 Thread.MemoryBarrier();
                 if (ReadU32(view, b + Proto.McSeq) == seq1) return true;
             }

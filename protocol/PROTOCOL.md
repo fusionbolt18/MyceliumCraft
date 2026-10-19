@@ -29,7 +29,7 @@ a block without locks.
 - **Reader:** read `seq`. If it's odd, try again. Read the fields, then read `seq` again. If it
   changed, try again.
 
-## Layout (version 13)
+## Layout (version 14)
 
 ### Header @ 0x000
 
@@ -84,6 +84,8 @@ Positions are in **Minecraft coordinates**: blocks, Y up, +Z is south.
 | 0x78 | f32 | milliseconds per tick (50 unless /tick rate changed); 0 = no tick data |
 | 0x7C | f32 | body yaw at the previous tick |
 | 0x80 | f32 | body yaw at the latest tick |
+| 0x84 | f32 | FOV multiplier now: Minecraft's own (sprinting, speed, bow, spyglass; scaled by its "FOV Effects" setting). 0 = not sent (since version 14) |
+| 0x88 | f32 | eye height now ÷ standing eye height: Minecraft's smoothed camera eye height (crouching about 0.78). 0 = not sent |
 
 Like SkyCraft: with the raw ticks and their time, Mycelium can work out where Minecraft's player is at
 *any* moment on its own clock, as Minecraft's renderer does with partial ticks:

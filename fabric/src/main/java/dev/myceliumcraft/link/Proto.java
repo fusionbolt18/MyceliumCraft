@@ -36,7 +36,7 @@ public final class Proto {
 
 	public static final long MAPPING_BYTES = OFF_TEXTURES + TEXTURES_BYTES;
 	public static final int MAGIC = 0x4343594D; // "MYCC"
-	public static final int VERSION = 13;
+	public static final int VERSION = 14;
 	/** A side is alive if its heartbeat is younger than this. */
 	public static final long HEARTBEAT_TIMEOUT_MS = 3000;
 
@@ -87,6 +87,8 @@ public final class Proto {
 	public static final long MC_CUR_X = 0x60, MC_CUR_Y = 0x68, MC_CUR_Z = 0x70; // feet at the latest tick
 	public static final long MC_TICK_MS = 0x78; // milliseconds per tick; 0 = no tick data
 	public static final long MC_BODY_YAW_O = 0x7C, MC_BODY_YAW_CUR = 0x80; // body yaw at the previous / latest tick
+	public static final long MC_FOV_SCALE = 0x84; // Minecraft's FOV multiplier now (sprint, speed, bow, spyglass); 0 = not sent
+	public static final long MC_EYE_SCALE = 0x88; // eye height now / standing eye height (crouching ~0.78); 0 = not sent
 	public static final int MC_IN_WORLD = 1 << 0;
 	public static final int MC_SCREEN_OPEN = 1 << 1;
 	public static final int MC_ON_GROUND = 1 << 2;

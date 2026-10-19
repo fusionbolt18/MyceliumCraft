@@ -1,5 +1,39 @@
 # MODLOG
 
+## 2026-10-18 Sprint FOV and crouch camera, like Minecraft
+
+**Changed:**
+- **Protocol v14:** McState 0x84 FOV multiplier, 0x88 eye height ÷ standing.
+- **New `CameraAccessor.java`:** reads Minecraft's camera `fovModifier`/`oldFovModifier` and
+  `eyeHeight`/`eyeHeightOld`.
+- **`MyceliumCraftClient.java`:** sends both, interpolated, with eye height relative to
+  `getEyeHeight(Pose.STANDING)`.
+- **`CameraSync.cs`:**
+  - lens FOV = Mycelium's own × the multiplier (put back on release);
+  - first-person eyes × the ratio;
+  - third-person camera lowered by the same amount.
+- **`LinkTestMain.java`:** `LINKTEST_FOVEYE=1`.
+- PROTOCOL, DESIGN §5.2, README.
+
+**Why:** you asked for Minecraft's sprint FOV change and its crouch camera drop.
+
+**Tested how:** the real build, minimized, fake Minecraft with `LINKTEST_FOVEYE=1` (×1.15 FOV and
+×0.78 eye from 4 to 7 s), with `-mcCameraTrace`:
+- the behind view and first person in the tutorial;
+- the behind view in the hub.
+
+**Result:**
+- **FOV:** "camera feel FOV x1.15, eye x0.78 (lens 69.0 degrees)", then back to 60.
+- **First person:** camera 1.513 → 1.180 → 1.513 above the spore (exactly × 0.78).
+- **Behind view, hub:** 2.114 → 1.792 → 2.125 above the spore, no collision push.
+- **Behind view, tutorial:** the drop, then a further 0.66 from Mycelium's camera collision, which
+  stayed after the crouch ended. That's the camera add-on reacting to a nearby surface, not this
+  change.
+
+**Still broken / not tested:**
+- **Not tested with real Minecraft.** It should follow Minecraft's own smoothing, but that's not
+  checked.
+
 ## 2026-10-18 Blurred Mycelium UI looked pixelated
 
 **Changed:**

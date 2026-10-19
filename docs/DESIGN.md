@@ -270,6 +270,24 @@ small allowance later. For now the measured real height is used, unchanged.
 
 ## 5.2 Camera: Mycelium's camera follows Minecraft's look (`CameraSync`)
 
+**Sprint FOV and crouching** (since 2026-10-18):
+- **What Minecraft sends:** two ratios, read from its own camera (`CameraAccessor`), interpolated
+  like the position:
+  - **FOV multiplier:** `fovModifier`. It covers sprinting, speed effects, drawing a bow and the
+    spyglass, and already follows your "FOV Effects" setting.
+  - **Eye height ÷ standing eye height:** `eyeHeight`, which Minecraft smooths over a few ticks
+    when you crouch. About 0.78 when crouched.
+- **FOV in Mycelium:** the FreeLook's lens FOV becomes Mycelium's own FOV (60°) times the
+  multiplier, and goes back when the camera is released.
+- **Eye height in Mycelium:** in first person the camera sits at the eyes times the ratio. In
+  third person it moves down by the same amount, as Minecraft's does (its third-person camera turns
+  around the eyes).
+- **Checked with the fake Minecraft (`LINKTEST_FOVEYE=1`: ×1.15 FOV and ×0.78 eye from 4 to 7 s):**
+  - FOV 60° → 69° → 60°;
+  - first person: 1.513 → 1.180 → 1.513 above the spore;
+  - third person in the hub: 2.114 → 1.792 → 2.125, with no collision push.
+  - In the tutorial's tight spot, Mycelium's camera collision moved the third-person camera as well.
+
 **Mycelium's camera:**
 - A Cinemachine **FreeLook**, an orbit camera around the spore, on the object tagged `MainCamera`
   (`Prefabs/Camera/Main Camera.prefab`).

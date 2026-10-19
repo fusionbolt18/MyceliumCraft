@@ -60,6 +60,13 @@ namespace MyceliumCraft
         float smoothYaw;          // first person: Minecraft yaw eased like the pitch (no Cinemachine damping there)
         Transform spore;          // the spore's (interpolated) transform, for the eye position
         float eyeOffset;          // eye height above spore.position
+        // Minecraft's camera feel: FOV multiplier (sprinting) and eye height / standing (crouching).
+        float fovScale = 1f, eyeScale = 1f;
+        float savedFov;           // Mycelium's own FOV, to multiply and to put back
+        float nextFeelLog;
+        string lastFeel = "";
+        public float FovScale => fovScale;
+        public float EyeScale => eyeScale;
         readonly System.Collections.Generic.List<(Renderer r, UnityEngine.Rendering.ShadowCastingMode mode, bool off)> hidden =
             new System.Collections.Generic.List<(Renderer, UnityEngine.Rendering.ShadowCastingMode, bool)>();
 
@@ -155,6 +162,17 @@ namespace MyceliumCraft
                 if (hide > 0) HideSpore(hide == 2); else ShowSpore();
             }
 
+            fovScale = mc.FovScale > 0.05f && mc.FovScale < 10f ? mc.FovScale : 1f;
+            eyeScale = mc.EyeScale > 0.05f && mc.EyeScale < 2f ? mc.EyeScale : 1f;
+            if (savedFov > 0f) freeLook.m_Lens.FieldOfView = Mathf.Clamp(savedFov * fovScale, 1f, 179f);
+            string feel = $"FOV x{fovScale:F2}, eye x{eyeScale:F2}";
+            if (feel != lastFeel && Time.realtimeSinceStartup >= nextFeelLog)
+            {
+                lastFeel = feel;
+                nextFeelLog = Time.realtimeSinceStartup + 0.5f;
+                McLog.Info($"camera: Minecraft's camera feel {feel} (lens {savedFov * fovScale:F1} degrees, camera now {(Camera.main != null ? Camera.main.fieldOfView : 0f):F1})");
+            }
+
             lastPitch = mc.Pitch;
             lastMcFrame = mc.Frame;
             // Minecraft sends a new look once per Minecraft frame; snapping to each one stutters
@@ -188,7 +206,7 @@ namespace MyceliumCraft
             if (spore == null || freeLook == null || cam == null || !cam.CompareTag("MainCamera")) return;
             if (wantedMode != FirstPerson || !McConfig.SyncCamera) return;
             framesChecked++;
-            float off = Vector3.Distance(cam.transform.position, spore.position + Vector3.up * eyeOffset);
+            float off = Vector3.Distance(cam.transform.position, spore.position + Vector3.up * eyeOffset * eyeScale);
             if (off > 0.3f)
             {
                 flashFrames++;
@@ -297,6 +315,7 @@ namespace MyceliumCraft
                 collider.m_DampingWhenOccluded = Mathf.Max(collider.m_DampingWhenOccluded, McConfig.CameraCollisionSmoothing);
                 McLog.Info($"camera: collision add-on found (collides with layers {collider.m_CollideAgainst.value}, damping {collider.m_Damping}); ease-in when occluded {savedOccludedDamping} -> {collider.m_DampingWhenOccluded} s");
             }
+            savedFov = freeLook.m_Lens.FieldOfView;
             savedXInput = freeLook.m_XAxis.m_InputAxisName;
             savedYInput = freeLook.m_YAxis.m_InputAxisName;
             freeLook.m_XAxis.m_InputAxisName = "";
@@ -385,7 +404,10 @@ namespace MyceliumCraft
                 freeLook.UpdateInputAxisProvider(); // plug Mycelium's mouse provider back in
                 if (savedOrbits != null) freeLook.m_Orbits = savedOrbits;
                 if (collider != null) collider.m_DampingWhenOccluded = savedOccludedDamping;
+                if (savedFov > 0f) freeLook.m_Lens.FieldOfView = savedFov;
             }
+            savedFov = 0f;
+            fovScale = eyeScale = 1f;
             savedOrbits = null;
             controlling = false;
             notDrivingSince = -1f;
@@ -417,7 +439,7 @@ namespace MyceliumCraft
                 // eye camera's space so it shakes the same way relative to the view.
                 Quaternion eyeRot = Quaternion.Euler(wantDown, smoothYaw, 0f);
                 Vector3 localShake = Quaternion.Inverse(t.rotation) * shakePos;
-                t.SetPositionAndRotation(spore.position + Vector3.up * eyeOffset + eyeRot * localShake, eyeRot * shakeRot);
+                t.SetPositionAndRotation(spore.position + Vector3.up * eyeOffset * eyeScale + eyeRot * localShake, eyeRot * shakeRot);
                 lastTilt = 0f;
                 WriteTrace(t, wantDown, smoothYaw);
                 return;
@@ -433,6 +455,8 @@ namespace MyceliumCraft
             Vector3 right = Vector3.Cross(Vector3.up, t.forward);
             if (right.sqrMagnitude < 1e-6f) right = t.right;
             t.rotation = Quaternion.AngleAxis(lastTilt, right.normalized) * t.rotation;
+            // Crouching: Minecraft's third-person camera turns around the eyes, so it drops as much as they do.
+            t.position += Vector3.up * eyeOffset * (eyeScale - 1f);
             WriteTrace(t, down, unshakenYaw);
         }
     }
