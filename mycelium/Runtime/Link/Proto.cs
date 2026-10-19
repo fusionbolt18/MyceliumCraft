@@ -33,13 +33,13 @@ namespace MyceliumCraft.Link
         public const int TexturesBytes = 0x800000;
         public const int TTable = 0x00;       // TMax x 0x20: u32 version, u32 width, u32 height, u32 pad, u64 data offset (from TData)
         public const int TEntrySize = 0x20;
-        public const int TMax = 32;
-        public const int TData = 0x400;
+        public const int TMax = 256;
+        public const int TData = 0x2000;
         public const int TDataBytes = TexturesBytes - TData;
 
         public const int MappingBytes = OffTextures + TexturesBytes;
         public const uint Magic = 0x4343594D; // "MYCC"
-        public const uint Version = 14;
+        public const uint Version = 15;
         public const ulong HeartbeatTimeoutMs = 3000;
 
         // Header @0x000

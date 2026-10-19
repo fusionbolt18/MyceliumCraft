@@ -7,6 +7,7 @@ import dev.myceliumcraft.link.MycLink;
 import dev.myceliumcraft.link.Proto;
 import dev.myceliumcraft.mixin.RenderSetupAccessor;
 import dev.myceliumcraft.mixin.RenderTypeAccessor;
+import dev.myceliumcraft.mixin.SpriteContentsAccessor;
 import dev.myceliumcraft.mixin.TextureBindingAccessor;
 import dev.myceliumcraft.mixin.TextureManagerAccessor;
 import java.util.HashMap;
@@ -35,7 +36,14 @@ import net.minecraft.client.renderer.state.level.QuadParticleRenderState;
 import net.minecraft.client.renderer.texture.DynamicTexture;
 import net.minecraft.client.renderer.texture.OverlayTexture;
 import net.minecraft.client.renderer.texture.UvMapping;
+import net.minecraft.client.model.geom.builders.UVPair;
+import net.minecraft.client.renderer.texture.SpriteContents;
+import net.minecraft.client.renderer.texture.TextureAtlasSprite;
+import net.minecraft.client.resources.model.geometry.BakedQuad;
 import net.minecraft.client.resources.model.geometry.ItemQuads;
+import net.minecraft.core.Direction;
+import org.joml.Matrix4f;
+import org.joml.Vector3f;
 import net.minecraft.network.chat.Component;
 import net.minecraft.resources.Identifier;
 import net.minecraft.util.FormattedCharSequence;
@@ -54,14 +62,21 @@ import org.jspecify.annotations.Nullable;
  * (Model and Textures blocks in protocol/PROTOCOL.md). Positions are relative to the player's
  * feet, in Minecraft blocks and axes, already turned to where the body faces.
  *
- * Adapted from the player part of SkyCraft's AvatarExporter (MIT, chasmlol). Not yet: held items
- * and blocks (they're drawn from Minecraft's texture atlases), glint, name tags, shadows.
+ * Held items and blocks come as quads from Minecraft's big texture sheets (atlases); each picture
+ * ("sprite") they use is sent once as a small texture of its own, and their texture coordinates
+ * are turned from the sheet's into the sprite's (as SkyCraft does with its combined atlas).
+ *
+ * Adapted from the player part of SkyCraft's AvatarExporter (MIT, chasmlol). Not yet: enchantment
+ * glint, animated item textures (first frame only), Fabric-mesh items, name tags.
  * Render thread only.
  */
 public final class MycPlayerModel implements SubmitNodeCollector {
 	private static final MycPlayerModel INSTANCE = new MycPlayerModel();
 
 	private static final Map<Identifier, Integer> TEXTURE_IDS = new HashMap<>();
+	private static final Map<SpriteContents, Integer> SPRITE_IDS = new HashMap<>(); // held items' pictures
+	private static final Direction[] FACES_AND_NONE = { null, Direction.DOWN, Direction.UP, Direction.NORTH, Direction.SOUTH, Direction.WEST, Direction.EAST };
+	private static int itemLogs;
 	private static final Set<Identifier> UNUSABLE = new HashSet<>();
 	private static int nextTextureId = 1;
 	private static long nextTextureOffset;
@@ -80,6 +95,7 @@ public final class MycPlayerModel implements SubmitNodeCollector {
 	/** New link (or Mycelium restarted): its textures are gone, send them again. */
 	public static void reset() {
 		TEXTURE_IDS.clear();
+		SPRITE_IDS.clear();
 		UNUSABLE.clear();
 		nextTextureId = 1;
 		nextTextureOffset = 0;
@@ -317,33 +333,83 @@ public final class MycPlayerModel implements SubmitNodeCollector {
 			return -1;
 		}
 		try (image) {
-			int w = image.getWidth(), h = image.getHeight();
-			long bytes = (long) w * h * 4;
-			int id = nextTextureId;
-			if (id > Proto.T_MAX || nextTextureOffset + bytes > Proto.T_DATA_BYTES) {
+			int id = sendPixels(texture.toString(), image, image.getWidth(), image.getHeight());
+			if (id < 0) {
 				UNUSABLE.add(texture);
-				MycLink.LOG.info("MyceliumCraft: no room for texture {} ({}x{}) in the shared memory; left out", texture, w, h);
-				return -1;
+			} else {
+				TEXTURE_IDS.put(texture, id);
 			}
-			byte[] pixels = new byte[(int) bytes];
-			int i = 0;
-			for (int y = 0; y < h; y++) {
-				for (int x = 0; x < w; x++) {
-					int argb = image.getPixel(x, y);
-					pixels[i++] = (byte) (argb >> 16);
-					pixels[i++] = (byte) (argb >> 8);
-					pixels[i++] = (byte) argb;
-					pixels[i++] = (byte) (argb >>> 24);
-				}
-			}
-			if (!MycLink.writeTexture(id, w, h, nextTextureOffset, pixels)) {
-				return -1;
-			}
-			nextTextureId++;
-			nextTextureOffset += bytes;
-			TEXTURE_IDS.put(texture, id);
-			MycLink.LOG.info("MyceliumCraft: sent texture {} to Mycelium (id {}, {}x{})", texture, id, w, h);
 			return id;
+		}
+	}
+
+	/** A held item's picture, sent the first time (its first animation frame). -1 if it can't be. */
+	private static int spriteTextureId(TextureAtlasSprite sprite) {
+		SpriteContents contents = sprite.contents();
+		Integer known = SPRITE_IDS.get(contents);
+		if (known != null) {
+			return known;
+		}
+		NativeImage image = ((SpriteContentsAccessor) contents).myceliumcraft$originalImage();
+		int w = Math.min(contents.width(), image.getWidth()), h = Math.min(contents.height(), image.getHeight());
+		int id = sendPixels("sprite " + contents.name(), image, w, h);
+		SPRITE_IDS.put(contents, id); // also remembers -1, so a failure is tried only once
+		return id;
+	}
+
+	/** Send the top-left w x h pixels of an image as a new texture. Returns its id, or -1. */
+	private static int sendPixels(String name, NativeImage image, int w, int h) {
+		long bytes = (long) w * h * 4;
+		int id = nextTextureId;
+		if (id > Proto.T_MAX || nextTextureOffset + bytes > Proto.T_DATA_BYTES) {
+			MycLink.LOG.info("MyceliumCraft: no room for texture {} ({}x{}) in the shared memory; left out", name, w, h);
+			return -1;
+		}
+		byte[] pixels = new byte[(int) bytes];
+		int i = 0;
+		for (int y = 0; y < h; y++) {
+			for (int x = 0; x < w; x++) {
+				int argb = image.getPixel(x, y);
+				pixels[i++] = (byte) (argb >> 16);
+				pixels[i++] = (byte) (argb >> 8);
+				pixels[i++] = (byte) argb;
+				pixels[i++] = (byte) (argb >>> 24);
+			}
+		}
+		if (!MycLink.writeTexture(id, w, h, nextTextureOffset, pixels)) {
+			return -1;
+		}
+		nextTextureId++;
+		nextTextureOffset += bytes;
+		MycLink.LOG.info("MyceliumCraft: sent texture {} to Mycelium (id {}, {}x{})", name, id, w, h);
+		return id;
+	}
+
+	/**
+	 * One quad of a held item or block: positioned by the pose, its sheet coordinates turned into
+	 * its sprite's own 0..1, and tinted (leather, potions, grass) as Minecraft tints it.
+	 */
+	private void addQuad(Matrix4f pose, BakedQuad quad, int[] tintLayers, int overlayCoords) {
+		var material = quad.materialInfo();
+		TextureAtlasSprite sprite = material.sprite();
+		int id = spriteTextureId(sprite);
+		if (id < 0) {
+			return;
+		}
+		Batch batch = this.batches.computeIfAbsent(id, Batch::new);
+		int layer = material.isTinted() ? material.tintIndex() : -1;
+		int color = layer >= 0 && layer < tintLayers.length ? tintLayers[layer] : -1;
+		if ((color >>> 24) == 0) {
+			color |= 0xFF000000; // tints come without alpha
+		}
+		float u0 = sprite.getU0(), du = sprite.getU1() - u0, v0 = sprite.getV0(), dv = sprite.getV1() - v0;
+		Vector3f p = new Vector3f();
+		for (int k = 0; k < 4; k++) {
+			pose.transformPosition(quad.position(k), p);
+			long uv = quad.packedUV(k);
+			float u = du != 0 ? (UVPair.unpackU(uv) - u0) / du : 0f;
+			float v = dv != 0 ? (UVPair.unpackV(uv) - v0) / dv : 0f;
+			batch.add(p.x(), p.y(), p.z(), u, v, color, overlayCoords);
 		}
 	}
 
@@ -368,7 +434,7 @@ public final class MycPlayerModel implements SubmitNodeCollector {
 		return null;
 	}
 
-	// ---- SubmitNodeCollector: only models (body, armour, cape) are taken for now ----
+	// ---- SubmitNodeCollector: models (body, armour, cape) and held items and blocks ----
 
 	@Override
 	public OrderedSubmitNodeCollector order(int order) {
@@ -392,22 +458,42 @@ public final class MycPlayerModel implements SubmitNodeCollector {
 	@Override
 	public void submitItem(PoseStack poseStack, ItemDisplayContext displayContext, int lightCoords, int overlayCoords, int outlineColor, int[] tintLayers,
 		ItemQuads quads, ItemStackRenderState.FoilType foilType) {
+		this.capture.flush();
+		Matrix4f pose = poseStack.last().pose();
+		for (BakedQuad quad : quads.all()) {
+			this.addQuad(pose, quad, tintLayers, overlayCoords);
+		}
+		if (itemLogs < 5) {
+			itemLogs++;
+			MycLink.LOG.info("MyceliumCraft: player model: held item ({}), {} quads", displayContext, quads.all().size());
+		}
 	}
 
 	@Override
 	public void submitItem(PoseStack poseStack, ItemDisplayContext displayContext, int lightCoords, int overlayCoords, int outlineColor, int[] tintLayers,
 		ItemQuads quads, @Nullable MeshView mesh, ItemStackRenderState.FoilType foilType) {
+		this.submitItem(poseStack, displayContext, lightCoords, overlayCoords, outlineColor, tintLayers, quads, foilType);
 	}
 
 	@Override
 	public void submitBlockModel(PoseStack poseStack, RenderType renderType, List<BlockStateModelPart> parts, int[] tintLayers, int lightCoords, int overlayCoords,
 		int outlineColor) {
+		this.capture.flush();
+		Matrix4f pose = poseStack.last().pose();
+		for (BlockStateModelPart part : parts) {
+			for (Direction face : FACES_AND_NONE) {
+				for (BakedQuad quad : part.getQuads(face)) {
+					this.addQuad(pose, quad, tintLayers, overlayCoords);
+				}
+			}
+		}
 	}
 
 	@Override
 	public void submitBlockModel(PoseStack poseStack, java.util.function.Function<ChunkSectionLayer, RenderType> renderTypes, boolean translucentLayer,
 		List<BlockStateModelPart> parts, net.fabricmc.fabric.api.client.renderer.v1.mesh.@Nullable Mesh mesh, int[] tintLayers, int lightCoords, int overlayCoords,
 		int outlineColor) {
+		this.submitBlockModel(poseStack, (RenderType) null, parts, tintLayers, lightCoords, overlayCoords, outlineColor);
 	}
 
 	@Override

@@ -13,6 +13,7 @@
     "MinecraftMixin",
     "RenderSetupAccessor",
     "RenderTypeAccessor",
+    "SpriteContentsAccessor",
     "TextureBindingAccessor",
     "TextureManagerAccessor",
     "WindowMixin"

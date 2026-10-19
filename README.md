@@ -72,7 +72,7 @@ Single-player and offline only.
   views, your Minecraft player (skin, armour, cape, its own walking and swinging) stands where the
   spore is, and the spore is hidden. The body casts its own shadow (the spore's is gone), in first
   person too, where only the shadow is drawn (third person tested by you). It
-  isn't washed out by the fog any more (tested by you). Held items aren't shown yet. `playerModel=0` keeps the spore.
+  isn't washed out by the fog any more (tested by you). Held items and blocks show in its hands (not tested in real Minecraft; no enchantment glint yet). `playerModel=0` keeps the spore.
   Tested with a fake Minecraft's test body: right size, right place, right facing.
 - **Overlay: tested by you** (you saw it working in real play). Minecraft's hand, hotbar, hearts and screens
   (inventory, chat) are drawn on top of Mycelium, and Minecraft stops drawing its own world

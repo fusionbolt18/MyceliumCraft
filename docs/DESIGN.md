@@ -677,8 +677,19 @@ While Mycelium shows a level (and `overlay=1`), Mycelium sets `OVERLAY` in its s
   whole screen, above Mycelium's own UI, with a shader for premultiplied alpha
   (`Resources/MyceliumCraftOverlay.shader`). Premultiplied means the colors are already multiplied
   by their coverage, which is what Minecraft's drawing produces on a transparent background.
-- **Hidden** while a Mycelium menu, pause or cutscene has the controls, while Minecraft isn't
-  driving, and if no new picture has come for 0.5 s.
+- **Hidden:**
+  - while a Mycelium menu, pause or cutscene has the controls (2026-10-19):
+    - its pause hides it at once;
+    - other control takeovers only after 0.3 s;
+    - a hit's knockback never does. Mycelium switches "can act" off until the "Hurt" animation is
+      half done (from a few ms to about 0.4 s seen) and sets `isInvincible` for exactly that time;
+      that's how it's recognised.
+  - while Minecraft isn't driving;
+  - if no new picture has come for 0.5 s;
+  - while one of Mycelium's full-screen covers is up (since 2026-10-19; `ScreenCover`). That's its
+    SceneLoader's black fade, loading, startup or death screen (canvas alpha above 0.01), or
+    SceneLoader/SceneLoadingManager `isLoading`. The level-name title card doesn't count: it shows
+    during play.
 - **Size:** the picture is Minecraft's window size, stretched to Mycelium's window. It looks right
   when both windows have the same shape; the log warns if they don't.
 
@@ -729,8 +740,15 @@ it sends the **model itself**:
 - **First person:** Minecraft sends an empty model, and the spore stays hidden as before.
 - `playerModel=0` keeps the spore.
 
-**Not yet:** held items and blocks (Minecraft draws them from its texture atlases), enchantment
-glint, and Mycelium's lighting on the body (it doesn't receive shadows either).
+**Held items and blocks** (since 2026-10-19): Minecraft's renderer submits them as quads from its
+item and block sheets (atlases). Each sprite (one picture on a sheet) a quad uses is sent once as a
+texture of its own: its first animation frame, from `SpriteContents.originalImage`. The quad's
+sheet coordinates become the sprite's 0..1 (`(u - u0) / (u1 - u0)`), and Minecraft's tints are kept
+(leather, potions, grass). This is a simpler form of SkyCraft's combined atlas. The texture table
+holds 256 textures (protocol v15).
+
+**Not yet:** enchantment glint, animated item textures (first frame only), items from mods that use
+Fabric meshes, and Mycelium's lighting on the body (it doesn't receive shadows either).
 
 **Checked** with the fake Minecraft's test model (`LINKTEST_MODEL=1`: a 0.6 × 1.2 × 0.3 block body
 with a nose on its facing side):

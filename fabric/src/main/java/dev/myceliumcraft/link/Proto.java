@@ -30,13 +30,13 @@ public final class Proto {
 	public static final long TEXTURES_BYTES = 0x800000;
 	public static final long T_TABLE = 0x00; // T_MAX x 0x20: u32 version, u32 width, u32 height, u32 pad, u64 data offset (from T_DATA)
 	public static final long T_ENTRY_SIZE = 0x20;
-	public static final int T_MAX = 32;
-	public static final long T_DATA = 0x400;
+	public static final int T_MAX = 256;
+	public static final long T_DATA = 0x2000;
 	public static final long T_DATA_BYTES = TEXTURES_BYTES - T_DATA;
 
 	public static final long MAPPING_BYTES = OFF_TEXTURES + TEXTURES_BYTES;
 	public static final int MAGIC = 0x4343594D; // "MYCC"
-	public static final int VERSION = 14;
+	public static final int VERSION = 15;
 	/** A side is alive if its heartbeat is younger than this. */
 	public static final long HEARTBEAT_TIMEOUT_MS = 3000;
 

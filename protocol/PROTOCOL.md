@@ -29,7 +29,7 @@ a block without locks.
 - **Reader:** read `seq`. If it's odd, try again. Read the fields, then read `seq` again. If it
   changed, try again.
 
-## Layout (version 14)
+## Layout (version 15)
 
 ### Header @ 0x000
 
@@ -178,8 +178,11 @@ The textures the model uses (skin, armour, cape), each written once.
 
 | Off | Type | Field |
 |---|---|---|
-| 0x00 + 0x20·(id−1) | entry for texture id 1..32 | 0x00 u32 version (0 = not there yet; set last), 0x04 u32 width, 0x08 u32 height, 0x10 u64 offset of its pixels from 0x400 |
-| 0x400 | | pixels: RGBA bytes, top row first, not premultiplied |
+| 0x00 + 0x20·(id−1) | entry for texture id 1..256 (32 before version 15) | 0x00 u32 version (0 = not there yet; set last), 0x04 u32 width, 0x08 u32 height, 0x10 u64 offset of its pixels from 0x2000 |
+| 0x2000 | | pixels: RGBA bytes, top row first, not premultiplied (from 0x400 before version 15) |
+
+Since version 15 a texture can also be one picture ("sprite") of Minecraft's item and block sheets,
+for held items. The model's u, v then run 0..1 across that sprite.
 
 A new Minecraft run uses new version numbers, so Mycelium reloads a texture whose version changed.
 

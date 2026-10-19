@@ -45,6 +45,7 @@ namespace MyceliumCraft
         static FieldInfo animatorField;
         static FieldInfo moveSpeedField;
         static FieldInfo canActField;
+        static FieldInfo invincibleField; // PlayerController.isInvincible: set for exactly a hit's knockback
         static FieldInfo lookingField;
         bool lookingOff; // we switched PlayerController.looking off
         static FieldInfo actionsField;
@@ -145,6 +146,7 @@ namespace MyceliumCraft
                 animatorField = playerControllerType.GetField("animator", BindingFlags.Public | BindingFlags.Instance);
                 moveSpeedField = playerControllerType.GetField("moveSpeed", BindingFlags.Public | BindingFlags.Instance);
                 canActField = playerControllerType.GetField("canAct", BindingFlags.Public | BindingFlags.Instance);
+                invincibleField = playerControllerType.GetField("isInvincible", BindingFlags.Public | BindingFlags.Instance);
                 lookingField = playerControllerType.GetField("looking", BindingFlags.Public | BindingFlags.Instance);
                 actionsField = playerControllerType.GetField("playerActionsAsset", BindingFlags.Public | BindingFlags.Instance);
             }
@@ -182,6 +184,9 @@ namespace MyceliumCraft
             // Test aid: "-mcModelCheck" reads back Mycelium's finished screen once a second at the
             // Minecraft body's head, with its depth passes off and on in turn, and logs the colour.
             if (Array.IndexOf(args, "-mcModelCheck") >= 0) StartCoroutine(ModelCheck());
+            // Test aid: "-mcLoadTest" starts a scene change through Mycelium's own SceneLoader (with
+            // its fade and loading screen) after 4 s of driving, to the tutorial.
+            if (Array.IndexOf(args, "-mcLoadTest") >= 0) StartCoroutine(LoadTest());
             // Test aid: "-mcBlurCheck" logs how sharp Mycelium's finished screen is twice a second
             // (average difference between neighbouring pixels in the middle), to see the pause blur.
             if (Array.IndexOf(args, "-mcBlurCheck") >= 0) StartCoroutine(BlurCheck());
@@ -304,7 +309,24 @@ namespace MyceliumCraft
             bool mcScreenOpen = camFresh2 && (lastCamMc.Flags & Proto.McScreenOpen) != 0;
             input.Update(link, reason == Proto.ReasonActive, reason, keys.OwnedScancodes, keys.OwnedButtons, mcScreenOpen);
             // Minecraft's hand, HUD and screens on top, during play (not over Mycelium's own menus).
-            overlay.Update(link, McConfig.Overlay && alive && phase != Phase.Idle && !MyceliumHasControls(out _));
+            // ...and not over Mycelium's loading, fade, startup or death screens (it's drawn above all its UI).
+            bool covered = ScreenCover.Showing(out string coverWhy);
+            if (covered != wasCovered)
+            {
+                wasCovered = covered;
+                McLog.Info(covered ? $"overlay: kept off while {coverWhy}" : "overlay: Mycelium's screen cover is gone");
+            }
+            // Mycelium taking the controls hides it, but a brief "can act" dip (a hit's knockback,
+            // about 30 ms) doesn't: that made the overlay blink on every hit (your report, 2026-10-19).
+            // Its pause still hides it at once.
+            bool controls = MyceliumHasControls(out string controlsWhy);
+            if (!controls) controlsSince = -1f;
+            else if (controlsSince < 0f) controlsSince = Time.realtimeSinceStartup;
+            // A hit's knockback never hides it (it lasts until the "Hurt" animation is half done, up to
+            // about half a second: the grace alone wasn't enough).
+            bool overlayBlocked = controls && !controlsWhy.EndsWith("knockback")
+                                  && (controlsWhy == "paused" || Time.realtimeSinceStartup - controlsSince >= OverlayControlsGrace);
+            overlay.Update(link, McConfig.Overlay && alive && phase != Phase.Idle && !overlayBlocked && !covered);
             // Minecraft's pause menu (Escape) pauses Mycelium too.
             FreezeForMinecraftPause(alive && phase == Phase.Driving && camFresh2 && (lastCamMc.Flags & Proto.McPaused) != 0);
             pauseBlur.Update();
@@ -683,7 +705,14 @@ namespace MyceliumCraft
             if (controller == null) return false;
             try
             {
-                if (canActField != null && !(bool)canActField.GetValue(controller)) { why = "canAct off"; return true; }
+                if (canActField != null && !(bool)canActField.GetValue(controller))
+                {
+                    // A hit's knockback switches the controls off until the "Hurt" animation is half
+                    // done, and marks the player invincible for exactly that time.
+                    bool knockback = invincibleField != null && (bool)invincibleField.GetValue(controller);
+                    why = knockback ? "canAct off, knockback" : "canAct off";
+                    return true;
+                }
                 object actions = actionsField?.GetValue(controller);
                 var asset = actions?.GetType().GetProperty("asset")?.GetValue(actions) as UnityEngine.InputSystem.InputActionAsset;
                 var map = asset?.FindActionMap("Player");
@@ -722,6 +751,9 @@ namespace MyceliumCraft
                        $"| spore={(rb != null ? sporePos.ToString("F2") : "none")} target={lastTarget:F2} error={lastError:F2} vel={(rb != null ? rb.velocity.ToString("F2") : "-")} resyncs={resyncs} grid=v{ground.Version}");
         }
 
+        bool wasCovered;
+        const float OverlayControlsGrace = 0.3f; // Mycelium must keep the controls this long before the overlay hides
+        float controlsSince = -1f;
         bool frozenByMinecraft;
         float timeScaleBefore = 1f;
         readonly McPauseBlur pauseBlur = new McPauseBlur();
@@ -752,6 +784,19 @@ namespace MyceliumCraft
                 if (Time.timeScale == 0f) Time.timeScale = timeScaleBefore;
                 McLog.Info($"pause: Minecraft's pause menu closed, Mycelium's time runs again (time scale {Time.timeScale:F2})");
             }
+        }
+
+        /// <summary>Test aid: see "-mcLoadTest" in Awake.</summary>
+        System.Collections.IEnumerator LoadTest()
+        {
+            while (phase != Phase.Driving) yield return null;
+            yield return new WaitForSecondsRealtime(4f);
+            Type t = Type.GetType("SceneLoader, Assembly-CSharp");
+            object loader = t?.GetField("Instance", BindingFlags.Public | BindingFlags.Static)?.GetValue(null);
+            MethodInfo begin = t?.GetMethod("BeginLoadScene", new[] { typeof(string), typeof(bool), typeof(bool) });
+            if (loader == null || begin == null) { McLog.Info("load test: SceneLoader not found"); yield break; }
+            McLog.Info($"load test: starting Mycelium's scene change to New Tutorial (overlay visible now: {overlay.Visible})");
+            begin.Invoke(loader, new object[] { "New Tutorial", true, false });
         }
 
         /// <summary>Test aid: see "-mcBlurCheck" in Awake.</summary>

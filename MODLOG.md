@@ -1,5 +1,111 @@
 # MODLOG
 
+## 2026-10-19 Overlay still hid on some hits (longer than before)
+
+**Changed:**
+- **`MinecraftDriver.MyceliumHasControls`:** a "canAct off" while `PlayerController.isInvincible`
+  is set is reported as "canAct off, knockback".
+- **The overlay** never hides for that, however long it lasts (the 0.3 s grace stays for other
+  takeovers).
+- DESIGN §5.4.
+
+**Why:** you saw the overlay disappear for longer than before.
+
+**Cause:** your log (saved as `work\user-hit-overlay-2.log`). A hit at 42.17 s held the controls for
+0.42 s, past the 0.3 s grace, so the overlay hid from 42.46 to 42.59 s. Mycelium's
+`PlayerController.Knockback` keeps the controls off until the "Hurt" animation is half done, which
+varies: 16 ms in my tests, 0.42 s in yours. So a fixed grace can't cover it. The previous fix
+assumed hits were always about 30 ms.
+
+**Tested how:** the real build in the tutorial, minimized, fake Minecraft with its overlay picture,
+`-mcHitTest`.
+
+**Result:** "hold: Mycelium has the controls (canAct off, knockback)". The overlay stayed shown, no
+"hidden" line.
+
+**Still broken / not tested:**
+- **My test hits are short (16 ms)**, so your long case isn't reproduced. It's not certain that your
+  0.42 s hold was a knockback (that log predates the knockback label). If the overlay still
+  disappears, your next log's "hold:" line will say why.
+
+## 2026-10-19 Minecraft overlay blinked when the spore took damage
+
+**Changed:**
+- **`MinecraftDriver.cs`:** Mycelium taking the controls hides the overlay only after it has had
+  them for 0.3 s (`OverlayControlsGrace`). Its pause still hides the overlay at once.
+- DESIGN §5.4.
+
+**Why:** you saw the overlay vanish for a frame on every hit.
+
+**Cause:** your log (saved as `work\user-hit-overlay.log`). On each hit: "overlay: hidden (not
+normal play)", "hold: Mycelium has the controls (canAct off)", then about 30 ms later "gave the
+controls back" and "overlay: showing". The knockback switches Mycelium's "can act" off for that
+moment.
+
+**Tested how:** the real build in the tutorial, minimized, fake Minecraft with its overlay picture,
+`-mcHitTest` (a knockback every 4 s).
+
+**Result:** the knockback gave a 16 ms "canAct off" hold, and the overlay stayed on: no "hidden"
+line through 3 hits.
+
+**Still broken / not tested:**
+- **Not tested with real hits in your play.**
+- **A real Mycelium menu prompt or cutscene** now hides the overlay 0.3 s after it starts, instead of
+  at once.
+
+## 2026-10-19 Minecraft overlay no longer shows over Mycelium's loading screen
+
+**Changed:**
+- **New `ScreenCover.cs`:** is one of Mycelium's full-screen covers showing? Read by reflection:
+  - SceneLoader's black, loading, startup and death canvas groups (alpha above 0.01) and its
+    `isLoading`;
+  - SceneLoadingManager's `isLoading`.
+- **`MinecraftDriver.cs`:** the overlay stays off while one is showing. New `-mcLoadTest` test aid
+  starts a scene change through Mycelium's own SceneLoader.
+- DESIGN §5.4.
+
+**Why:** you saw the Minecraft overlay on top of the loading screen when starting a run. It's
+drawn above all of Mycelium's UI, and a loading screen didn't count as "Mycelium has the controls".
+
+**Tested how:** the real build in the hub, minimized, fake Minecraft with its overlay picture,
+`-mcLoadTest`.
+
+**Result:**
+- **The scene change:** overlay shown, then "kept off while Mycelium is loading a scene" at 15.61 s,
+  through the load into the tutorial and its fade-in, then back on at 18.43 s ("screen cover is
+  gone").
+- **At game start:** also kept off "while Mycelium's loading screen is showing".
+- All 4 cover screens and both `isLoading` flags were found.
+
+**Still broken / not tested:**
+- **Not tested with the real "start a run" flow** (Explore button).
+- **The level-name title card** still shows under the overlay (on purpose).
+
+## 2026-10-19 Held items and blocks on your Minecraft body
+
+**Changed:**
+- **`MycPlayerModel.java`:** `submitItem` and `submitBlockModel` now take the quads.
+  - Each sprite they use is sent once as its own texture (`spriteTextureId`, first animation frame).
+  - Texture coordinates are turned from the sheet's into the sprite's.
+  - Tints are kept.
+  - The texture sending is shared with the body (`sendPixels`).
+- **New `SpriteContentsAccessor.java`:** reads a sprite's pixels.
+- **Protocol v15:** the texture table holds 256 textures (data from 0x2000).
+- DESIGN §5.4.1, PROTOCOL, README.
+
+**Why:** you asked to see held items in third person.
+
+**Tested how:** builds; stand-ins PASS. The real build in the hub with the fake Minecraft's test
+body (texture through the new table): "texture 1 from Minecraft, 4x4", body shown, 24 triangles.
+
+**Still broken / not tested:**
+- **The held items themselves aren't tested:** the fake Minecraft can't hold items, so this needs
+  real Minecraft.
+- **Not done:** enchantment glint, animated item textures (first frame only), Fabric-mesh (modded)
+  items.
+- **Each new sprite stays in the shared memory** until Minecraft or Mycelium restarts (256 textures,
+  8 MB). That's plenty for normal play.
+
 ## 2026-10-18 Sprint FOV and crouch camera, like Minecraft
 
 **Changed:**
