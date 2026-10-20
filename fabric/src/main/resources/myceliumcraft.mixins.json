@@ -13,9 +13,11 @@
   "client": [
     "CameraAccessor",
     "FramerateLimitTrackerMixin",
+    "GuiDeathScreenMixin",
     "InputConstantsMixin",
     "LevelRendererMixin",
     "MinecraftMixin",
+    "PlayerCombatKillMixin",
     "RenderSetupAccessor",
     "RenderTypeAccessor",
     "SpriteContentsAccessor",

@@ -1,5 +1,91 @@
 # MODLOG
 
+## 2026-10-19 Death animation, third try: closing a screen respawned you too
+
+**Problem (your test):** still standing and untinted.
+- Minecraft's log showed the death message hold worked ("immediate respawn held back").
+- But within the same second the level sync ran again, which it only does for a living player.
+  And every enemy stand-in on Minecraft's side was sent again, as after a respawn.
+- In Minecraft's code (26.3), `Gui.setScreen` does this: when a screen closes while the player is
+  dead, it opens the death screen, or with immediate respawn on, respawns. Something closed a screen
+  right after the death. I don't know what yet; the new log line will say.
+
+**Changed:**
+- **New `mixin/GuiDeathScreenMixin.java`:** while the death is held, closing a screen just closes
+  it (the player doesn't count as dead there).
+- **`MyceliumCraftClient.java`:** `deathHeld`; logs the first such screen close per death, with
+  the methods that called it.
+- DESIGN §5.0.2.
+
+**Tested how:**
+- Read `Gui.setScreen`'s code in Minecraft 26.3: it checks `LocalPlayer.isDeadOrDying` after
+  `setScreen(null)`, then calls `shouldShowDeathScreen` and `respawn`.
+- The jar builds.
+
+**Result:** compiles.
+
+**Still broken / not tested:**
+- **Not tested in Minecraft.**
+- Not sure these are the only two ways Minecraft respawns. I searched Minecraft's client for
+  every call to `respawn()`. The only others are the death screen's own buttons and one in the
+  game-event handler, which shouldn't run at death.
+
+## 2026-10-19 Death animation, second try: hold back Minecraft's immediate respawn
+
+**Problem (your test):** the view switched to third person behind, but the body stayed standing and
+untinted.
+- Minecraft's log showed why. Your world has the "immediate respawn" game rule on, so Minecraft
+  respawned the player at world spawn (2.5, -60, 2.5) within a second of the kill.
+- The body sent to Mycelium was the new, alive player, so there was no death animation to show.
+- The mod's own "respawn when Mycelium is alive again" never ran: the player wasn't dead any more.
+
+**Changed:**
+- **New `mixin/PlayerCombatKillMixin.java`:** when Mycelium's death caused Minecraft's "you died",
+  Minecraft's death screen and its immediate respawn are both held back. The body stays dying
+  (falls over, red) until Mycelium is alive again, when the mod respawns it as before.
+- **`MyceliumCraftClient.java`:** `holdDeath` and `releaseDeath`. If Mycelium goes away, or isn't
+  back in a level within 30 s, Minecraft gets its death screen or immediate respawn back.
+  Hardcore worlds are left alone.
+- DESIGN §5.0.2.
+
+**Tested how:**
+- Checked the hook point and every method it uses against Minecraft 26.3's own code:
+  `handlePlayerCombatKill` opens `DeathScreen` or calls `respawn()` when `shouldShowDeathScreen`
+  is false.
+- The jar builds.
+
+**Result:** compiles.
+
+**Still broken / not tested:**
+- **Not tested in Minecraft.** Not sure the hook attaches at start-up: a mixin that can't find
+  its spot stops Minecraft from loading, and the log would say so.
+- Not sure the dying body stays lying for the whole 3 s, rather than vanishing with a "poof".
+
+## 2026-10-19 Death: third person behind and Minecraft's death animation
+
+**Changed:**
+- **`MyceliumCraftClient.java`:**
+  - When Mycelium's death kills the Minecraft player, Minecraft's view switches to third person
+    behind. Mycelium's camera follows it.
+  - Your own view comes back when Mycelium is alive again, or when Mycelium leaves the level.
+  - While dead, the eye-height ratio sent to Mycelium is held at 1.
+- **The death animation itself needed no new code.** The body Mycelium draws is posed by
+  Minecraft's own player renderer, which tips a dying player over and tints it red.
+- DESIGN §5.0.2, README.
+
+**Why:** you asked to see the Minecraft death animation in third person behind when you die.
+
+**Tested how:** the jar builds. That's all.
+
+**Result:** compiles.
+
+**Still broken / not tested:**
+- **Not tested at all.** Neither stand-in runs Minecraft's real player or renderer. I didn't kill
+  the spore in real Mycelium either: its death saves your profile and drops your held material.
+- Not sure: whether the dying body lies still or vanishes with Minecraft's "poof" after a second.
+  I expect it to stay lying (the client keeps its own player), but I haven't checked.
+- Minecraft's small death camera roll isn't copied.
+
 ## 2026-10-19 Hurt tilt a little less strong
 
 **Changed:**

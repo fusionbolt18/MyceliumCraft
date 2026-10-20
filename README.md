@@ -48,6 +48,8 @@ Single-player and offline only.
   - Minecraft can't kill you while Mycelium's health is above 0.
   - Mycelium's death kills the Minecraft player (it drops its items, as Minecraft does), and it
     respawns when Mycelium has health again.
+  - When you die, the view goes to third person behind, and your Minecraft body does Minecraft's
+    death animation. Your own view comes back afterwards.
 - **No fall damage and no natural health regeneration in Minecraft, always while the mod is
   installed: not tested in Minecraft.** Done in the mod, so nothing is saved to your worlds.
 

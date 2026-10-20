@@ -146,7 +146,8 @@ public final class MyceliumCraftClient implements ClientModInitializer {
 		float fovScale = Mth.lerp(partial, camera.myceliumcraft$oldFovModifier(), camera.myceliumcraft$fovModifier());
 		float standingEye = player.getEyeHeight(net.minecraft.world.entity.Pose.STANDING);
 		float eye = Mth.lerp(partial, camera.myceliumcraft$eyeHeightOld(), camera.myceliumcraft$eyeHeight());
-		float eyeScale = standingEye > 0.01f ? eye / standingEye : 1f;
+		// (Dead: no eye-height change, so the dying pose can't move Mycelium's camera.)
+		float eyeScale = player.isDeadOrDying() ? 1f : standingEye > 0.01f ? eye / standingEye : 1f;
 		MycLink.writeMcState(flags, feet.x, feet.y, feet.z, player.getYRot(), player.getXRot(), frame, epoch, teleportAck, minecraft.options.getCameraType().ordinal(), bodyYaw, TICK, fovScale, eyeScale,
 			minecraft.options.damageTiltStrength().get().floatValue()); // Mycelium's camera tilts on hits by this much
 		dev.myceliumcraft.combat.EnemyProxies.clientSnap(minecraft.level);
@@ -230,6 +231,95 @@ public final class MyceliumCraftClient implements ClientModInitializer {
 		});
 	}
 
+	/** Minecraft's death message while its death screen / immediate respawn is held back; null = none held. */
+	private static net.minecraft.network.chat.Component heldDeath;
+	private static long heldDeathAt;
+
+	/**
+	 * Minecraft's "you died" (PlayerCombatKillMixin): when Mycelium's death caused it, hold back
+	 * Minecraft's death screen and its immediate respawn, so the body lies dying (Minecraft's fall,
+	 * red) while Mycelium plays its own death; the respawn comes when Mycelium is alive again. Not in
+	 * hardcore. True: held.
+	 */
+	public static boolean holdDeath(net.minecraft.network.chat.Component message) {
+		Minecraft minecraft = Minecraft.getInstance();
+		if (!killSent || minecraft.level == null || minecraft.player == null || minecraft.level.getLevelData().isHardcore()) {
+			return false;
+		}
+		heldDeath = message;
+		heldDeathAt = System.currentTimeMillis();
+		screenCloseLogged = false;
+		MycLink.LOG.info("MyceliumCraft: death: Minecraft's {} held back; your body lies dying until Mycelium is alive again",
+			minecraft.player.shouldShowDeathScreen() ? "death screen" : "immediate respawn");
+		return true;
+	}
+
+	/** True while Minecraft's death screen / immediate respawn is held back (GuiDeathScreenMixin). */
+	public static boolean deathHeld() {
+		return heldDeath != null;
+	}
+
+	private static boolean screenCloseLogged;
+
+	/** A screen closed while the death is held: Minecraft would have respawned you here. Logs who did it, once. */
+	public static void screenClosedWhileDeathHeld() {
+		if (screenCloseLogged) {
+			return;
+		}
+		screenCloseLogged = true;
+		StringBuilder who = new StringBuilder();
+		StackTraceElement[] stack = Thread.currentThread().getStackTrace();
+		for (int k = 3; k < Math.min(stack.length, 9); k++) {
+			who.append(k > 3 ? " <- " : "").append(stack[k].getClassName().replaceAll(".*\\.", "")).append('.').append(stack[k].getMethodName());
+		}
+		MycLink.LOG.info("MyceliumCraft: death: a screen was closed while dead ({}); Minecraft's respawn there held back too", who);
+	}
+
+	/** Give a held death back to Minecraft: its death screen, or its immediate respawn. */
+	private static void releaseDeath(Minecraft minecraft, LocalPlayer player, String why) {
+		var message = heldDeath;
+		heldDeath = null;
+		if (!player.isDeadOrDying()) {
+			return;
+		}
+		MycLink.LOG.info("MyceliumCraft: death: handed back to Minecraft ({})", why);
+		if (player.shouldShowDeathScreen()) {
+			minecraft.gui.setScreen(new net.minecraft.client.gui.screens.DeathScreen(message, false, player));
+		} else {
+			player.respawn();
+		}
+	}
+
+	/** Your view before Mycelium's death switched it to third person behind; null = not switched. */
+	private static net.minecraft.client.CameraType viewBeforeDeath;
+
+	/**
+	 * Mycelium's death: Minecraft's view goes to third person behind (Mycelium's camera follows it), so
+	 * you see your Minecraft body do Minecraft's own death fall: the captured model is posed by
+	 * Minecraft's renderer, which tips a dying player over sideways and tints it red. Not saved to
+	 * your options (Minecraft doesn't save the F5 view).
+	 */
+	private static void viewForDeath(Minecraft minecraft) {
+		if (viewBeforeDeath != null) {
+			return;
+		}
+		viewBeforeDeath = minecraft.options.getCameraType();
+		if (viewBeforeDeath != net.minecraft.client.CameraType.THIRD_PERSON_BACK) {
+			minecraft.options.setCameraType(net.minecraft.client.CameraType.THIRD_PERSON_BACK);
+		}
+		MycLink.LOG.info("MyceliumCraft: death: view {} -> third person behind, for Minecraft's death animation", viewBeforeDeath);
+	}
+
+	/** Mycelium alive again (or left the level): your own view back. */
+	private static void viewAfterDeath(Minecraft minecraft, String why) {
+		if (viewBeforeDeath == null) {
+			return;
+		}
+		minecraft.options.setCameraType(viewBeforeDeath);
+		MycLink.LOG.info("MyceliumCraft: death: view back to {} ({})", viewBeforeDeath, why);
+		viewBeforeDeath = null;
+	}
+
 	private static float sentMax = Float.NaN, sentHealth = Float.NaN;
 	private static float lastMycHealth = Float.NaN;
 	private static boolean killSent;
@@ -252,6 +342,10 @@ public final class MyceliumCraftClient implements ClientModInitializer {
 			}
 			sentMax = sentHealth = Float.NaN;
 			lastMycHealth = Float.NaN;
+			viewAfterDeath(minecraft, "Mycelium not in a level");
+			if (heldDeath != null && (!MycLink.myceliumAlive() || System.currentTimeMillis() - heldDeathAt > 30000)) {
+				releaseDeath(minecraft, player, MycLink.myceliumAlive() ? "Mycelium still not in a level 30 s after the death" : "Mycelium gone");
+			}
 			killSent = false;
 			zeroSince = 0;
 			return;
@@ -281,6 +375,7 @@ public final class MyceliumCraftClient implements ClientModInitializer {
 			}
 			if (!killSent && !player.isDeadOrDying() && now - zeroSince >= 250) {
 				killSent = true;
+				viewForDeath(minecraft);
 				var uuid = player.getUUID();
 				server.execute(() -> {
 					ServerPlayer sp = server.getPlayerList().getPlayer(uuid);
@@ -295,11 +390,13 @@ public final class MyceliumCraftClient implements ClientModInitializer {
 		}
 		killSent = false;
 		zeroSince = 0;
+		viewAfterDeath(minecraft, "Mycelium is alive again");
 		if (player.isDeadOrDying()) {
 			// Mycelium alive again (new run, back in the hub): respawn.
 			if (now - lastRespawn > 1000) {
 				lastRespawn = now;
 				player.respawn();
+				heldDeath = null;
 				MycLink.LOG.info("MyceliumCraft: health: Mycelium is alive ({}), respawning the Minecraft player", String.format("%.1f", MYC.health));
 			}
 			return;

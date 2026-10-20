@@ -257,6 +257,29 @@ prevented fall or heal is logged at most once a second.
   included, can't kill you. Mycelium's small values still show: 3 health is 0.6, half a heart.
 - **Death:** Mycelium's health at 0 for 0.25 s (so a set-up frame can't do it) kills the Minecraft
   player (`kill`), with Minecraft's normal death and its item drop.
+- **Death view** (since 2026-10-19): at that moment Minecraft's view is switched to third person
+  behind, and Mycelium's camera follows it as it follows F5.
+  - Mycelium waits 3 s before its death screen fades in. Meanwhile you see your Minecraft body do
+    Minecraft's own death animation: it tips over sideways and turns red. Nothing extra is needed
+    for that, because the body Mycelium draws is posed by Minecraft's own player renderer
+    (`MycPlayerModel`), and that renderer does it for a dying player.
+  - Your own view comes back when Mycelium is alive again, or when Mycelium leaves the level.
+    Minecraft doesn't save the F5 view to its options, so a crash while dead leaves nothing behind.
+  - While dead, the eye-height ratio sent to Mycelium is held at 1, so the dying pose can't move
+    the camera the way crouching does.
+- **Minecraft's own "you died" is held back** (`PlayerCombatKillMixin`). On death Minecraft either
+  opens its death screen, or with the "immediate respawn" game rule on, respawns at once. Your
+  world has that rule on: the first try had the player back on its feet at world spawn within a
+  second, so there was no dying body to show (your report, 2026-10-19).
+  - When the death came from Mycelium's, neither happens. The body lies dying, and the respawn
+    comes when Mycelium is alive again (`LocalPlayer.respawn`, as before).
+  - If Mycelium goes away, or isn't back in a level 30 s after the death, Minecraft gets its death
+    screen or immediate respawn back, so you can't be left dead with no way out.
+  - In hardcore worlds this doesn't happen: Minecraft handles the death as normal.
+  - **There are two ways in.** `Gui.setScreen(null)`, which is any screen closing, also opens the
+    death screen or respawns at once while the player is dead. That respawned you on the second
+    try. `GuiDeathScreenMixin` makes a closed screen just close while the death is held. The first
+    such close per death is logged with who did it.
 - **Respawn:** Mycelium with health again (back in the hub) respawns it (`LocalPlayer.respawn`).
   Minecraft's "Loading terrain" screen after that would wait for the player's chunk to be prepared
   for drawing, which never happens while the overlay skips Minecraft's world. So
