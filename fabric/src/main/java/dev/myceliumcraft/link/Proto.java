@@ -46,7 +46,7 @@ public final class Proto {
 
 	public static final long MAPPING_BYTES = OFF_HIT_BOXES + HIT_BOXES_BYTES;
 	public static final int MAGIC = 0x4343594D; // "MYCC"
-	public static final int VERSION = 20;
+	public static final int VERSION = 21;
 	/** A side is alive if its heartbeat is younger than this. */
 	public static final long HEARTBEAT_TIMEOUT_MS = 3000;
 

@@ -459,7 +459,7 @@ namespace MyceliumCraft
             {
                 bool newWorld = phase != Phase.Idle;
                 lastEpoch = mc.Epoch;
-                SendTeleport(newWorld ? "Minecraft entered a new world" : "start");
+                SendTeleport(newWorld ? "Minecraft entered a new world" : "start", setFacing: true);
                 return;
             }
 
@@ -606,8 +606,13 @@ namespace MyceliumCraft
             McLog.Info($"grid dumped to {path}");
         }
 
-        /// <summary>Ask Minecraft to put its player where the spore stands.</summary>
-        void SendTeleport(string why)
+        /// <summary>
+        /// Ask Minecraft to put its player where the spore stands. setFacing: also turn it to face
+        /// where the spore faces (only when Minecraft starts driving). Re-syncs keep Minecraft's own
+        /// facing: the spore faces where Minecraft's body points, which lags up to ~50 degrees behind
+        /// where you look, so sending it turned you after hits (your report, 2026-10-20: 323 -> 273).
+        /// </summary>
+        void SendTeleport(string why, bool setFacing = false)
         {
             Vector3 pos = rb.position;
             float feet = FeetY(pos.y);
@@ -619,10 +624,10 @@ namespace MyceliumCraft
             tp.X = x;
             tp.Y = y + 0.01;
             tp.Z = z;
-            tp.Yaw = WorldMapping.McYaw(rb.rotation.eulerAngles.y);
+            tp.Yaw = setFacing ? WorldMapping.McYaw(rb.rotation.eulerAngles.y) : float.NaN; // NaN: keep Minecraft's facing
             tpSentTime = Time.realtimeSinceStartup;
             SetPhase(Phase.WaitingForTeleport, why);
-            McLog.Info($"teleport {tp.Seq} ({why}): spore=({pos.x:F2}, {pos.y:F2}, {pos.z:F2}) feet y={feet:F2} (offset {feetOffset:F2}) -> mc=({tp.X:F2}, {tp.Y:F2}, {tp.Z:F2}) yaw={tp.Yaw:F0}, ground there={groundY:F2}");
+            McLog.Info($"teleport {tp.Seq} ({why}): spore=({pos.x:F2}, {pos.y:F2}, {pos.z:F2}) feet y={feet:F2} (offset {feetOffset:F2}) -> mc=({tp.X:F2}, {tp.Y:F2}, {tp.Z:F2}) yaw={(float.IsNaN(tp.Yaw) ? "kept" : tp.Yaw.ToString("F0"))}, ground there={groundY:F2}");
         }
 
         /// <summary>Bottom of the spore's own (non-trigger) colliders, or its position if it has none.</summary>

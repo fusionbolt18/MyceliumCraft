@@ -147,6 +147,11 @@ superflat world's own ground at y −60.
 
    A new Minecraft world or a new Mycelium scene also starts over.
 
+   **Resyncs only move you; they never turn you** (since 2026-10-20, protocol v21). Only the
+   first teleport, when Minecraft starts driving, sets where Minecraft's player faces. Resyncs send
+   a NaN yaw ("keep"). The spore faces where Minecraft's *body* points, which lags up to about 50°
+   behind where you look. So sending it after a hit's knockback turned you: 323° to 273° in your log.
+
 ## 5. Ground grid: layered columns (SkyCraft's CollisionField, stage A)
 
 **What the tutorial level is made of** (measured with `-mcSurvey` and `tools/survey_check.py`, §7):

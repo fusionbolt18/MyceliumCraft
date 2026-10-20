@@ -456,7 +456,11 @@ public final class MyceliumCraftClient implements ClientModInitializer {
 		player.xo = x;
 		player.yo = y;
 		player.zo = z;
-		player.setYRot(yaw);
+		// NaN (a re-sync): keep where you face; only the first teleport into a level turns you.
+		boolean turn = !Float.isNaN(yaw);
+		if (turn) {
+			player.setYRot(yaw);
+		}
 		player.setDeltaMovement(Vec3.ZERO);
 		player.resetFallDistance();
 		var server = minecraft.getSingleplayerServer();
@@ -466,13 +470,15 @@ public final class MyceliumCraftClient implements ClientModInitializer {
 				ServerPlayer sp = server.getPlayerList().getPlayer(uuid);
 				if (sp != null) {
 					sp.teleportTo(x, y, z);
-					sp.setYRot(yaw);
+					if (turn) {
+						sp.setYRot(yaw);
+					}
 					sp.resetFallDistance();
 				}
 			});
 		}
 		MycLink.LOG.info("MyceliumCraft: teleport {} to ({}, {}, {}) yaw {}", MYC.teleportSeq,
-			String.format("%.2f", x), String.format("%.2f", y), String.format("%.2f", z), String.format("%.0f", yaw));
+			String.format("%.2f", x), String.format("%.2f", y), String.format("%.2f", z), turn ? String.format("%.0f", yaw) : "kept");
 	}
 
 	/**

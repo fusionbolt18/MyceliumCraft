@@ -49,7 +49,7 @@ namespace MyceliumCraft.Link
 
         public const int MappingBytes = OffHitBoxes + HitBoxesBytes;
         public const uint Magic = 0x4343594D; // "MYCC"
-        public const uint Version = 20;
+        public const uint Version = 21;
         public const ulong HeartbeatTimeoutMs = 3000;
 
         // Header @0x000

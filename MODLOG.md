@@ -1,5 +1,35 @@
 # MODLOG
 
+## 2026-10-20 Hits no longer turn you (resyncs keep your facing; protocol v21)
+
+**Problem (your report):** after getting hit, your body was sometimes turned a little.
+- After a hit's knockback, Mycelium moves the spore, so the mod teleports Minecraft's player back
+  onto it (a resync).
+- That teleport also set Minecraft's facing to the spore's. The spore faces where Minecraft's body
+  points, which lags up to about 50° behind where you look.
+- Your log, 2026-10-20 08:00:18: Minecraft faced 322.8°, and the resync set 273°.
+
+**Changed:**
+- **`MinecraftDriver.cs`:** only the first teleport (Minecraft starts driving, or a new world)
+  sends a facing. Resyncs send NaN, meaning "keep".
+- **`MyceliumCraftClient.java`:** a NaN yaw leaves the player's facing alone, on the client and
+  on the server.
+- **Protocol v21:** PROTOCOL.md describes the NaN.
+- DESIGN §4 step 5.
+
+**Tested how:** the real Mycelium build with the fake Minecraft, using `-mcHoldTest` (takes the
+controls away and pushes the spore 1 unit, as a knockback does).
+
+**Result:**
+- The start teleport still sends a facing ("yaw=180").
+- The resync after the push sent "yaw=kept", and Minecraft confirmed it in 0.02 s. Driving went on.
+
+**Still broken / not tested:**
+- **Not tested in Minecraft:** the stand-in ignores facings, so it can't show that you aren't
+  turned any more.
+- `-mcHitTest`'s knockbacks didn't move the spore far enough for a resync in this run, so that
+  path is only covered by `-mcHoldTest`.
+
 ## 2026-10-19 Death animation, third try: closing a screen respawned you too
 
 **Problem (your test):** still standing and untinted.
