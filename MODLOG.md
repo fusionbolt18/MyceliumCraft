@@ -1,5 +1,31 @@
 # MODLOG
 
+## 2026-10-20 Weapon swaps: dropped weapon visible, new one hidden behind your Minecraft body
+
+**Problem (your report):** after grabbing a new weapon, the old one stayed invisible and the new
+one stayed visible.
+- While your Minecraft body stands in for the spore, the spore's renderers are hidden, its weapon
+  included. That list was made once, when hiding started.
+- Mycelium's pickup (`WeaponInteraction`) lets the old weapon go into the world
+  (`parent = null`) and puts a new one in the hand slot. The old one stayed on the list (hidden
+  on the ground), and the new one was never on it.
+
+**Changed:**
+- **`CameraSync.cs`:** `KeepHidden`, every frame while the spore is hidden (or shadow only in
+  first person). Renderers that left the spore are drawn again, and new ones under it are hidden.
+  Each change is logged.
+- **`MinecraftDriver.cs`:** test aid `-mcSwapTest`.
+- DESIGN.
+
+**Tested how:** the real build with the fake Minecraft in third person with the test body
+(`LINKTEST_VIEW=1`, `LINKTEST_MODEL=1`), using `-mcSwapTest` in Daybreak Arboretum.
+
+**Result:** "'Stick(Clone)' left the spore; drawn again", then "'Stick(Clone) (picked up)' is new on
+the spore; not drawn". After 0.5 s: dropped drawn=True, held drawn=False, both as wanted.
+
+**Still broken / not tested:**
+- **Not tested with a real pickup in Minecraft:** the test copies `WeaponInteraction`'s steps.
+
 ## 2026-10-20 Test keys removed (0 and \)
 
 **Changed:**

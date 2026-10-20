@@ -196,6 +196,10 @@ namespace MyceliumCraft
             // Test aid: "-mcFlashCheck" reads back the screen around an enemy while its hurt flash is
             // on and just after, and logs colour and detail (neighbouring-pixel contrast) for both.
             if (Array.IndexOf(args, "-mcFlashCheck") >= 0) StartCoroutine(FlashCheck());
+            // Test aid: "-mcSwapTest" swaps weapons the way picking one up does (WeaponInteraction: the
+            // old one is let go into the world, a new one goes in the hand) 4 s into driving, and logs
+            // which of the two Mycelium draws.
+            if (Array.IndexOf(args, "-mcSwapTest") >= 0) StartCoroutine(SwapTest());
             // Test aid: "-mcBlurCheck" logs how sharp Mycelium's finished screen is twice a second
             // (average difference between neighbouring pixels in the middle), to see the pause blur.
             if (Array.IndexOf(args, "-mcBlurCheck") >= 0) StartCoroutine(BlurCheck());
@@ -1174,6 +1178,36 @@ namespace MyceliumCraft
             {
                 McLog.Info("hit test: Knockback failed: " + (e.InnerException?.Message ?? e.Message));
             }
+        }
+
+        /// <summary>Test aid (-mcSwapTest): a weapon swap like a pickup, then which weapon is drawn.</summary>
+        System.Collections.IEnumerator SwapTest()
+        {
+            while (phase != Phase.Driving) yield return null;
+            yield return new WaitForSeconds(4f);
+            GameObject old = GameObject.FindWithTag("currentWeapon");
+            GameObject slot = GameObject.FindWithTag("WeaponSlot");
+            if (old == null || slot == null)
+            {
+                McLog.Info($"swap test: no weapon ({old != null}) or weapon slot ({slot != null}); nothing to swap");
+                yield break;
+            }
+            McLog.Info($"swap test: before: '{old.name}' drawn={Drawn(old)}, Minecraft body shown={playerModel.Shown}");
+            GameObject fresh = Instantiate(old, slot.transform);
+            fresh.name = old.name + " (picked up)";
+            old.transform.parent = null; // let go into the world, as WeaponInteraction does
+            old.tag = "Weapon";
+            old.transform.position += Vector3.up * 0.5f;
+            fresh.tag = "currentWeapon";
+            yield return new WaitForSeconds(0.5f);
+            McLog.Info($"swap test: after: dropped '{old.name}' drawn={Drawn(old)} (want True), held '{fresh.name}' drawn={Drawn(fresh)} (want {!playerModel.Shown})");
+        }
+
+        static bool Drawn(GameObject o)
+        {
+            foreach (Renderer r in o.GetComponentsInChildren<Renderer>(true))
+                if (r.enabled && !r.forceRenderingOff && r.shadowCastingMode != UnityEngine.Rendering.ShadowCastingMode.ShadowsOnly) return true;
+            return false;
         }
 
         bool hurtTest;

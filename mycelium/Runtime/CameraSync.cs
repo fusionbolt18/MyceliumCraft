@@ -164,6 +164,7 @@ namespace MyceliumCraft
                 sporeHidden = hide;
                 if (hide > 0) HideSpore(hide == 2); else ShowSpore();
             }
+            else if (hide > 0) KeepHidden(hide == 2);
 
             fovScale = mc.FovScale > 0.05f && mc.FovScale < 10f ? mc.FovScale : 1f;
             eyeScale = mc.EyeScale > 0.05f && mc.EyeScale < 2f ? mc.EyeScale : 1f;
@@ -226,7 +227,7 @@ namespace MyceliumCraft
         {
             ShowSpore();
             if (spore == null) return;
-            foreach (Renderer r in spore.GetComponentsInChildren<Renderer>())
+            foreach (Renderer r in spore.GetComponentsInChildren<Renderer>(true))
             {
                 if (fully)
                 {
@@ -240,9 +241,56 @@ namespace MyceliumCraft
                     hidden.Add((r, r.shadowCastingMode, false));
                     r.shadowCastingMode = UnityEngine.Rendering.ShadowCastingMode.ShadowsOnly;
                 }
+                hiddenSet.Add(r);
             }
             McLog.Info(fully ? $"camera: Minecraft body shown, {hidden.Count} spore renderers not drawn at all (no spore shadow)"
                              : $"camera: first person, {hidden.Count} spore renderers drawn as shadow only");
+        }
+
+        readonly System.Collections.Generic.List<Renderer> under = new System.Collections.Generic.List<Renderer>();
+        readonly System.Collections.Generic.HashSet<Renderer> hiddenSet = new System.Collections.Generic.HashSet<Renderer>();
+
+        /// <summary>
+        /// Every frame while the spore is hidden: what the spore holds changes (a new weapon picked up,
+        /// the old one dropped into the world). Hide renderers that are newly under the spore, and give
+        /// back those that left it. Before, the list was made once: a picked-up weapon stayed visible
+        /// and the dropped one stayed invisible on the ground (your report, 2026-10-20).
+        /// </summary>
+        void KeepHidden(bool fully)
+        {
+            if (spore == null) return;
+            for (int i = hidden.Count - 1; i >= 0; i--)
+            {
+                var (r, m, off) = hidden[i];
+                if (r != null && r.transform.IsChildOf(spore)) continue;
+                if (r != null)
+                {
+                    if (off) r.forceRenderingOff = false;
+                    else r.shadowCastingMode = m;
+                    McLog.Info($"camera: '{r.name}' left the spore; drawn again");
+                }
+                hiddenSet.Remove(r);
+                hidden.RemoveAt(i);
+            }
+            spore.GetComponentsInChildren(true, under);
+            foreach (Renderer r in under)
+            {
+                if (hiddenSet.Contains(r)) continue;
+                if (fully)
+                {
+                    if (r.forceRenderingOff) continue;
+                    hidden.Add((r, r.shadowCastingMode, true));
+                    r.forceRenderingOff = true;
+                }
+                else
+                {
+                    if (r.shadowCastingMode == UnityEngine.Rendering.ShadowCastingMode.ShadowsOnly) continue;
+                    hidden.Add((r, r.shadowCastingMode, false));
+                    r.shadowCastingMode = UnityEngine.Rendering.ShadowCastingMode.ShadowsOnly;
+                }
+                hiddenSet.Add(r);
+                McLog.Info($"camera: '{r.name}' is new on the spore; {(fully ? "not drawn" : "shadow only")}");
+            }
         }
 
         void ShowSpore()
@@ -254,6 +302,7 @@ namespace MyceliumCraft
                 else r.shadowCastingMode = m;
             }
             hidden.Clear();
+            hiddenSet.Clear();
         }
 
         /// <summary>Minecraft pitch to the wanted camera angle: -90..0..90 -> -89..offset..89.</summary>

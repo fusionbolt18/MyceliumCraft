@@ -921,6 +921,12 @@ it sends the **model itself**:
 - **The spore** isn't drawn at all while the body is shown, in every view (`CameraSync.ReplaceSpore`;
   its renderers get `forceRenderingOff`), so it casts no shadow either. It's drawn as shadow only
   in first person only if there's no Minecraft body (for example `playerModel=0`).
+  - **Kept up to date every frame** (`CameraSync.KeepHidden`, since 2026-10-20). Renderers newly
+    under the spore are hidden too, and renderers that left it are drawn again. Picking up a
+    weapon lets the old one go into the world and puts a new one in the hand
+    (`WeaponInteraction`). With a list made once, the dropped weapon stayed invisible and the new
+    one showed (your report).
+  - **`-mcSwapTest`** (test aid) does such a swap 4 s into driving and logs which weapon is drawn.
   - **Checked** with `-mcModelCheck` in the hub, under its active "Day Light". The check works out
     where the shadow should land (from the middle of the body, along the light, down to the feet's
     height) and reads the screen brightness there:
