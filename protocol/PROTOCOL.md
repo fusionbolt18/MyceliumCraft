@@ -29,7 +29,7 @@ a block without locks.
 - **Reader:** read `seq`. If it's odd, try again. Read the fields, then read `seq` again. If it
   changed, try again.
 
-## Layout (version 21)
+## Layout (version 23)
 
 ### Header @ 0x000
 
@@ -62,6 +62,7 @@ a block without locks.
 | 0x50 | f32 | Mycelium's current health (its own units); since version 16 |
 | 0x54 | f32 | Mycelium's max health; 0 = no spore health known (Minecraft's health isn't synced then) |
 | 0x58 | i32 | Mycelium's nutrients; −1 = not known (Minecraft's experience level follows it); since version 19 |
+| 0x5C | f32 | how far through Mycelium's sprout in The Carcass: 0 while waiting for it, then the Sprout animation's progress up to 1 (Minecraft plays the Warden's emerge over it); −1 = no sprout; since version 22 |
 
 ### McState @ 0x200 (Minecraft → Mycelium, seqlock)
 

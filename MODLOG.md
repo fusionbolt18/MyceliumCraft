@@ -1,5 +1,172 @@
 # MODLOG
 
+## 2026-10-20 Test keys removed (0 and \)
+
+**Changed:**
+- **`MinecraftDriver.cs`, `SproutWatch.cs`:** the 0 and \ sprout-replay keys are gone.
+- **Both sides:** the `EMERGE_BEHIND` flag is gone (MycState bit 3 is unused again).
+- **`MyceliumCraftClient.java`:** the emerge always uses the front view.
+- PROTOCOL, DESIGN. The protocol stays at version 23.
+
+**Why:** you were happy with the emerge and asked for the keys to go.
+
+**Tested how:**
+- Both builds.
+- `tools\FakeMycelium` + `gradlew linkTest`.
+- Real Mycelium, `-mcScene "The Carcass"`.
+
+**Result:**
+- Builds succeed. Link check: "sprout progress: got 0.25", PASS.
+- In The Carcass, the sprout started 0.12 s after arriving and was done at 2.99 s, as before.
+- No test-key code is left (searched for it).
+
+## 2026-10-20 Head tilts further forward in the emerge; TEMPORARY \ key (emerge in third person behind; protocol v23)
+
+**Changed:**
+- **`EmergePose.java`:** the head nods further forward. It now goes up to 0.55 rad (was 0.2) on
+  top of the torso's lean while pulling, then 0.35, then back to 0.
+- **`MinecraftDriver.cs`, `SproutWatch.cs`:** the \ key replays the sprout like the
+  0 key, and sets MycState flag bit 3 `EMERGE_BEHIND` while it runs.
+- **`MyceliumCraftClient.java`:** with that flag, the emerge uses third person behind instead of in front.
+- **Protocol v23:** the new flag. Both keys are marked TEMPORARY.
+- DESIGN, PROTOCOL.
+
+**Why:** you asked for more head tilt, and a second test key with the behind view.
+
+**Tested how:** the real build with the fake Minecraft, holding \ through
+`-mcHoldKeys Backslash,Backslash`.
+
+**Result:** "\ key: replaying Mycelium's sprout, emerge in third person behind". The
+Sprout ran 0 → 0.70+ as before. Both builds succeed.
+
+**Still broken / not tested:**
+- **Not tested in Minecraft.** The fake Minecraft doesn't read the flag, so the behind view
+  switch is only checked by compiling.
+- The new head tilt isn't seen yet.
+
+## 2026-10-20 Emerge, second version: arms pull and push, less torso tilt
+
+**Problem (your test):** the torso tilted too much, and the arms didn't seem to move.
+- I had played Minecraft's own Warden emerge on the player. The Warden is about 3 blocks tall,
+  so on a player-sized body all of its clawing (arms overhead, 1.2–2.9 s in) happened with even
+  the hands underground.
+- When the arms came out, the Warden's animation barely moves them. Its torso leans up to
+  1.2 rad (70°).
+
+**Changed:**
+- **`EmergePose.java`:** its own dig-out, made for a player body, by sprout progress (0 to 1):
+  1. Arms up; hands and head break out.
+  2. Pull: each hand is planted on the ground in front and held there while the torso rises
+     (the arm angle is worked out from the shoulder's height every frame). The left plants a
+     little after the right.
+  3. Push: arms down at the sides, hips out, then the legs step up.
+  - The torso leans at most 0.35 rad (20°).
+  - Minecraft's Warden animation isn't used any more.
+- **`MyceliumCraftClient.java`, `MycPlayerModel.java`, `HumanoidEmergeMixin.java`:** progress
+  instead of Warden seconds.
+- DESIGN §5.0.2, README.
+
+**Tested how:** offline. A scratch program ran it on Minecraft's standard humanoid model every 5 %,
+printing where the hands, the top of the head and the hips are. Then the jar was built.
+
+**Result:**
+- Hands at y 23.4–24.3 (the ground is 24) from 22 % to 55 %, while the torso rises from 28 to
+  12 and the hands slide back from 9.5 to 3 pixels in front.
+- Hips out at 50 %. Normal pose at 100 %.
+- Hands and head come out together, at about 18 %. In Minecraft's proportions, raised hands only
+  reach 2 pixels above the head.
+
+**Still broken / not tested:**
+- **Not seen in Minecraft:** whether it reads as pulling and pushing.
+- The numbers are first guesses, easy to tune.
+
+## 2026-10-20 Emerge in the third-person front view
+
+**Changed:**
+- **`MyceliumCraftClient.java`:** the view switch takes the view to use. The emerge uses third
+  person in front, facing you as you dig out. The death keeps third person behind.
+- DESIGN, README.
+
+**Why:** you asked for the respawn animation in the front view.
+
+**Tested how:** the jar builds. Mycelium already follows Minecraft's front view (F5, tested
+earlier), so nothing changed there.
+
+**Still broken / not tested:**
+- **Not tested in Minecraft.**
+
+## 2026-10-20 TEMPORARY: the 0 key replays the sprout (to try the emerge)
+
+**Changed:**
+- **`MinecraftDriver.cs`:** pressing 0 does what Mycelium does on arriving in The Carcass, right
+  where you are: controls off, the spore's "Sprout" animation, controls back. Nothing is saved
+  and no scene changes.
+- **`SproutWatch.cs`:** `ArmNow`, so Minecraft's emerge follows that sprout.
+- **Marked TEMPORARY** in the code and DESIGN. Remove when done.
+
+**Why:** you asked for a quick key to trigger a respawn, to try the emerge without dying.
+
+**Tested how:** the real build with the fake Minecraft in Daybreak Arboretum, holding 0 through
+`-mcHoldKeys Digit0,Digit0`.
+
+**Result:** the Sprout started 0.02 s after the key. Progress went 0 → 0.88 over 2.87 s, then
+"done", and the controls came back.
+- Two dead ends on the way:
+  1. `wasPressedThisFrame` never fired, so the key's up/down is tracked by hand now.
+  2. `DisableController` takes one optional argument, so calling it with none failed silently.
+
+**Still broken / not tested:**
+- **The emerge itself isn't tested in Minecraft.**
+- The 0 key also reaches Minecraft through the input bridge. 0 isn't bound in Minecraft by default.
+
+## 2026-10-20 Emerge: the Warden's dig-out when Mycelium sprouts you (protocol v22)
+
+**Changed:**
+- **New `mycelium/Runtime/SproutWatch.cs`:** on arriving in The Carcass (unless the spore died for
+  good), sends how far through Mycelium's sprout it is: 0 while waiting, then the "Sprout"
+  animation's progress up to 1, then −1.
+- **New `fabric/.../EmergePose.java`:** plays Minecraft's own Warden emerge animation, read from
+  the game at runtime, on the player model. Head and arms are combined with the body's movement,
+  as in the Warden.
+- **New `mixin/HumanoidEmergeMixin.java`:** applies it in Minecraft's own posing, only while the
+  mod captures your body.
+- **`MycPlayerModel.java`:** switches that on around the capture.
+- **`MyceliumCraftClient.java`:** one third-person-behind switch, shared by the death and the
+  emerge. Logs the emerge.
+- **Protocol v22:** MycState 0x5C. Both stand-ins check it.
+- DESIGN §5.0.2, README.
+
+**Why:** you asked for the Warden's crawl out of the ground when respawning in The Carcass.
+
+**Tested how:**
+1. **Offline:** a scratch program ran `EmergePose` on Minecraft's standard humanoid model at 7
+   moments. Nothing from the game went into the repo.
+2. **Link:** `tools\FakeMycelium` + `gradlew linkTest`. "sprout progress: got 0.25, expected
+   0.25", ground checks PASS.
+3. **Real Mycelium,** `-mcScene "The Carcass"`.
+
+**Result:**
+1. At 0 s, body, head, arms and legs are all 63 pixels down (the player is 32 tall). They rise
+   together, and at 6.68 s they're back in the normal pose.
+2. Passes.
+3. The sprout started 0.12 s after arriving. Progress went 0 → 0.96 smoothly over 2.87 s, then
+   "done" at 2.99 s.
+
+**First try, changed:** the first version ended the emerge when Mycelium's sprout ended, at the
+Warden's own speed. That assumed a 10 s wait, but The Carcass waits 0.1 s and the sprout lasts about
+2.9 s, so it would have started halfway through and skipped the buried part. Now the whole emerge
+plays over the sprout, about 2.3× as fast.
+
+**Still broken / not tested:**
+- **Not tested in Minecraft at all.** Not checked: the look, that Mycelium's ground hides the
+  buried body, held items, armour, cape.
+- Mid-emerge the head tips very far forward. That may look odd on a player.
+- It runs on every arrival in The Carcass, not only after a death, because Mycelium sprouts every
+  time.
+- After a death, Minecraft's respawn comes when you arrive, so the first part of the emerge may
+  be missed while Minecraft reloads.
+- No dig particles or sounds.
+
 ## 2026-10-20 Hits no longer turn you (resyncs keep your facing; protocol v21)
 
 **Problem (your report):** after getting hit, your body was sometimes turned a little.

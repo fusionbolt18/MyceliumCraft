@@ -46,7 +46,7 @@ public final class Proto {
 
 	public static final long MAPPING_BYTES = OFF_HIT_BOXES + HIT_BOXES_BYTES;
 	public static final int MAGIC = 0x4343594D; // "MYCC"
-	public static final int VERSION = 21;
+	public static final int VERSION = 23;
 	/** A side is alive if its heartbeat is younger than this. */
 	public static final long HEARTBEAT_TIMEOUT_MS = 3000;
 
@@ -77,6 +77,7 @@ public final class Proto {
 	public static final long MY_HEALTH = 0x50;     // Mycelium's current health (its own units); since v16
 	public static final long MY_MAX_HEALTH = 0x54; // Mycelium's max health; 0 = no spore health known
 	public static final long MY_NUTRIENTS = 0x58;  // Mycelium's nutrients (i32); -1 = not known; since v19
+	public static final long MY_EMERGE = 0x5C; // how far through Mycelium's sprout (0..1); -1 = no sprout; since v22
 	public static final int MYC_IN_LEVEL = 1 << 0;
 	public static final int MYC_PAUSED = 1 << 1;
 	public static final int MYC_OVERLAY = 1 << 2; // Mycelium shows Minecraft's overlay: Minecraft skips drawing its world

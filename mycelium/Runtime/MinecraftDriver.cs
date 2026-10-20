@@ -56,6 +56,7 @@ namespace MyceliumCraft
         readonly GroundScanner ground = new GroundScanner();
         readonly CameraSync cameraSync = new CameraSync();
         readonly HurtTilt hurtTilt = new HurtTilt();
+        readonly SproutWatch sprout = new SproutWatch();
         readonly InputBridge input = new InputBridge();
         readonly KeyOwnership keys = new KeyOwnership();
         readonly McOverlay overlay = new McOverlay();
@@ -251,6 +252,7 @@ namespace MyceliumCraft
                 rb = null;
                 nextFindTime = 0;
                 cameraSync.Reset();
+                sprout.SceneLoaded(scene);
                 SetPhase(Phase.Idle, "new scene");
             };
         }
@@ -281,7 +283,7 @@ namespace MyceliumCraft
             float health = 0f, maxHealth = 0f;
             if (rb != null) ReadHealth(out health, out maxHealth);
             link.WriteMycState(flags, pos.x, pos.y, pos.z, yaw, frame, tp, rb != null ? playerHeightBlocks : 0f, health, maxHealth,
-                               rb != null ? ReadNutrients() : -1);
+                               rb != null ? ReadNutrients() : -1, sprout.Update());
 
             bool alive = link.MinecraftAlive;
             if (alive != mcWasAlive)

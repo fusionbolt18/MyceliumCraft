@@ -149,7 +149,7 @@ namespace MyceliumCraft.Link
         }
 
         /// <summary>Seqlock write of MycState.</summary>
-        public void WriteMycState(uint flags, double x, double y, double z, float yaw, ulong frame, in Teleport tp, float playerHeightBlocks, float health = 0f, float maxHealth = 0f, int nutrients = -1)
+        public void WriteMycState(uint flags, double x, double y, double z, float yaw, ulong frame, in Teleport tp, float playerHeightBlocks, float health = 0f, float maxHealth = 0f, int nutrients = -1, float emerge = -1f)
         {
             int b = Proto.OffMycState;
             uint seq = ReadU32(view, b + Proto.MySeq);
@@ -170,6 +170,7 @@ namespace MyceliumCraft.Link
             WriteF32(view, b + Proto.MyHealth, health);
             WriteF32(view, b + Proto.MyMaxHealth, maxHealth);
             Marshal.WriteInt32(view, b + Proto.MyNutrients, nutrients);
+            WriteF32(view, b + Proto.MyEmerge, emerge);
             Thread.MemoryBarrier();
             WriteU32(view, b + Proto.MySeq, seq + 2); // even: done
         }

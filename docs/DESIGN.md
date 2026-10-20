@@ -289,6 +289,42 @@ prevented fall or heal is logged at most once a second.
   Minecraft's "Loading terrain" screen after that would wait for the player's chunk to be prepared
   for drawing, which never happens while the overlay skips Minecraft's world. So
   `WaitingForPlayerChunkMixin` makes it not wait while Mycelium is running (as SkyCraft does).
+- **Emerge: the Warden's dig-out on your body when Mycelium sprouts you** (since 2026-10-20).
+  - **When:** every time the spore arrives in The Carcass (after a death, and after a run), unless
+    it died for good. Mycelium then takes the controls away, waits `timeUntilHubSprout` (0.1 s in
+    The Carcass), plays the spore's "Sprout" animation (about 2.9 s), and gives the controls back.
+  - **Mycelium side** (`SproutWatch`): sends how far through that it is (MycState 0x5C, protocol
+    v22). That's 0 while waiting, then the Sprout animation's progress up to 1, and −1 when there's
+    no sprout.
+  - **Minecraft side:** Minecraft's view goes to third person *in front* for the emerge (facing
+    you as you dig out; your choice, 2026-10-20), and back after. It's the same switch the death
+    uses, which picks third person behind.
+  - **The animation** (`EmergePose`, since 2026-10-20 second version): made for a player body, by
+    how far through the sprout (0 to 1), eased between key points. In model pixels, the feet and
+    the ground are at 24.
+    - **Break out:** everything starts 42 pixels down, with the arms straight up. Raised hands
+      only reach 2 pixels above the head, so hands and head come out together.
+    - **Pull (about 22–55 %):** each hand is planted on the ground in front and stays there while
+      the torso rises. Its arm angle is worked out every frame from the shoulder's height:
+      world angle = −acos((ground − shoulder) / arm length), minus the torso's lean. The left
+      plants a little after the right, like clawing.
+    - **Push:** the arms go down beside the body to lift the hips out, then the right leg and the
+      left leg step up.
+    - **The head** nods down at the ground up to 0.55 rad on top of the torso's lean (more since
+      your note, 2026-10-20).
+    - **The torso leans at most 0.35 rad (20°).** The head and arms are carried with it, as if
+      attached at the neck: move = torso + torsoTurn × own move, turn = torsoTurn × own turn.
+    - **The first version** played Minecraft's own Warden emerge (6.68 s, read at runtime). The
+      Warden is about 3 blocks tall, so on a player all its clawing happened with even the hands
+      underground, and its torso leaned up to 70°. You saw arms that didn't move and too much tilt.
+    - **Checked offline** on Minecraft's standard humanoid model, every 5 %: the hands stay at
+      y 23.4–24.3 from 22 % to 55 % while the torso rises from 28 to 12, then the hips come out at
+      50 %. At 100 % it's the normal pose.
+  - **Where it's applied** (`HumanoidEmergeMixin`): in Minecraft's own posing of every humanoid
+    model (the body, armour, the cape), but only while `MycPlayerModel` captures your body. Held
+    items are placed from the arm's pose, so they follow.
+  - **Hidden underground:** Mycelium's ground hides the buried parts, because the body is drawn at
+    the spore's feet like any other mesh.
 - **Outside Mycelium's levels** (max 0 or no spore): not synced, and max health is put back to 20.
 
 ### 5.0.2.1 Experience level = nutrients (since 2026-10-19)

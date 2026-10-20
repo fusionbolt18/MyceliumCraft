@@ -195,6 +195,7 @@ public final class LinkTestMain {
 		ok &= check("Mycelium health", myc.health, 37.5);
 		ok &= check("Mycelium max health", myc.maxHealth, 150);
 		ok &= check("Mycelium nutrients", myc.nutrients, 42);
+		ok &= check("Mycelium sprout progress", myc.emerge, 0.25);
 		MycLink.MycInput in = new MycLink.MycInput();
 		ok &= check("input block read", MycLink.readInput(in) ? 1 : 0, 1);
 		ok &= check("input bridge active", in.active() ? 1 : 0, 1);

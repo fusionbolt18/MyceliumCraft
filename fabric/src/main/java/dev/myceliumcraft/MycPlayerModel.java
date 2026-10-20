@@ -133,7 +133,13 @@ public final class MycPlayerModel implements SubmitNodeCollector {
 			state.nameTag = null;
 			CameraRenderState cameraState = minecraft.gameRenderer.gameRenderState().levelRenderState.cameraRenderState;
 			// At the origin: positions come out relative to the player's feet.
-			dispatcher.submit(state, cameraState, 0.0, 0.0, 0.0, new PoseStack(), this);
+			// Mycelium's sprout: digging out of the ground (HumanoidEmergeMixin, while this runs).
+			EmergePose.setCapturing(MyceliumCraftClient.emergeProgress());
+			try {
+				dispatcher.submit(state, cameraState, 0.0, 0.0, 0.0, new PoseStack(), this);
+			} finally {
+				EmergePose.setCapturing(Float.NaN);
+			}
 		} catch (RuntimeException e) {
 			if (!warned) {
 				warned = true;

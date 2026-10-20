@@ -50,6 +50,9 @@ Single-player and offline only.
     respawns when Mycelium has health again.
   - When you die, the view goes to third person behind, and your Minecraft body does Minecraft's
     death animation. Your own view comes back afterwards.
+- **Emerge when Mycelium sprouts you in The Carcass: not tested in Minecraft.** In the third-person front
+  view, your Minecraft body digs up out of the ground (hands out, pulling on the ground, pushing up,
+  stepping out; like the Warden's emerge), over Mycelium's ~3 s sprout. It happens after a death and after a run.
 - **No fall damage and no natural health regeneration in Minecraft, always while the mod is
   installed: not tested in Minecraft.** Done in the mod, so nothing is saved to your worlds.
 

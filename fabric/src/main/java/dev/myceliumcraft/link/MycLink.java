@@ -375,6 +375,8 @@ public final class MycLink {
 		public float health, maxHealth;
 		/** Mycelium's nutrients (-1 = not known). */
 		public int nutrients = -1;
+		/** How far through Mycelium's sprout in The Carcass (0..1; -1 = none). */
+		public float emerge = -1f;
 
 		public boolean inLevel() {
 			return (this.flags & MYC_IN_LEVEL) != 0;
@@ -409,6 +411,7 @@ public final class MycLink {
 			out.health = s.get(JAVA_FLOAT, b + MY_HEALTH);
 			out.maxHealth = s.get(JAVA_FLOAT, b + MY_MAX_HEALTH);
 			out.nutrients = s.get(JAVA_INT, b + MY_NUTRIENTS);
+			out.emerge = s.get(JAVA_FLOAT, b + MY_EMERGE);
 			VarHandle.loadLoadFence();
 			int seq2 = (int) INT.getVolatile(s, b + MY_SEQ);
 			if (seq1 == seq2) {

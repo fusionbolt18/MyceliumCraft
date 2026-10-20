@@ -96,6 +96,9 @@ public final class MyceliumCraftClient implements ClientModInitializer {
 
 		syncHealth(minecraft, player, haveMyc && MycLink.myceliumAlive() && MYC.inLevel() && MYC.maxHealth > 0f);
 		syncLevel(minecraft, player, haveMyc && MycLink.myceliumAlive() && MYC.inLevel() && MYC.nutrients >= 0);
+		// Third person behind for the death animation or the emerge; your own view after.
+		logEmerge();
+		updateViewOverride(minecraft);
 
 		// Body size: as tall as the spore while Mycelium has one in a level; normal size otherwise.
 		boolean sporeActive = haveMyc && MycLink.myceliumAlive() && MYC.inLevel() && MYC.playerHeight > 0;
@@ -290,8 +293,10 @@ public final class MyceliumCraftClient implements ClientModInitializer {
 		}
 	}
 
-	/** Your view before Mycelium's death switched it to third person behind; null = not switched. */
-	private static net.minecraft.client.CameraType viewBeforeDeath;
+	/** Your view before the mod switched it (death: third person behind; emerge: in front); null = not switched. */
+	private static net.minecraft.client.CameraType viewBeforeOverride;
+	private static boolean deathView;
+	private static String overrideWhy = "";
 
 	/**
 	 * Mycelium's death: Minecraft's view goes to third person behind (Mycelium's camera follows it), so
@@ -300,24 +305,78 @@ public final class MyceliumCraftClient implements ClientModInitializer {
 	 * your options (Minecraft doesn't save the F5 view).
 	 */
 	private static void viewForDeath(Minecraft minecraft) {
-		if (viewBeforeDeath != null) {
-			return;
-		}
-		viewBeforeDeath = minecraft.options.getCameraType();
-		if (viewBeforeDeath != net.minecraft.client.CameraType.THIRD_PERSON_BACK) {
-			minecraft.options.setCameraType(net.minecraft.client.CameraType.THIRD_PERSON_BACK);
-		}
-		MycLink.LOG.info("MyceliumCraft: death: view {} -> third person behind, for Minecraft's death animation", viewBeforeDeath);
+		deathView = true;
+		viewOverride(minecraft, net.minecraft.client.CameraType.THIRD_PERSON_BACK, "Minecraft's death animation");
 	}
 
-	/** Mycelium alive again (or left the level): your own view back. */
+	/** Mycelium alive again (or left the level): the death no longer needs the view. */
 	private static void viewAfterDeath(Minecraft minecraft, String why) {
-		if (viewBeforeDeath == null) {
-			return;
+		if (deathView) {
+			deathView = false;
+			MycLink.LOG.info("MyceliumCraft: death: the death view is over ({})", why);
 		}
-		minecraft.options.setCameraType(viewBeforeDeath);
-		MycLink.LOG.info("MyceliumCraft: death: view back to {} ({})", viewBeforeDeath, why);
-		viewBeforeDeath = null;
+	}
+
+	/**
+	 * Every frame: third person behind for the death, in front for Mycelium's sprout (the emerge,
+	 * facing you as you dig out: your choice, 2026-10-20);
+	 * your own view back after both.
+	 */
+	private static void updateViewOverride(Minecraft minecraft) {
+		boolean emerging = !Float.isNaN(emergeProgress());
+		if (deathView || emerging) {
+			if (deathView) {
+				viewOverride(minecraft, net.minecraft.client.CameraType.THIRD_PERSON_BACK, "Minecraft's death animation");
+			} else {
+				viewOverride(minecraft, net.minecraft.client.CameraType.THIRD_PERSON_FRONT, "the emerge");
+			}
+		} else if (viewBeforeOverride != null) {
+			minecraft.options.setCameraType(viewBeforeOverride);
+			MycLink.LOG.info("MyceliumCraft: view back to {} (after {})", viewBeforeOverride, overrideWhy);
+			viewBeforeOverride = null;
+		}
+	}
+
+	private static void viewOverride(Minecraft minecraft, net.minecraft.client.CameraType view, String why) {
+		if (viewBeforeOverride == null) {
+			viewBeforeOverride = minecraft.options.getCameraType();
+			MycLink.LOG.info("MyceliumCraft: view {} -> {}, for {}", viewBeforeOverride, view, why);
+		}
+		overrideWhy = why;
+		if (minecraft.options.getCameraType() != view) {
+			minecraft.options.setCameraType(view);
+		}
+	}
+
+	private static float lastEmerge = -1f;
+	private static long emergeStartMs, nextEmergeLog;
+
+	/**
+	 * How far through the emerge to show now (0..1), or NaN when there's none: how far through its
+	 * sprout Mycelium is (0 while waiting for it, then the Sprout animation up to 1, about 3 s).
+	 */
+	public static float emergeProgress() {
+		if (!MycLink.myceliumAlive() || !MYC.inLevel() || MYC.emerge < 0f) {
+			return Float.NaN;
+		}
+		return Math.min(1f, MYC.emerge);
+	}
+
+	private static void logEmerge() {
+		float now = MycLink.myceliumAlive() && MYC.inLevel() ? MYC.emerge : -1f;
+		long ms = System.currentTimeMillis();
+		if ((now >= 0f) != (lastEmerge >= 0f)) {
+			if (now >= 0f) {
+				emergeStartMs = ms;
+				MycLink.LOG.info("MyceliumCraft: emerge: Mycelium's sprout is on; your body digs out over it, buried until it starts");
+			} else {
+				MycLink.LOG.info("MyceliumCraft: emerge: done after {} s", String.format("%.2f", (ms - emergeStartMs) / 1000.0));
+			}
+		} else if (now >= 0f && ms >= nextEmergeLog) {
+			nextEmergeLog = ms + 500;
+			MycLink.LOG.info("MyceliumCraft: emerge: {} of the way", String.format("%.2f", now));
+		}
+		lastEmerge = now;
 	}
 
 	private static float sentMax = Float.NaN, sentHealth = Float.NaN;
