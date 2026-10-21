@@ -39,12 +39,16 @@ import org.joml.Matrix4fStack;
  * this extracts your player itself and marks it first-person the way PAL's LevelExtractorMixin
  * does (IAvatarAnimationState.playerAnimLib$setFirstPersonPass). Both are PAL's public methods,
  * called by reflection; nothing of Better Combat or PAL is changed. Render thread only.
+ *
+ * Better Combat's swing trails are ordinary Minecraft particles, also drawn with the world. While
+ * the overlay is on, only its particles are extracted (QuadParticleGroupMixin), and they're drawn
+ * here too, in the same pass as the arms.
  */
 public final class MycFirstPersonArms {
 	private static final SubmitNodeStorage STORAGE = new SubmitNodeStorage();
 	private static boolean warned, palMissing;
 	private static boolean drawing;
-	private static int frames, drawn, fromList, ourOwn, mostEntities;
+	private static int frames, drawn, fromList, ourOwn, mostEntities, particleFrames, keptParticles;
 	private static long lastLogMs;
 	private static Method shouldBeFirstPersonPass, setFirstPersonPass;
 
@@ -84,10 +88,13 @@ public final class MycFirstPersonArms {
 			}
 		}
 		log(mine != null, own);
-		if (mine == null) {
+		boolean particles = !level.particlesRenderState.particles.isEmpty();
+		if (mine == null && !particles) {
 			return;
 		}
-		if (own) {
+		if (mine == null) {
+			// particles only
+		} else if (own) {
 			ourOwn++;
 		} else {
 			fromList++;
@@ -97,18 +104,30 @@ public final class MycFirstPersonArms {
 		try {
 			modelView.mul(camera.viewRotationMatrix);
 			Vec3 at = camera.pos;
-			minecraft.getEntityRenderDispatcher().submit(mine, camera, mine.x - at.x(), mine.y - at.y(), mine.z - at.z(), new PoseStack(), STORAGE);
+			if (mine != null) {
+				minecraft.getEntityRenderDispatcher().submit(mine, camera, mine.x - at.x(), mine.y - at.y(), mine.z - at.z(), new PoseStack(), STORAGE);
+			}
+			if (particles) {
+				// Only Better Combat's are left in it while the overlay is on (QuadParticleGroupMixin).
+				level.particlesRenderState.submit(STORAGE, camera);
+				particleFrames++;
+			}
 			RenderSystem.setShaderFog(fog);
 			minecraft.gameRenderer.lighting().setupFor(Lighting.Entry.LEVEL);
 			var target = minecraft.gameRenderer.mainRenderTarget();
-			try (FeatureRenderDispatcher.PreparedFrame frame = minecraft.gameRenderer.featureRenderDispatcher().prepareFrame(STORAGE);
-					RenderPass pass = RenderSystem.getDevice().createCommandEncoder().createRenderPass(() -> "MyceliumCraft first-person arms",
+			try (FeatureRenderDispatcher.PreparedFrame frame = minecraft.gameRenderer.featureRenderDispatcher().prepareFrame(STORAGE)) {
+				if (!frame.isEmpty()) {
+					// 26.3's depth is reversed: 0 is "nothing drawn yet" (GameRenderer clears to 0). 1.0 hid every pixel.
+					try (RenderPass pass = RenderSystem.getDevice().createCommandEncoder().createRenderPass(() -> "MyceliumCraft first-person arms",
 							target.getColorTextureView(), Optional.empty(), target.getDepthTextureView(), OptionalDouble.of(0.0))) {
-				// 26.3's depth is reversed: 0 is "nothing drawn yet" (GameRenderer clears to 0). 1.0 hid every pixel.
-				RenderSystem.bindDefaultUniforms(pass);
-				FeatureRenderDispatcher.renderAllFeatures(pass, frame);
+						RenderSystem.bindDefaultUniforms(pass);
+						FeatureRenderDispatcher.renderAllFeatures(pass, frame);
+					}
+				}
 			}
-			drawn++;
+			if (mine != null) {
+				drawn++;
+			}
 		} catch (RuntimeException e) {
 			if (!warned) {
 				warned = true;
@@ -117,6 +136,19 @@ public final class MycFirstPersonArms {
 		} finally {
 			modelView.popMatrix();
 		}
+	}
+
+	/**
+	 * While the overlay is on: is this particle one to draw? Only Better Combat's (its weapon swing
+	 * trails, net.bettercombat.*): Mycelium draws the world, so Minecraft's own particles there
+	 * (dust, crits) would float over it.
+	 */
+	public static boolean keepParticle(Object particle) {
+		boolean keep = particle.getClass().getName().startsWith("net.bettercombat.");
+		if (keep) {
+			keptParticles++;
+		}
+		return keep;
 	}
 
 	/** PAL's own test for "hide the hand, draw the body's arms" (false without PAL). */
@@ -148,9 +180,9 @@ public final class MycFirstPersonArms {
 		long ms = System.currentTimeMillis();
 		if (ms - lastLogMs >= 10_000) {
 			lastLogMs = ms;
-			MycLink.LOG.info("MyceliumCraft: overlay world skipped {} frames, arms drawn in {} ({} from Minecraft's world list, {} posed by us); at most {} things in that list",
-					frames, drawn, fromList, ourOwn, mostEntities);
-			frames = drawn = fromList = ourOwn = mostEntities = 0;
+			MycLink.LOG.info("MyceliumCraft: overlay world skipped {} frames, arms drawn in {} ({} from Minecraft's world list, {} posed by us); at most {} things in that list; Better Combat particles drawn in {} frames ({} particle-frames)",
+					frames, drawn, fromList, ourOwn, mostEntities, particleFrames, keptParticles);
+			frames = drawn = fromList = ourOwn = mostEntities = particleFrames = keptParticles = 0;
 		}
 	}
 }

@@ -19,6 +19,7 @@
     "LevelRendererMixin",
     "MinecraftMixin",
     "PlayerCombatKillMixin",
+    "QuadParticleGroupMixin",
     "RenderSetupAccessor",
     "RenderTypeAccessor",
     "SpriteContentsAccessor",

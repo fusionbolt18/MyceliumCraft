@@ -1116,6 +1116,13 @@ While Mycelium shows a level (and `overlay=1`), Mycelium sets `OVERLAY` in its s
     our mod poses your player itself and marks it first-person as PAL does
     (`playerAnimLib$setFirstPersonPass`). Both are PAL's public methods, called by reflection.
     Better Combat and PAL aren't changed (AGENTS.md rule 7).
+  - **Swing particles** (since 2026-10-21): Better Combat's swing trails are ordinary Minecraft
+    particles (`SlashParticle`), drawn with the world. While the overlay is on,
+    `QuadParticleGroupMixin` keeps only particles whose class is Better Combat's (`net.bettercombat.*`)
+    when Minecraft gathers what to draw. Minecraft's own particles in its stand-in world (dust,
+    crits) would float over Mycelium's world. `MycFirstPersonArms` draws the kept ones in the same
+    pass as the arms, in every camera view. They're on top of Mycelium's picture, so a wall
+    between you and a trail doesn't hide it.
   - **Depth:** 26.3's depth is reversed (0 = nothing drawn yet). Clearing to 1.0 hid the arms
     completely (your second test).
   - **Log** (every 10 s): frames the arms were drawn, how many came from the world's list and how

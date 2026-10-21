@@ -1,5 +1,27 @@
 # MODLOG
 
+## 2026-10-21 Better Combat's swing particles in the overlay
+
+**Your request:** Better Combat's particle effects for weapon swings should be visible too.
+
+**What was wrong:** they're ordinary Minecraft particles (`SlashParticle`), drawn with the world,
+which the overlay skips.
+
+**Changed:**
+- **New: `QuadParticleGroupMixin.java`** (a mixin on Minecraft's particle code, not on Better
+  Combat). While the overlay is on, only Better Combat's particles (`net.bettercombat.*`) are
+  gathered for drawing. Minecraft's own (dust, crits) would float over Mycelium's world.
+- **`MycFirstPersonArms.java`:** draws those particles in the same pass as the arms, in every
+  camera view. No pass at all when there's nothing to draw. The 10-second log line now says in
+  how many frames particles were drawn.
+- DESIGN §5.4, README.
+
+**Tested how:** built only. **Not tested.**
+
+**Still broken / not tested:**
+- **Not tested in Minecraft.**
+- Particles are drawn on top of Mycelium's picture, so a wall between you and a trail won't hide it.
+
 ## 2026-10-21 Better Combat first person, third try: depth cleared the right way
 
 **Your report:** still invisible.
