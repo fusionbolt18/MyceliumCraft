@@ -45,6 +45,8 @@ public final class MyceliumCraftClient implements ClientModInitializer {
 		MyceliumKeys.init();
 		// Combat: invisible stand-ins for Mycelium's enemies, drawn by nothing.
 		dev.myceliumcraft.combat.EnemyProxies.init();
+		// Diagnostic: what stalls Minecraft's server (late hits, 2026-10-21).
+		ServerStallWatch.init();
 		net.fabricmc.fabric.api.client.rendering.v1.EntityRendererRegistry.register(dev.myceliumcraft.combat.EnemyProxies.TYPE, net.minecraft.client.renderer.entity.NoopRenderer::new);
 		MycLink.LOG.info("MyceliumCraft: rules: no fall damage for players, no natural health regeneration (always, while the mod is installed)");
 	}
@@ -152,7 +154,10 @@ public final class MyceliumCraftClient implements ClientModInitializer {
 		// (Dead: no eye-height change, so the dying pose can't move Mycelium's camera.)
 		float eyeScale = player.isDeadOrDying() ? 1f : standingEye > 0.01f ? eye / standingEye : 1f;
 		MycLink.writeMcState(flags, feet.x, feet.y, feet.z, player.getYRot(), player.getXRot(), frame, epoch, teleportAck, minecraft.options.getCameraType().ordinal(), bodyYaw, TICK, fovScale, eyeScale,
-			minecraft.options.damageTiltStrength().get().floatValue()); // Mycelium's camera tilts on hits by this much
+			minecraft.options.damageTiltStrength().get().floatValue(), // Mycelium's camera tilts on hits by this much
+			MycWeapons.handWeapon(player)); // the spore holds this weapon
+		// Your Mycelium weapons as carrots in the inventory.
+		MycWeapons.frame(minecraft, player, haveMyc && MycLink.myceliumAlive() && MYC.inLevel());
 		dev.myceliumcraft.combat.EnemyProxies.clientSnap(minecraft.level);
 		sendHitBoxes(minecraft);
 		// Third person: your Minecraft body, for Mycelium to draw instead of the spore.
@@ -194,6 +199,33 @@ public final class MyceliumCraftClient implements ClientModInitializer {
 			MycLink.LOG.info("MyceliumCraft: combat: {} enemy stand-ins on the client{}", n,
 				n > 0 ? String.format("; first #%d box %.2f x %.2f x %.2f blocks", BOX_IDS[0], BOXES[3] - BOXES[0], BOXES[4] - BOXES[1], BOXES[5] - BOXES[2]) : "");
 		}
+	}
+
+	private static long lastNotChargedLog;
+	private static int notCharged;
+
+	/**
+	 * True while Mycelium is playing and the attack indicator isn't full: Minecraft's attack is
+	 * stopped before it starts (MinecraftMixin), so weapons can only be used fully charged (your
+	 * rule, 2026-10-20). Counted and logged at most once a second.
+	 */
+	public static boolean attackNotCharged(Minecraft minecraft) {
+		LocalPlayer player = minecraft.player;
+		if (player == null || !MycLink.myceliumAlive() || !MYC.inLevel()) {
+			return false;
+		}
+		float charge = player.getAttackStrengthScale(0f);
+		if (charge >= 1f) {
+			return false;
+		}
+		notCharged++;
+		long now = System.currentTimeMillis();
+		if (now - lastNotChargedLog > 1000) {
+			lastNotChargedLog = now;
+			MycLink.LOG.info("MyceliumCraft: combat: attack held back, indicator {} % ({} held back since the last line)", String.format("%.0f", charge * 100f), notCharged);
+			notCharged = 0;
+		}
+		return true;
 	}
 
 	private static int sentLevel = -1;
@@ -380,7 +412,7 @@ public final class MyceliumCraftClient implements ClientModInitializer {
 	}
 
 	private static float sentMax = Float.NaN, sentHealth = Float.NaN;
-	private static float lastMycHealth = Float.NaN;
+	private static float lastMycHealth = Float.NaN, lastMycMax = Float.NaN;
 	private static boolean killSent;
 	private static long lastHealthFix, lastRespawn, lastHealthLog, zeroSince;
 
@@ -400,7 +432,7 @@ public final class MyceliumCraftClient implements ClientModInitializer {
 				MycLink.LOG.info("MyceliumCraft: health: not synced any more (Mycelium not in a level); max health back to 20");
 			}
 			sentMax = sentHealth = Float.NaN;
-			lastMycHealth = Float.NaN;
+			lastMycHealth = lastMycMax = Float.NaN;
 			viewAfterDeath(minecraft, "Mycelium not in a level");
 			if (heldDeath != null && (!MycLink.myceliumAlive() || System.currentTimeMillis() - heldDeathAt > 30000)) {
 				releaseDeath(minecraft, player, MycLink.myceliumAlive() ? "Mycelium still not in a level 30 s after the death" : "Mycelium gone");
@@ -411,12 +443,14 @@ public final class MyceliumCraftClient implements ClientModInitializer {
 		}
 		// Mycelium's health dropped: Minecraft's red hurt flash on the body (its own animation; the
 		// captured player model shows it), as when Minecraft itself hurts you.
-		if (!Float.isNaN(lastMycHealth) && MYC.health < lastMycHealth - 0.01f && MYC.health > 0f) {
+		// (Not when max health changed too: Mycelium keeps the same share then, which isn't a hit.)
+		if (!Float.isNaN(lastMycHealth) && MYC.health < lastMycHealth - 0.01f && MYC.health > 0f && MYC.maxHealth == lastMycMax) {
 			player.hurtDuration = 10;
 			player.hurtTime = 10;
 			MycLink.LOG.info("MyceliumCraft: health: Mycelium took {} damage; Minecraft's hurt flash", String.format("%.1f", lastMycHealth - MYC.health));
 		}
 		lastMycHealth = MYC.health;
+		lastMycMax = MYC.maxHealth;
 		float max = Math.max(1f, MYC.maxHealth / dev.myceliumcraft.world.MycHealth.PER_POINT);
 		float health = Math.max(0f, Math.min(MYC.health, MYC.maxHealth)) / dev.myceliumcraft.world.MycHealth.PER_POINT;
 		dev.myceliumcraft.world.MycHealth.set(true, health);
@@ -439,6 +473,7 @@ public final class MyceliumCraftClient implements ClientModInitializer {
 				server.execute(() -> {
 					ServerPlayer sp = server.getPlayerList().getPlayer(uuid);
 					if (sp != null) {
+						MycWeapons.removeAll(sp); // Mycelium's weapons don't drop into Minecraft's world
 						sp.kill(sp.level());
 					}
 				});

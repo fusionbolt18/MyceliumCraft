@@ -256,7 +256,7 @@ namespace MyceliumCraft
         /// back those that left it. Before, the list was made once: a picked-up weapon stayed visible
         /// and the dropped one stayed invisible on the ground (your report, 2026-10-20).
         /// </summary>
-        void KeepHidden(bool fully)
+        void KeepHidden(bool fully, string when = "")
         {
             if (spore == null) return;
             for (int i = hidden.Count - 1; i >= 0; i--)
@@ -289,8 +289,18 @@ namespace MyceliumCraft
                     r.shadowCastingMode = UnityEngine.Rendering.ShadowCastingMode.ShadowsOnly;
                 }
                 hiddenSet.Add(r);
-                McLog.Info($"camera: '{r.name}' is new on the spore; {(fully ? "not drawn" : "shadow only")}");
+                McLog.Info($"camera: '{r.name}' is new on the spore; {(fully ? "not drawn" : "shadow only")}{when}");
             }
+        }
+
+        /// <summary>
+        /// Late in the frame (after coroutines, before drawing): hide renderers that came onto the spore
+        /// since Update, so a weapon built in a coroutine isn't drawn for a frame (your report,
+        /// 2026-10-20: switching weapons flashed the model).
+        /// </summary>
+        public void RefreshHidden()
+        {
+            if (sporeHidden > 0 && spore != null) KeepHidden(sporeHidden == 2, " (caught before drawing)");
         }
 
         void ShowSpore()

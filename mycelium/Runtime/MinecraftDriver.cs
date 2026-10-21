@@ -57,6 +57,7 @@ namespace MyceliumCraft
         readonly CameraSync cameraSync = new CameraSync();
         readonly HurtTilt hurtTilt = new HurtTilt();
         readonly SproutWatch sprout = new SproutWatch();
+        readonly WeaponBag weapons = new WeaponBag();
         readonly InputBridge input = new InputBridge();
         readonly KeyOwnership keys = new KeyOwnership();
         readonly McOverlay overlay = new McOverlay();
@@ -190,9 +191,14 @@ namespace MyceliumCraft
             // Test aid: "-mcModelCheck" reads back Mycelium's finished screen once a second at the
             // Minecraft body's head, with its depth passes off and on in turn, and logs the colour.
             if (Array.IndexOf(args, "-mcModelCheck") >= 0) StartCoroutine(ModelCheck());
-            // Test aid: "-mcLoadTest" starts a scene change through Mycelium's own SceneLoader (with
-            // its fade and loading screen) after 4 s of driving, to the tutorial.
-            if (Array.IndexOf(args, "-mcLoadTest") >= 0) StartCoroutine(LoadTest());
+            // Test aid: "-mcLoadTest [scene]" starts a scene change through Mycelium's own SceneLoader
+            // (with its fade and loading screen) after 4 s of driving, to the tutorial or that scene.
+            int loadArg = Array.IndexOf(args, "-mcLoadTest");
+            if (loadArg >= 0)
+            {
+                string target = loadArg + 1 < args.Length && !args[loadArg + 1].StartsWith("-") ? args[loadArg + 1] : "New Tutorial";
+                StartCoroutine(LoadTest(target));
+            }
             // Test aid: "-mcFlashCheck" reads back the screen around an enemy while its hurt flash is
             // on and just after, and logs colour and detail (neighbouring-pixel contrast) for both.
             if (Array.IndexOf(args, "-mcFlashCheck") >= 0) StartCoroutine(FlashCheck());
@@ -200,6 +206,16 @@ namespace MyceliumCraft
             // old one is let go into the world, a new one goes in the hand) 4 s into driving, and logs
             // which of the two Mycelium draws.
             if (Array.IndexOf(args, "-mcSwapTest") >= 0) StartCoroutine(SwapTest());
+            // Test aid: "-mcPickupTest" puts a Cactus Mace on the ground in front of the spore 4 s into
+            // driving and picks it up through Mycelium's own WeaponInteraction.Interact.
+            if (Array.IndexOf(args, "-mcPickupTest") >= 0) StartCoroutine(PickupTest());
+            // Test aid: "-mcSwingTest" plays the spore's Slash, Smash and Stab animations at its attack
+            // speed 4 s into driving and times each to 90 % (when PlayerAttack gives the controls back).
+            if (Array.IndexOf(args, "-mcSwingTest") >= 0) StartCoroutine(SwingTest());
+            // Test aid: "-mcHealthTest" halves the spore's health 4 s into driving, then raises its
+            // Vitality by 5 and takes it away again (max health up, then down), 1.5 s apart. Not in
+            // The Carcass (Vitality there can earn achievements).
+            if (Array.IndexOf(args, "-mcHealthTest") >= 0) StartCoroutine(HealthTest());
             // Test aid: "-mcBlurCheck" logs how sharp Mycelium's finished screen is twice a second
             // (average difference between neighbouring pixels in the middle), to see the pause blur.
             if (Array.IndexOf(args, "-mcBlurCheck") >= 0) StartCoroutine(BlurCheck());
@@ -257,6 +273,7 @@ namespace MyceliumCraft
                 nextFindTime = 0;
                 cameraSync.Reset();
                 sprout.SceneLoaded(scene);
+                weapons.SceneLoaded(scene);
                 SetPhase(Phase.Idle, "new scene");
             };
         }
@@ -315,11 +332,27 @@ namespace MyceliumCraft
             // Input bridge: Minecraft plays from Mycelium's keyboard and mouse during normal play.
             // In test runs (-mcBackground) the bridge never uses your keyboard and mouse, even if
             // Windows hands Mycelium the focus.
+            // Turning it off gives Windows' pointer back to Mycelium, locked, which puts it in the
+            // middle of the window: a hit while Minecraft's inventory was open moved your cursor to
+            // the middle (your report, 2026-10-20). So:
+            //  - re-sync teleports (WaitingForTeleport, a few frames after a knockback) count as
+            //    driving, as they do for key ownership;
+            //  - a hit's knockback doesn't take the controls while a Minecraft screen is open (there
+            //    you only move the cursor; nothing in Mycelium moves).
+            bool mcScreenOpen = camFresh2 && (lastCamMc.Flags & Proto.McScreenOpen) != 0;
+            bool myceliumControls = MyceliumHasControls(out string bridgeWhy) && !(mcScreenOpen && bridgeWhy.EndsWith("knockback"));
+            uint playReason = !(alive && phase != Phase.Idle) ? Proto.ReasonNotDriving
+                            : myceliumControls ? Proto.ReasonMyceliumControls
+                            : Proto.ReasonActive;
             uint reason = !McConfig.InputBridge || BackgroundWindow.Enabled ? Proto.ReasonOff
                         : !Application.isFocused ? Proto.ReasonNotFocused
-                        : !(alive && phase == Phase.Driving) ? Proto.ReasonNotDriving
-                        : MyceliumHasControls(out _) ? Proto.ReasonMyceliumControls
-                        : Proto.ReasonActive;
+                        : playReason;
+            if (BackgroundWindow.Enabled && playReason != lastPlayReason)
+            {
+                // Test runs: the bridge is always off; log what it would do with your focus.
+                lastPlayReason = playReason;
+                McLog.Info($"input bridge (test run, off): with focus it would be {(playReason == Proto.ReasonActive ? "ON" : InputBridge.ReasonText(playReason))}{(mcScreenOpen ? ", a Minecraft screen is open" : "")}");
+            }
             // Mycelium's key binds, as set in Minecraft's Controls menu (kept if Minecraft goes away).
             if (alive)
             {
@@ -327,7 +360,6 @@ namespace MyceliumCraft
                 if (bindCount >= 0) keys.SetBindings(bindCount, bindKinds, bindCodes);
             }
             else if (!keys.HasBindings) keys.SetBindings(0, null, null); // defaults until Minecraft sends some
-            bool mcScreenOpen = camFresh2 && (lastCamMc.Flags & Proto.McScreenOpen) != 0;
             input.Update(link, reason == Proto.ReasonActive, reason, keys.OwnedScancodes, keys.OwnedButtons, mcScreenOpen);
             // Minecraft's hand, HUD and screens on top, during play (not over Mycelium's own menus).
             // ...and not over Mycelium's loading, fade, startup or death screens (it's drawn above all its UI).
@@ -360,6 +392,9 @@ namespace MyceliumCraft
             // let a click become Mycelium's attack right after a hit, your report 2026-10-19.)
             keys.Update(alive && phase != Phase.Idle, mcScreenOpen);
             // Combat: Mycelium's enemies to Minecraft's stand-ins, and their hits back.
+            // Your weapons: the bag, Minecraft's carrots, the one Minecraft's hand holds.
+            if (rb != null) weapons.Update(this, link, alive && phase == Phase.Driving && camFresh2, camFresh2 ? lastCamMc.HandWeapon : 0u);
+            combat.HeldKnockback = weapons.HeldKnockback;
             if (rb != null) combat.Update(link, rb.position, map);
             if (shakeTest && look && Time.realtimeSinceStartup >= nextShakeTime) FireTestShake();
             if (holdTest && controller != null && (phase == Phase.Driving || holdTestStep > 0)) RunHoldTest();
@@ -407,6 +442,11 @@ namespace MyceliumCraft
                 lookingOff = false;
                 McLog.Info("facing: Mycelium's own turning back on");
             }
+        }
+
+        void LateUpdate()
+        {
+            cameraSync.RefreshHidden();
         }
 
         void FixedUpdate()
@@ -842,6 +882,7 @@ namespace MyceliumCraft
                 max = (float)maxHealthField.GetValue(playerHealth);
             }
             catch (Exception) { return; }
+            KeepHealthRatio(ref health, max);
             string now = $"{health:F0}/{max:F0}";
             if (now != lastHealthLog)
             {
@@ -849,6 +890,41 @@ namespace MyceliumCraft
                 McLog.Info($"health: Mycelium {health:F1} of {max:F1} -> Minecraft {health / 5f:F2} of {max / 5f:F2} (half hearts)");
             }
         }
+        Component ratioFrom;
+        float ratioLastHealth, ratioLastMax;
+
+        /// <summary>
+        /// When Mycelium's max health changes (a Vitality level, a weapon's stat attribute, Fungal
+        /// Might...), keep current health at the same share of it (your rule, 2026-10-20): Mycelium
+        /// itself leaves current health where it was. Not when Mycelium set current health to the
+        /// new max itself (ResetHealth), and not while dead. Mycelium's health bar is redrawn.
+        /// </summary>
+        void KeepHealthRatio(ref float health, float max)
+        {
+            bool same = ReferenceEquals(playerHealth, ratioFrom);
+            if (same && ratioLastMax > 0f && max > 0f && Mathf.Abs(max - ratioLastMax) > 0.001f
+                && ratioLastHealth > 0f && health > 0f && Mathf.Abs(health - max) > 0.001f)
+            {
+                float share = ratioLastHealth / ratioLastMax;
+                float kept = Mathf.Clamp(share * max, 0.01f, max);
+                try
+                {
+                    currentHealthField.SetValue(playerHealth, kept);
+                    playerHealth.GetType().GetField("displayHealth", BindingFlags.NonPublic | BindingFlags.Public | BindingFlags.Instance)?.SetValue(playerHealth, kept);
+                    playerHealth.GetType().GetMethod("UpdateHudHealthUI", BindingFlags.Public | BindingFlags.Instance)?.Invoke(playerHealth, null);
+                    McLog.Info($"health: max {ratioLastMax:F1} -> {max:F1}; current {health:F1} -> {kept:F1}, kept at {share * 100f:F0} %");
+                    health = kept;
+                }
+                catch (Exception e)
+                {
+                    McLog.Info($"health: keeping the share failed: {(e.InnerException ?? e).Message}");
+                }
+            }
+            ratioFrom = playerHealth;
+            ratioLastHealth = health;
+            ratioLastMax = max;
+        }
+
         const float OverlayControlsGrace = 0.3f; // Mycelium must keep the controls this long before the overlay hides
         float controlsSince = -1f;
         bool frozenByMinecraft;
@@ -935,7 +1011,7 @@ namespace MyceliumCraft
         }
 
         /// <summary>Test aid: see "-mcLoadTest" in Awake.</summary>
-        System.Collections.IEnumerator LoadTest()
+        System.Collections.IEnumerator LoadTest(string target)
         {
             while (phase != Phase.Driving) yield return null;
             yield return new WaitForSecondsRealtime(4f);
@@ -943,8 +1019,8 @@ namespace MyceliumCraft
             object loader = t?.GetField("Instance", BindingFlags.Public | BindingFlags.Static)?.GetValue(null);
             MethodInfo begin = t?.GetMethod("BeginLoadScene", new[] { typeof(string), typeof(bool), typeof(bool) });
             if (loader == null || begin == null) { McLog.Info("load test: SceneLoader not found"); yield break; }
-            McLog.Info($"load test: starting Mycelium's scene change to New Tutorial (overlay visible now: {overlay.Visible})");
-            begin.Invoke(loader, new object[] { "New Tutorial", true, false });
+            McLog.Info($"load test: starting Mycelium's scene change to {target} (overlay visible now: {overlay.Visible})");
+            begin.Invoke(loader, new object[] { target, true, false });
         }
 
         /// <summary>Test aid: see "-mcBlurCheck" in Awake.</summary>
@@ -1203,6 +1279,79 @@ namespace MyceliumCraft
             McLog.Info($"swap test: after: dropped '{old.name}' drawn={Drawn(old)} (want True), held '{fresh.name}' drawn={Drawn(fresh)} (want {!playerModel.Shown})");
         }
 
+        /// <summary>Test aid (-mcHealthTest): max health changes with current health at half.</summary>
+        System.Collections.IEnumerator HealthTest()
+        {
+            while (phase != Phase.Driving || playerHealth == null) yield return null;
+            yield return new WaitForSeconds(4f);
+            if (SceneManager.GetActiveScene().name == "The Carcass") { McLog.Info("health test: not in The Carcass"); yield break; }
+            GameObject player = GameObject.FindWithTag("currentPlayer");
+            Type ct = Type.GetType("CharacterStats, Assembly-CSharp");
+            Component stats = player != null && ct != null ? player.GetComponent(ct) : null;
+            MethodInfo add = ct?.GetMethod("AddStat", BindingFlags.Public | BindingFlags.Instance);
+            if (stats == null || add == null) { McLog.Info("health test: no CharacterStats.AddStat"); yield break; }
+            float max = (float)maxHealthField.GetValue(playerHealth);
+            currentHealthField.SetValue(playerHealth, max * 0.5f);
+            McLog.Info($"health test: current set to half of {max:F1}");
+            yield return new WaitForSeconds(1.5f);
+            McLog.Info("health test: Vitality +5");
+            add.Invoke(stats, new object[] { "Vitality", 5 });
+            yield return new WaitForSeconds(1.5f);
+            McLog.Info($"health test: now {(float)currentHealthField.GetValue(playerHealth):F1} of {(float)maxHealthField.GetValue(playerHealth):F1}; Vitality -5");
+            add.Invoke(stats, new object[] { "Vitality", -5 });
+            yield return new WaitForSeconds(1.5f);
+            McLog.Info($"health test: now {(float)currentHealthField.GetValue(playerHealth):F1} of {(float)maxHealthField.GetValue(playerHealth):F1}");
+        }
+
+        /// <summary>Test aid (-mcSwingTest): how long each attack animation really runs to 90 %.</summary>
+        System.Collections.IEnumerator SwingTest()
+        {
+            while (phase != Phase.Driving) yield return null;
+            yield return new WaitForSeconds(4f);
+            GameObject player = GameObject.FindWithTag("currentPlayer");
+            Animator a = player != null ? player.GetComponent<Animator>() : null;
+            if (a == null) { McLog.Info("swing test: no animator"); yield break; }
+            float speed = a.speed;
+            foreach (string state in new[] { "Slash", "Smash", "Stab" })
+            {
+                a.speed = speed;
+                a.Play(state);
+                yield return null;
+                float start = Time.time;
+                AnimatorStateInfo s = a.GetCurrentAnimatorStateInfo(0);
+                float stateLength = s.length;
+                while (Time.time - start < 10f)
+                {
+                    s = a.GetCurrentAnimatorStateInfo(0);
+                    if (!s.IsName(state) || s.normalizedTime >= 0.9f) break;
+                    yield return null;
+                }
+                McLog.Info($"swing test: '{state}' at animator speed {speed:F2}: reached 90 % after {Time.time - start:F2} s (state length {stateLength:F2} s, still in it: {s.IsName(state)})");
+                a.Rebind();
+                a.speed = speed;
+                yield return new WaitForSeconds(0.5f);
+            }
+        }
+
+        /// <summary>Test aid (-mcPickupTest): a weapon pickup through Mycelium's own code.</summary>
+        System.Collections.IEnumerator PickupTest()
+        {
+            while (phase != Phase.Driving) yield return null;
+            yield return new WaitForSeconds(4f);
+            UnityEngine.Object prefab = Resources.Load("Smash/CactusMace");
+            if (prefab == null || rb == null) { McLog.Info("pickup test: no Smash/CactusMace prefab"); yield break; }
+            var mace = Instantiate(prefab, rb.position + rb.transform.forward * 1.5f, Quaternion.identity) as GameObject;
+            mace.tag = "Weapon";
+            yield return new WaitForSeconds(0.5f); // its Start: stats, a random attribute
+            Type t = Type.GetType("WeaponInteraction, Assembly-CSharp");
+            Component interact = t != null ? mace.GetComponent(t) : null;
+            MethodInfo m = t?.GetMethod("Interact", BindingFlags.Public | BindingFlags.Instance);
+            if (interact == null || m == null) { McLog.Info("pickup test: no WeaponInteraction.Interact"); yield break; }
+            McLog.Info($"pickup test: picking up '{mace.name}' through WeaponInteraction.Interact");
+            try { m.Invoke(interact, new object[] { mace }); }
+            catch (Exception e) { McLog.Info("pickup test: Interact failed: " + (e.InnerException ?? e).Message); }
+        }
+
         static bool Drawn(GameObject o)
         {
             foreach (Renderer r in o.GetComponentsInChildren<Renderer>(true))
@@ -1210,6 +1359,7 @@ namespace MyceliumCraft
             return false;
         }
 
+        uint lastPlayReason = uint.MaxValue;
         bool hurtTest;
         float nextHurtTime;
         int hurtTestStep;

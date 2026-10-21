@@ -44,6 +44,10 @@ public final class LinkTestMain {
 	private static final boolean FOVEYE = "1".equals(System.getenv("LINKTEST_FOVEYE"));
 	/** "1": log Mycelium's enemy table once a second, and hit the nearest enemy for 2 points (10 Mycelium damage) every 2 s. */
 	private static final boolean HIT = "1".equals(System.getenv("LINKTEST_HIT"));
+	// LINKTEST_SCREEN=1: a Minecraft screen (an inventory) open from 4 to 10 s, without pausing.
+	private static final boolean SCREEN = "1".equals(System.getenv("LINKTEST_SCREEN"));
+	// LINKTEST_HAND=1: the main hand holds weapon #1 from 7.5 s, nothing (empty) from 8.5 s, #2 from 9.5 s.
+	private static final boolean HAND = "1".equals(System.getenv("LINKTEST_HAND"));
 	private static final MycLink.Enemy[] ENEMIES = new MycLink.Enemy[Proto.E_MAX];
 	private static long nextHit, nextEnemyLog;
 	private static boolean modelTextureSent;
@@ -196,6 +200,20 @@ public final class LinkTestMain {
 		ok &= check("Mycelium max health", myc.maxHealth, 150);
 		ok &= check("Mycelium nutrients", myc.nutrients, 42);
 		ok &= check("Mycelium sprout progress", myc.emerge, 0.25);
+		MycLink.Weapon[] weapons = new MycLink.Weapon[Proto.W_MAX];
+		for (int i = 0; i < weapons.length; i++) {
+			weapons[i] = new MycLink.Weapon();
+		}
+		MycLink.WeaponsHeader wh = new MycLink.WeaponsHeader();
+		int wn = MycLink.readWeapons(weapons, wh);
+		ok &= check("weapons", wn, 2);
+		ok &= check("weapons version", wh.version, 7);
+		ok &= check("weapon select request id", wh.selectId, 2);
+		ok &= check("weapons damage scale", wh.damageScale, 5);
+		ok &= check("weapon 2 name (UTF-8)", wn >= 2 && weapons[1].name.equals("Bert's Club \u2713") ? 1 : 0, 1);
+		ok &= check("weapon 2 damage", wn >= 2 ? weapons[1].damage : -1, 22.5);
+		ok &= check("weapon 2 swings/s", wn >= 2 ? weapons[1].perSecond : -1, 0.8);
+		ok &= check("weapon 2 attributes", wn >= 2 && weapons[1].attributes.startsWith("Heavy") ? 1 : 0, 1);
 		MycLink.MycInput in = new MycLink.MycInput();
 		ok &= check("input block read", MycLink.readInput(in) ? 1 : 0, 1);
 		ok &= check("input bridge active", in.active() ? 1 : 0, 1);
@@ -278,13 +296,17 @@ public final class LinkTestMain {
 			tick.body = bodyYaw;
 			// LINKTEST_HICCUP=1: one frame of "not in a world" every 2 s, like the moment seen in a real log.
 			int flags = HICCUP && frames % (int) (2000 / FRAME_MS) == 0 && frames > 0 ? 0 : Proto.MC_IN_WORLD | Proto.MC_ON_GROUND;
+			if (SCREEN && t >= 4 && t < 10) {
+				flags |= Proto.MC_SCREEN_OPEN;
+			}
 			// LINKTEST_PAUSE=1: Minecraft's pause menu open from 4 to 7 s.
 			if (PAUSE && t >= 4 && t < 7) {
 				flags |= Proto.MC_PAUSED | Proto.MC_SCREEN_OPEN;
 			}
 			// LINKTEST_FOVEYE=1: sprint FOV (x1.15) and crouch eye height (x0.78) from 4 to 7 s.
 			boolean feel = FOVEYE && t >= 4 && t < 7;
-			MycLink.writeMcState(flags, px, y, pz, yaw, pitch, frames++, 1, ack, cameraMode, bodyYaw, tick, feel ? 1.15f : 1f, feel ? 0.78f : 1f);
+			int hand = !HAND || t < 7.5 ? 0 : t < 8.5 ? 1 : t < 9.5 ? 0 : 2;
+			MycLink.writeMcState(flags, px, y, pz, yaw, pitch, frames++, 1, ack, cameraMode, bodyYaw, tick, feel ? 1.15f : 1f, feel ? 0.78f : 1f, 1f, hand);
 			if (OVERLAY) {
 				writeTestPicture();
 			}

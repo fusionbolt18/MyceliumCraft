@@ -21,6 +21,7 @@ namespace MyceliumCraft.Link
         public float BodyYawO, BodyYawCur;
         public float FovScale, EyeScale; // Minecraft's FOV multiplier and eye height / standing (0: not sent)
         public float DamageTilt;         // Minecraft's "Damage Tilt" setting, 0 (off) .. 1
+        public uint HandWeapon;          // the weapon whose carrot is in Minecraft's main hand (0 = none)
 
         public bool HasTicks => TickMs > 0f && TickQpc != 0;
 
@@ -249,6 +250,7 @@ namespace MyceliumCraft.Link
                 s.FovScale = ReadF32(view, b + Proto.McFovScale);
                 s.EyeScale = ReadF32(view, b + Proto.McEyeScale);
                 s.DamageTilt = ReadF32(view, b + Proto.McDamageTilt);
+                s.HandWeapon = ReadU32(view, b + Proto.McHandWeapon);
                 Thread.MemoryBarrier();
                 if (ReadU32(view, b + Proto.McSeq) == seq1) return true;
             }
@@ -359,6 +361,56 @@ namespace MyceliumCraft.Link
         }
 
         /// <summary>Seqlock write of the enemy table (count entries of ids/flags/values).</summary>
+        /// <summary>One weapon for the Weapons table.</summary>
+        public struct WeaponEntry
+        {
+            public uint Id, Type;
+            public float Damage, PerSecond, Knockback, DamageMult, SpeedMod;
+            public string Name, Attributes;
+        }
+
+        /// <summary>Seqlock write of the Weapons table (your weapons, for Minecraft's carrots).</summary>
+        public void WriteWeapons(uint version, int count, WeaponEntry[] list, uint selectSeq, uint selectId, uint heldId, float damageScale)
+        {
+            int b = Proto.OffWeapons;
+            uint seq = ReadU32(view, b + Proto.WSeq);
+            WriteU32(view, b + Proto.WSeq, seq + 1);
+            Thread.MemoryBarrier();
+            count = Math.Min(count, Proto.WMax);
+            WriteU32(view, b + Proto.WCount, (uint)count);
+            WriteU32(view, b + Proto.WVersion, version);
+            WriteU32(view, b + Proto.WSelectSeq, selectSeq);
+            WriteU32(view, b + Proto.WSelectId, selectId);
+            WriteU32(view, b + Proto.WHeldId, heldId);
+            WriteF32(view, b + Proto.WDamageScale, damageScale);
+            for (int i = 0; i < count; i++)
+            {
+                int e = b + Proto.WList + i * Proto.WSize;
+                WeaponEntry w = list[i];
+                WriteU32(view, e + Proto.WeId, w.Id);
+                WriteU32(view, e + Proto.WeType, w.Type);
+                WriteF32(view, e + Proto.WeDamage, w.Damage);
+                WriteF32(view, e + Proto.WePerSecond, w.PerSecond);
+                WriteF32(view, e + Proto.WeKnockback, w.Knockback);
+                WriteF32(view, e + Proto.WeDamageMult, w.DamageMult);
+                WriteF32(view, e + Proto.WeSpeedMod, w.SpeedMod);
+                WriteUtf8(view, e + Proto.WeName, Proto.WeNameBytes, w.Name);
+                WriteUtf8(view, e + Proto.WeAtts, Proto.WeAttsBytes, w.Attributes);
+            }
+            Thread.MemoryBarrier();
+            WriteU32(view, b + Proto.WSeq, seq + 2);
+        }
+
+        /// <summary>A string as UTF-8, cut to fit (whole characters) and zero-terminated.</summary>
+        static void WriteUtf8(IntPtr p, int off, int bytes, string s)
+        {
+            byte[] data = System.Text.Encoding.UTF8.GetBytes(s ?? "");
+            int n = Math.Min(data.Length, bytes - 1);
+            while (n > 0 && n < data.Length && (data[n] & 0xC0) == 0x80) n--; // don't cut a character in half
+            if (n > 0) Marshal.Copy(data, 0, p + off, n);
+            Marshal.WriteByte(p, off + n, 0);
+        }
+
         public void WriteEnemies(int count, uint[] ids, uint[] flags, float[] values)
         {
             int b = Proto.OffEnemies;

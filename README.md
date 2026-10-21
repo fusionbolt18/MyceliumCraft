@@ -37,6 +37,18 @@ Single-player and offline only.
 - **The camera tilts toward what hit you, as Minecraft's does: not tested in Minecraft.** It follows
   Minecraft's "Damage Tilt" setting. Mycelium doesn't say what hit you, so the mod guesses (the
   nearest enemy or hitbox) and can be wrong. Minecraft's death roll isn't copied.
+- **Weapons are carrots in your Minecraft inventory: not tested in Minecraft.**
+  - **Pickup:** picking up a weapon keeps the one you had; the new one gets a carrot and is
+    selected.
+  - **Switching:** the spore holds the weapon whose carrot you select.
+  - **The carrot:** its name, attack damage (Mycelium damage ÷ 5) and attack speed match the
+    weapon, with the spore's level and the weapon's attributes counted. Its description lists
+    the type, damage, swings per second, knockback and attributes. Carrots can't be eaten.
+  - **Runs:** carrots don't drop on death; a run starts with just the Stick.
+  - **Knockback:** your Minecraft hits now also knock enemies back by the held weapon's knockback.
+  - The Mycelium half is tested with a fake Minecraft.
+- **You can only attack when the attack indicator is full** (while Mycelium is playing): not tested
+  in Minecraft. Bows are unchanged.
 - **Your Minecraft attacks hurt Mycelium's enemies: not tested in Minecraft.** Each nearby enemy has
   an invisible stand-in in Minecraft. Minecraft's own attack rules (weapon, cooldown, crits,
   enchantments, arrows) decide the damage, ×5 in Mycelium (`damageScale=` in `MyceliumCraft.cfg`).
@@ -45,6 +57,8 @@ Single-player and offline only.
   enchanting don't change it (put back).
 - **Minecraft health follows Mycelium's: not tested in Minecraft.**
   - Every 5 Mycelium health is half a heart; Minecraft's max health follows Mycelium's max.
+  - When max health changes (Vitality, a weapon's attribute), current health keeps the same share of
+    it (tested in Mycelium).
   - Minecraft can't kill you while Mycelium's health is above 0.
   - Mycelium's death kills the Minecraft player (it drops its items, as Minecraft does), and it
     respawns when Mycelium has health again.

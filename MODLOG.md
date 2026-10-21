@@ -1,5 +1,263 @@
 # MODLOG
 
+## 2026-10-21 Late hits: Minecraft's server stalls (diagnosis; not fixed yet)
+
+**Problem (your report):** some enemies took damage a bit after you attacked, near the end of the
+session.
+
+**What the logs show:**
+- Mycelium applies a hit the moment it reads it. `EnemyTakeDamage` has no delay either.
+- Minecraft's log: "Can't keep up! Is the server overloaded? Running 2028ms or 40 ticks behind"
+  (08:03:26) and "2721ms or 54 ticks behind" (08:03:45).
+- The client's frame counter rose a steady 120 per second through both, so only the integrated
+  server froze. Hits made then were handled up to ~2.7 s late.
+- The under-strength hits in the same seconds (5.07 at 08:03:25, 1.39 at :38, 4.57 at :41) fit:
+  the stalled server's attack charge lags your screen's.
+- **Just before:** a re-sync teleport plus "standing on air - force-sending blocks below" (first
+  stall), and a new ground grid, v27 (second).
+
+**Ruled out:** collision shape building. A scratch program ran the mod's own shape code over a
+real dumped grid (`-mcDumpGrid`, `work/build/grid_v1.csv`, git-ignored): 446,464 blocks in
+1045 ms the first time and 235 ms cached, so 1–4 µs per block. A 2 s stall would take ~a million
+blocks.
+
+**Changed:**
+- **New `ServerStallWatch.java`:** times every server tick. A tick still running at 0.4 s (and
+  again at 1.5 s) gets the server thread's stack logged; ticks of 250 ms or more are logged when
+  they end.
+- DESIGN §5.9.
+
+**Tested how:** the jar builds. The stand-ins don't run Minecraft's server, so the watch only
+reports in real play.
+
+**Next:** play until enemies take damage late again, then send `logs/latest.log`. The "server
+stall" lines will say what the server was doing.
+
+## 2026-10-21 A new run gives the Stick again (empty-hand fix)
+
+**Problem (your report):** you started a run and didn't get the Stick.
+
+**Cause (your log, 07:46):**
+- In The Carcass the spore held no weapon (Mycelium removes it at a run's end), and Minecraft's
+  hand was empty.
+- The new empty-hand code made its invisible stand-in anyway.
+- Mycelium's first level (`LevelGenerator`) only gives the Stick when the spore holds nothing, so
+  it gave none: "new level, the spore's hand is still empty".
+
+**Changed:**
+- **`WeaponBag.cs`:** an empty Minecraft hand only puts away a weapon of yours that the spore holds.
+- **`MinecraftDriver.cs`:** `-mcLoadTest` takes a scene name (the default is still the tutorial).
+- DESIGN §5.0.4.
+
+**Tested how:** the real build with the fake Minecraft (hand empty) using
+`-mcScene "The Carcass" -mcLoadTest "Daybreak Arboretum"`: 4 s of driving in The Carcass, then
+Mycelium's own scene change.
+
+**Result:**
+- No stand-in in The Carcass.
+- Daybreak Arboretum: "'Stick' (#1) into the bag (the run's first weapon)".
+- The fake Minecraft never selects it, so 3 s later the empty hand put it away, as designed.
+
+**Still broken / not tested:**
+- **Not tested in Minecraft:** that the Stick's carrot appears and gets selected at the run's start.
+
+## 2026-10-20 Weapon switches: no one-frame flash; an empty hand really is empty
+
+**Problems (your report):**
+1. When switching weapons, the weapon's model showed for a frame.
+2. Switching to an empty hand kept using the last weapon.
+- Also seen in your log: while you switched, a carrot was rewritten every half second.
+
+**Causes:**
+1. The new weapon is built in a coroutine, after that frame's spore hiding, so it was drawn once.
+2. An empty hand (Minecraft hand id 0) was simply ignored, so the last weapon, with its
+   attributes and knockback, stayed.
+- While a switch runs, the held weapon's stat attributes are off for a moment, so the other
+  carrots' numbers wobbled and were rewritten.
+
+**Changed:**
+- **`CameraSync.cs`:** `RefreshHidden`. The spore hiding runs again late in the frame (driver
+  `LateUpdate`), before drawing.
+- **`WeaponBag.cs`:**
+  - `EmptyHand`: the held weapon into the bag, and an invisible `Slash/Stick` stand-in with only
+    the "Nothing" attribute (Mycelium needs a held weapon, and its level change expects an
+    attribute). It's hidden again after a new level, and removed by a pickup.
+  - No number updates while a switch runs.
+- **`LinkTestMain.java`:** `LINKTEST_HAND=1` now goes #1, empty, #2.
+- DESIGN §5.0.4.
+
+**Tested how:** the real build with the fake Minecraft in third person with the test body
+(`LINKTEST_VIEW=1`, `LINKTEST_MODEL=1`, `LINKTEST_HAND=1`), using `-mcPickupTest` in Daybreak
+Arboretum.
+
+**Result:**
+- Every weapon built in a switch was logged "not drawn (caught before drawing)".
+- Empty hand: "'Stick' back in the bag, the spore holds an invisible stand-in (Nothing attribute)".
+- The pickup with an empty hand removed the stand-in and bagged the mace.
+- Switching back brought the mace with its 3 attributes.
+
+**Still broken / not tested:**
+- **Not seen in Minecraft:** that the flash is gone.
+- A level change with an empty hand isn't tested: the stand-in is rebuilt by Mycelium and hidden
+  again, but the first frame of the new level may show it.
+
+## 2026-10-20 Max health changes keep the current/max share
+
+**Changed:**
+- **`MinecraftDriver.cs`:** `KeepHealthRatio`. When Mycelium's max health changes, current health
+  is set to the share it had of the old max, and Mycelium's bar is redrawn. Not when Mycelium set
+  it to the new max itself, and not while dead.
+- **`MyceliumCraftClient.java`:** Minecraft's red hurt flash only when max health didn't change.
+  The hurt tilt already worked that way.
+- **New test aid:** `-mcHealthTest`.
+- DESIGN §5.0.2, README.
+
+**Why:** you asked that current health keep its ratio when max health changes. Weapons with
+Vitality attributes now change it whenever you switch.
+
+**Tested how:** the real Mycelium build with the fake Minecraft in Daybreak Arboretum, using
+`-mcHealthTest`.
+
+**Result:**
+- At half health, Vitality +5 took max from 100 to 150 and current from 50.3 to 75.4 (50 %).
+- Vitality −5 took 150 to 100 and 77.1 to 51.4 (51 %; regeneration added a little in between).
+- No hurt tilt.
+
+**Still broken / not tested:**
+- **The no-flash change on Minecraft's side isn't seen in Minecraft.**
+
+## 2026-10-20 Getting hit with the inventory open no longer moves the cursor to the middle
+
+**Problem (your report):** when you got hit while the inventory was open, the cursor jumped to the
+middle of the window.
+- A hit's knockback briefly takes Mycelium's controls ("canAct off, knockback"), which turned the
+  input bridge off.
+- Turning it off gives Windows' pointer back to Mycelium locked, and a locked pointer sits in the
+  middle of the window.
+- The bridge came back on a moment later and freed the pointer, but in the middle.
+- The re-sync teleport after a knockback also counted as "not driving" for a few frames, which
+  did the same.
+
+**Changed:**
+- **`MinecraftDriver.cs`:**
+  - a knockback doesn't take the controls from the bridge while a Minecraft screen is open;
+  - re-sync teleports count as driving for the bridge (as for key ownership);
+  - test runs log what the bridge would do with focus.
+- **`LinkTestMain.java`:** `LINKTEST_SCREEN=1` keeps a screen open from 4 to 10 s, without pausing.
+- DESIGN §5 (cursor for Minecraft's screens).
+
+**Tested how:** the real build with the fake Minecraft (`LINKTEST_SCREEN=1`, `LINKTEST_STILL=1`),
+using `-mcHitTest` (a knockback every 4 s) in Daybreak Arboretum.
+
+**Result:**
+- The screen was open from 17.40 to 23.40 s (keys log). The knockbacks at 17.42 and 21.42 s left
+  the bridge on.
+- The knockbacks at 13.42 and 25.42 s, with no screen, took the controls for a moment as before.
+
+**Still broken / not tested:**
+- **Not tested with your mouse in the real games:** test runs never turn the bridge on.
+- Without a screen open, a knockback still turns the bridge off for a moment, as before. The
+  pointer is locked then anyway.
+
+## 2026-10-20 Attacks only at full charge (the 5 % rule removed)
+
+**Changed:**
+- **`MinecraftMixin.java`:** `Minecraft.startAttack` is stopped while the attack indicator isn't
+  full, as long as Mycelium is playing. There's no swing, no hit and no block mining.
+- **`MyceliumCraftClient.java`:** `attackNotCharged`, which counts and logs each attack it stops.
+- **Removed:** the 5 % weak-hit rule (`AttackCharge.java`, `PlayerAttackChargeMixin.java`, and the
+  rule in `EnemyProxy.java`).
+- DESIGN §5.0.3, README.
+
+**Why:** the 5 % rule worked (your test), but you changed your mind: a weapon can't be used until
+the cooldown is full.
+
+**Tested how:** the jar builds. Neither stand-in runs Minecraft's attack.
+
+**Still broken / not tested:**
+- **Not tested in Minecraft.**
+- Bows and other things that don't go through `startAttack` are unchanged.
+
+## 2026-10-20 Weak hits do 5 % damage
+
+**Changed:**
+- **New `mixin/PlayerAttackChargeMixin.java`:** at the start of a player's attack (server),
+  remembers how charged the attack indicator was and the full attack damage. Minecraft resets the
+  charge before the target is hurt.
+- **New `combat/AttackCharge.java`:** holds that, per player, for the current game tick.
+- **`EnemyProxy.java`:** a direct melee hit under 90 % charge sends 5 % of the full attack damage
+  to Mycelium, instead of Minecraft's 20–100 %. It's logged.
+- DESIGN §5.0.3, README.
+
+**Why:** you asked for under-90 % attacks to do 5 % damage.
+
+**Tested how:** the jar builds. Neither stand-in runs Minecraft's attack.
+
+**Still broken / not tested:**
+- **Not tested in Minecraft.** Not sure the charge read at the start of `attack` is the same as the
+  bar on screen; it should be, as Minecraft reads it the same way.
+- Arrows and other ranged hits are unchanged.
+
+## 2026-10-20 Weapons: one carrot each in Minecraft's inventory (protocol v24)
+
+**What you asked:**
+- Picking up a weapon adds it to the Minecraft inventory instead of swapping (carrots for now).
+- Attribute modifiers that match each weapon's stats, counting player and weapon attributes,
+  multipliers and stats.
+- Runs start with a Stick.
+
+Your choices:
+1. Carrots are rewritten when the spore changes.
+2. The spore holds the selected weapon.
+3. Weapons are cleared on death, and each run starts with a Stick.
+
+**Changed:**
+- **New `mycelium/Runtime/WeaponBag.cs`:**
+  - the bag (pickups keep the old weapon);
+  - rebuilding the selected weapon in the hand, after Mycelium's own between-levels recipe;
+  - the per-weapon numbers;
+  - emptied in The Carcass.
+- **New `fabric/.../MycWeapons.java`:** one carrot per weapon (name, attack damage and speed
+  modifiers, description, not food), selection after a pickup, copies and dropped carrots
+  removed, carrots taken out before the death drop.
+- **`EnemyCombat.cs`:** Minecraft's hits also apply the held weapon's knockback.
+- **Protocol v24:** a Weapons block (after HitBoxes, 0x4000), and McState 0x90 for the main-hand
+  weapon. Both stand-ins check the block.
+- **New test aids:** `-mcPickupTest`, `-mcSwingTest`, and `LINKTEST_HAND=1`.
+- DESIGN §5.0.4, PROTOCOL, README.
+
+**Tested how:**
+- `tools\FakeMycelium` + `gradlew linkTest`.
+- The real Mycelium build in Daybreak Arboretum with the fake Minecraft (`LINKTEST_HAND=1`), using
+  `-mcPickupTest -mcSwingTest`.
+
+**Result:**
+- Link: all weapon fields read back (UTF-8 name included), PASS.
+- In Mycelium:
+  - Stick #1: 10 damage, 0.98 swings/s.
+  - Pickup: the Cactus Mace became #2 and the Stick stayed. The mace was ×1.6 damage, ×1.15
+    speed, 16 damage, 0.61/s, with Toxicating, Hazardous and Nasty.
+  - Following the stand-in's hand: Stick, then the mace again, with 3 attributes (2 the
+    prefab's own).
+
+**Dead ends on the way (fixed):**
+1. Rebuilding added the prefab's built-in attributes a second time: "Heavy Hazardous Nasty
+   Hazardous Nasty Rose Mace", and it grows each switch.
+2. Swing time from the clips was 1.5–2× too slow. The states play faster than their clips: Slash
+   1.71 → 1.14 s, Smash 4.17 → 2.08, Stab 1.08 → 0.87. Measured with `-mcSwingTest`; the state
+   lengths are read from the animator now.
+3. Timing your real swings can't work while Minecraft drives (Mycelium's attack key is unbound),
+   so it was removed again.
+
+**Still broken / not tested:**
+- **The Minecraft side isn't tested in Minecraft at all:** the carrots, their tooltips,
+  selecting after a pickup, removal on death, removing dropped copies.
+- If your inventory is full, a new weapon's carrot isn't added (logged).
+- When a weapon is rebuilt, its damage multiplier is redone for the current loop. Mycelium's own
+  level change keeps the old one.
+- Weapon looks: carrots for now. Special attribute effects work in Mycelium, through the held
+  weapon; they aren't shown in Minecraft beyond the description.
+
 ## 2026-10-20 Weapon swaps: dropped weapon visible, new one hidden behind your Minecraft body
 
 **Problem (your report):** after grabbing a new weapon, the old one stayed invisible and the new

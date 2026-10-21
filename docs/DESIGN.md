@@ -325,6 +325,17 @@ prevented fall or heal is logged at most once a second.
     items are placed from the arm's pose, so they follow.
   - **Hidden underground:** Mycelium's ground hides the buried parts, because the body is drawn at
     the spore's feet like any other mesh.
+- **Max health changes keep the share** (since 2026-10-20, your rule). Mycelium changes max health
+  on its own: a Vitality level, a weapon's stat attribute while held, a spore's stats. When it does,
+  Mycelium leaves current health where it was.
+  - `MinecraftDriver.KeepHealthRatio` sets current health to the share it had of the old max, then
+    redraws Mycelium's bar (`displayHealth`, `UpdateHudHealthUI`). Minecraft follows as usual.
+  - Not when Mycelium set current health to the new max itself (`ResetHealth`), and not while dead.
+  - A lower max lowers current health, but that isn't a hit: Minecraft's red flash and the hurt
+    tilt only react when max health didn't change.
+  - **Checked** with `-mcHealthTest` in Daybreak Arboretum: at half health, Vitality +5 took max
+    from 100 to 150 and current from 50.3 to 75.4 (50 %); Vitality −5 took 150 to 100 and 77.1 to
+    51.4 (51 %, after some regeneration). No hurt tilt.
 - **Outside Mycelium's levels** (max 0 or no spore): not synced, and max health is put back to 20.
 
 ### 5.0.2.1 Experience level = nutrients (since 2026-10-19)
@@ -417,6 +428,112 @@ everything (`Resources/MyceliumCraftLine.shader`).
 **Checked** with the fake Minecraft (`LINKTEST_HIT=1`) in Daybreak Arboretum: the beetle 36 blocks
 away arrived (1.6 × 0.7 blocks, 30/30); three 2-point hits did 10 damage each (30 → 20 → 10 → 0),
 and the dead beetle left the table. The tutorial has no enemies at its start.
+
+**Attacks only at full charge** (since 2026-10-20, your rule): while Mycelium is playing, an attack
+can't start until Minecraft's attack indicator is full.
+- `MinecraftMixin` stops `Minecraft.startAttack` (on the client), so there's no swing, no hit and
+  no block mining. Each block is counted and logged (at most once a second).
+- Ranged weapons (bows) don't use `startAttack`, so they're unchanged.
+- The rule before it (for a few hours) made hits under 90 % charge do 5 % damage. It worked, but
+  you changed your mind and it was removed.
+
+### 5.0.4 Weapons: one carrot each in Minecraft's inventory (since 2026-10-20)
+
+Your choices: carrots for now, with the true numbers rewritten when the spore changes; the spore
+holds the weapon whose carrot is selected; weapons are cleared on death and each run starts with a
+Stick.
+
+**Mycelium side** (`WeaponBag`):
+- **Picking up** still goes through Mycelium (`WeaponInteraction.Interact`: the new one in the
+  hand, attributes unequipped/equipped). The weapon you held, which Mycelium lets go into the
+  world, is saved into the bag instead and its object removed. The save copies
+  `LevelEnd.GoToNextLevel`: attribute type names, values and rarities. Then Minecraft is asked to
+  select the new carrot. Until it does (at most 3 s), Minecraft's hand isn't followed.
+- **Switching:** the spore holds the weapon whose carrot is in Minecraft's main hand (McState
+  0x90). The held one is saved (attributes unequipped) and removed. The wanted one is rebuilt much
+  as `LevelGenerator` rebuilds the held weapon in a new level:
+  1. the prefab from `Resources/<type>/<name>`, no random attribute (`acceptingAttribute`), the
+     scale fix, tags and layers;
+  2. a frame later, its attributes added back (`AttributeAssigner.PickAttFromString`), value and
+     rarity set;
+  3. 0.1 s later, `ApplyWeaponPositionAndRotation` and each attribute's `Equipped`.
+
+  It's set through `SwapWeapon.O_curWeapon`, so Mycelium's buffs that follow the weapon (Fury,
+  Bonus Damage) move with it. Not mid-swing: it waits for `canUseAttack`.
+  - **Unlike `LevelGenerator`,** attributes the prefab already has aren't added again (a Cactus
+    Mace has Hazardous and Nasty built in), and the weapon keeps its own stat list. Re-adding them
+    doubled them on every switch ("Heavy Hazardous Nasty Hazardous Nasty Rose Mace").
+  - A weapon's damage multiplier is worked out again for the current loop when it's rebuilt.
+    Mycelium's own between-levels keeps the old one.
+- **Empty hand** (since 2026-10-20): when Minecraft's main hand holds no weapon carrot, the held
+  weapon goes into the bag (attributes unequipped). The spore then holds an invisible stand-in:
+  `Slash/Stick` with no random attribute, only Mycelium's "Nothing" attribute.
+  - So no weapon effects and no knockback apply. Minecraft's hits are its fist (1 point, 5 in
+    Mycelium).
+  - Why a stand-in: Mycelium always needs a held weapon (its level end and death read it), and its
+    next level rebuilds the held weapon's attributes and expects at least one.
+  - The stand-in's renderers are switched off (`Renderer.enabled`, which the camera's hiding
+    doesn't touch). It's hidden again when a new level rebuilds it.
+  - A pickup with an empty hand removes the stand-in instead of bagging it.
+  - **Only when the spore holds one of your weapons.** In The Carcass after a run it holds none,
+    and making the stand-in there anyway meant Mycelium's first level gave no Stick: it only gives
+    one when the spore holds nothing (your report, 2026-10-21).
+  - Before, the last weapon simply stayed in the hand (your report).
+- **No flash on a switch** (since 2026-10-20): the new weapon is built in a coroutine, after the
+  frame's spore hiding, so it was drawn for one frame. `CameraSync.RefreshHidden` runs again in
+  `LateUpdate`, before drawing.
+- **No number churn mid-switch:** while a switch runs, the numbers aren't worked out again. The
+  held weapon's stat attributes are off for that moment, and every other carrot was rewritten
+  ("1 rewritten" every half second in your log while switching).
+- **Runs:** arriving in The Carcass (a death or a finished run) empties the bag. The next weapon
+  Mycelium gives the spore (the run's Stick from `LevelGenerator`) is added. Between levels the
+  rebuilt held weapon is matched to its bag entry.
+- **Numbers, per weapon, with the spore as it is now:** that weapon's stat attributes count
+  instead of the held one's (`primalAmount`, `speedAmount`).
+  - **Damage per swing** = round(attackDamageBase + (Primal − 1) × increment) × Fungal Might ×
+    `statNums.advDamage.MultValue`, as `PlayerAttack` works it out.
+  - **Swings per second** = (attackSpeedBase + (Speed − 1) × increment) × `wpnAttackSpeedModifier`
+    ÷ (0.9 × the attack state's length). `PlayerAttack` gives the controls back at 90 % of the
+    Slash, Smash or Stab state.
+  - **State lengths** are measured on the spore's animator: each state is put on for no time
+    (`Play`, `Update(0)`), its length read, and the animator put back, within one frame. The
+    states run faster than their clips: Slash 1.14 s (clip 1.71), Smash 2.08 (4.17), Stab 0.87
+    (1.08). `-mcSwingTest` timed the real animations to 90 %: 1.02, 1.87, 0.78 s, which matches.
+  - **Knockback:** the weapon's `advKnockback`. Minecraft's hits now also knock the enemy back by
+    the held weapon's value (`EnemyKnockback.Knockback`, as `WeaponCollision` does).
+- Sent in the Weapons table (protocol v24) with a version number that changes on any change.
+
+**Minecraft side** (`MycWeapons`, on the integrated server; the client only reads and selects):
+- **One carrot per weapon,** marked with the weapon's id and a stamp of its numbers in custom data.
+  Made, rewritten (when the stamp differs), or removed (weapons Mycelium doesn't have; copies) on
+  any table change and twice a second.
+  - **Name:** the weapon's name.
+  - **Attribute modifiers** for the main hand, replacing Minecraft's base ones, so the tooltip
+    shows totals:
+    - attack damage = damage per swing ÷ `damageScale` (sent with the table), so a full-strength
+      hit does that damage in Mycelium;
+    - attack speed = swings per second.
+  - **Description:** type, damage (×multiplier), swings per second (×modifier), knockback, then
+    the attributes.
+  - Not food: `FOOD` and `CONSUMABLE` are removed.
+- **Copies:** a weapon carrot lying in the world (dropped, or thrown) is removed, and made again in
+  the inventory. The one on the cursor in an open inventory counts as held.
+- **Pickups:** the new carrot is selected once it's in the hotbar (within 3 s; a full hotbar
+  means it isn't).
+- **Death:** the carrots are taken out just before Mycelium's death kills the Minecraft player,
+  so they don't drop. The run's end then empties the table.
+
+**Checked:**
+- `tools\FakeMycelium` + `gradlew linkTest`: 2 weapons, the UTF-8 name, damage, swings per
+  second, attributes and damage scale all read back.
+- The real Mycelium build with the fake Minecraft, `-mcPickupTest -mcSwingTest` and
+  `LINKTEST_HAND=1`:
+  - the run's Stick went in as #1 (10 damage, 0.98/s);
+  - picking up a Cactus Mace kept the Stick and added the mace as #2 (×1.6 damage, ×1.15 speed,
+    16 damage, 0.61/s);
+  - following Minecraft's hand switched to the Stick and back to the mace, with its 3
+    attributes, 2 of them the prefab's own.
+- **The Minecraft side isn't tested in Minecraft.**
 
 ### 5.1 Body size: Minecraft's player is shrunk to the spore's height
 
@@ -847,6 +964,16 @@ Whichever game shows its menu, the other one waits:
   - When the screen closes, the pointer goes back to how Mycelium had it. Mycelium locks and hides it
     once, when the player is created (`PlayerController`), and nothing re-locks it every frame.
   - The unlock is set again every frame anyway, in case.
+  - **Hits don't recentre it** (since 2026-10-20). Turning the bridge off gives the pointer back to
+    Mycelium locked, and Windows puts a locked pointer in the middle of the window. A hit while the
+    inventory was open did that, and it came back freed but in the middle (your report). So:
+    - a hit's knockback ("canAct off, knockback") doesn't take the controls from the bridge while
+      a Minecraft screen is open;
+    - re-sync teleports (`WaitingForTeleport`) count as driving for the bridge, as for key
+      ownership.
+  - **Test runs** (`-mcBackground`) never turn the bridge on. They log what it would do with your
+    focus ("input bridge (test run, off): with focus it would be …"). `LINKTEST_SCREEN=1` keeps a
+    Minecraft screen open from 4 to 10 s without pausing.
 - **Sent as:** a fraction of the picture (MycInput `CURSOR`, 0x170/0x178).
 - **Minecraft:** turns it into the same fraction of its window and gives it to its mouse handler as
   an absolute position, as a real mouse over its window would. Clicks, dragging items and the wheel
@@ -963,6 +1090,27 @@ finished screen with the overlay on and off:
 - half white box 128–129, the right blend over Mycelium's dark background
 - the empty spot unchanged
 - about 60 pictures a second, 0.03–0.08 ms each to upload at 640×360
+
+## 5.9 Server stalls (being investigated, 2026-10-21)
+
+**Late hits come from Minecraft's integrated server stalling.** All hits on enemy stand-ins are
+handled on that server.
+- Your report: some enemies took damage a bit after you attacked.
+- Minecraft's log had "Can't keep up! Running 2028 ms / 2721 ms behind" at 08:03:26 and
+  08:03:45, while drawing went on at a steady 120 frames per second. So only the server thread
+  froze.
+- The same stalls explain a few under-strength hits (5.07, 4.57, 1.39 against 6 or 9). While the
+  server is behind, its attack charge lags the one on your screen.
+- **Just before:** a re-sync teleport ("standing on air - force-sending blocks below"), and a new
+  ground grid.
+- **Ruled out:** building collision shapes from the grid. A scratch program timed the mod's own
+  code on a real dumped grid (128 × 128 cells, up to 4 pieces each): 1–4 µs per block, so 2 s
+  would take about a million blocks.
+- **`ServerStallWatch`** (diagnostic, changes nothing):
+  - every server tick is timed;
+  - while one has run 0.4 s (and again at 1.5 s), a watcher thread logs the server thread's
+    stack ("server stall: tick N has run X ms so far; the server thread is in: …");
+  - ticks of 250 ms or more are logged when they end.
 
 ## 6. Logs ("log, don't look")
 

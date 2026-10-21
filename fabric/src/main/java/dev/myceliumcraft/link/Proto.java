@@ -44,9 +44,21 @@ public final class Proto {
 	public static final int HB_MAX = 64;
 	public static final long HB_SIZE = 0x20; // u32 enemy id, f32 min x, y, z, max x, y, z, pad
 
-	public static final long MAPPING_BYTES = OFF_HIT_BOXES + HIT_BOXES_BYTES;
+	// Weapons (Mycelium -> Minecraft, seqlock): your weapons, one carrot each (since v24). UTF-8 strings, zero-terminated.
+	public static final long OFF_WEAPONS = OFF_HIT_BOXES + HIT_BOXES_BYTES;
+	public static final long WEAPONS_BYTES = 0x4000;
+	public static final long W_SEQ = 0x00, W_COUNT = 0x04, W_VERSION = 0x08, W_SELECT_SEQ = 0x0C, W_SELECT_ID = 0x10, W_HELD_ID = 0x14;
+	public static final long W_DAMAGE_SCALE = 0x18; // f32: Mycelium damage per Minecraft damage point
+	public static final long W_LIST = 0x20;
+	public static final int W_MAX = 32;
+	public static final long W_SIZE = 0x100;
+	public static final long WE_ID = 0x00, WE_TYPE = 0x04, WE_DAMAGE = 0x08, WE_PER_SECOND = 0x0C, WE_KNOCKBACK = 0x10, WE_DAMAGE_MULT = 0x14, WE_SPEED_MOD = 0x18;
+	public static final long WE_NAME = 0x20, WE_ATTS = 0x60;
+	public static final int WE_NAME_BYTES = 0x40, WE_ATTS_BYTES = 0xA0;
+
+	public static final long MAPPING_BYTES = OFF_WEAPONS + WEAPONS_BYTES;
 	public static final int MAGIC = 0x4343594D; // "MYCC"
-	public static final int VERSION = 23;
+	public static final int VERSION = 24;
 	/** A side is alive if its heartbeat is younger than this. */
 	public static final long HEARTBEAT_TIMEOUT_MS = 3000;
 
@@ -104,6 +116,7 @@ public final class Proto {
 	public static final long MC_FOV_SCALE = 0x84; // Minecraft's FOV multiplier now (sprint, speed, bow, spyglass); 0 = not sent
 	public static final long MC_EYE_SCALE = 0x88; // eye height now / standing eye height (crouching ~0.78); 0 = not sent
 	public static final long MC_DAMAGE_TILT = 0x8C; // Minecraft's "Damage Tilt" setting, 0 (off) .. 1; since v20
+	public static final long MC_HAND_WEAPON = 0x90; // u32: the weapon whose carrot is in the main hand (Weapons id); 0 = none; since v24
 	public static final int MC_IN_WORLD = 1 << 0;
 	public static final int MC_SCREEN_OPEN = 1 << 1;
 	public static final int MC_ON_GROUND = 1 << 2;

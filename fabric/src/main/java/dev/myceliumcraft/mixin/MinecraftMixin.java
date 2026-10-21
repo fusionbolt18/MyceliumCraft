@@ -29,6 +29,17 @@ public abstract class MinecraftMixin {
 		MycOverlay.capture((Minecraft) (Object) this);
 	}
 
+	/**
+	 * No attack (no swing, no hit, no block mining) until the attack indicator is full, while
+	 * Mycelium is playing (your rule, 2026-10-20).
+	 */
+	@Inject(method = "startAttack", at = @At("HEAD"), cancellable = true)
+	private void myceliumcraft$fullChargeOnly(CallbackInfoReturnable<Boolean> cir) {
+		if (MyceliumCraftClient.attackNotCharged((Minecraft) (Object) this)) {
+			cir.setReturnValue(false);
+		}
+	}
+
 	/** Start of every client tick, before the crosshair pick: enemy stand-ins exactly where Mycelium's enemies are. */
 	@Inject(method = "tick", at = @At("HEAD"))
 	private void myceliumcraft$beforeTick(CallbackInfo ci) {

@@ -147,6 +147,12 @@ public final class MycLink {
 	/** Seqlock write of McState, with Minecraft's camera feel and its "Damage Tilt" setting (0..1). */
 	public static void writeMcState(int flags, double x, double y, double z, float yaw, float pitch, long frame, int epoch, int teleportAck, int cameraMode, float bodyYaw, Tick tick,
 		float fovScale, float eyeScale, float damageTilt) {
+		writeMcState(flags, x, y, z, yaw, pitch, frame, epoch, teleportAck, cameraMode, bodyYaw, tick, fovScale, eyeScale, damageTilt, 0);
+	}
+
+	/** Seqlock write of McState, with the weapon in the main hand (Weapons id, 0 = none). */
+	public static void writeMcState(int flags, double x, double y, double z, float yaw, float pitch, long frame, int epoch, int teleportAck, int cameraMode, float bodyYaw, Tick tick,
+		float fovScale, float eyeScale, float damageTilt, int handWeapon) {
 		MemorySegment s = shm;
 		if (s == null) {
 			return;
@@ -179,6 +185,7 @@ public final class MycLink {
 		s.set(JAVA_FLOAT, b + MC_FOV_SCALE, fovScale);
 		s.set(JAVA_FLOAT, b + MC_EYE_SCALE, eyeScale);
 		s.set(JAVA_FLOAT, b + MC_DAMAGE_TILT, damageTilt);
+		s.set(JAVA_INT, b + MC_HAND_WEAPON, handWeapon);
 		INT.setRelease(s, b + MC_SEQ, seq + 2); // even: done
 	}
 
@@ -281,6 +288,71 @@ public final class MycLink {
 	}
 
 	/** One of Mycelium's enemies, as Minecraft's stand-in should be. */
+	/** One of your weapons (Weapons table). */
+	public static final class Weapon {
+		public int id, type;
+		public float damage, perSecond, knockback, damageMult, speedMod;
+		public String name = "", attributes = "";
+	}
+
+	/** The Weapons table's header: version, select request (seq, id), the held weapon. */
+	public static final class WeaponsHeader {
+		public int version, selectSeq, selectId, heldId;
+		public float damageScale;
+	}
+
+	/** Seqlock read of the Weapons table. Count, or -1. */
+	public static int readWeapons(Weapon[] out, WeaponsHeader header) {
+		MemorySegment s = shm;
+		if (s == null) {
+			return -1;
+		}
+		long b = OFF_WEAPONS;
+		for (int attempt = 0; attempt < 16; attempt++) {
+			int seq1 = (int) INT.getAcquire(s, b + W_SEQ);
+			if ((seq1 & 1) != 0) {
+				Thread.onSpinWait();
+				continue;
+			}
+			int count = Math.min(Math.max(0, s.get(JAVA_INT, b + W_COUNT)), Math.min(W_MAX, out.length));
+			header.version = s.get(JAVA_INT, b + W_VERSION);
+			header.selectSeq = s.get(JAVA_INT, b + W_SELECT_SEQ);
+			header.selectId = s.get(JAVA_INT, b + W_SELECT_ID);
+			header.heldId = s.get(JAVA_INT, b + W_HELD_ID);
+			header.damageScale = s.get(JAVA_FLOAT, b + W_DAMAGE_SCALE);
+			for (int i = 0; i < count; i++) {
+				long e = b + W_LIST + i * W_SIZE;
+				Weapon w = out[i];
+				w.id = s.get(JAVA_INT, e + WE_ID);
+				w.type = s.get(JAVA_INT, e + WE_TYPE);
+				w.damage = s.get(JAVA_FLOAT, e + WE_DAMAGE);
+				w.perSecond = s.get(JAVA_FLOAT, e + WE_PER_SECOND);
+				w.knockback = s.get(JAVA_FLOAT, e + WE_KNOCKBACK);
+				w.damageMult = s.get(JAVA_FLOAT, e + WE_DAMAGE_MULT);
+				w.speedMod = s.get(JAVA_FLOAT, e + WE_SPEED_MOD);
+				w.name = utf8(s, e + WE_NAME, WE_NAME_BYTES);
+				w.attributes = utf8(s, e + WE_ATTS, WE_ATTS_BYTES);
+			}
+			VarHandle.loadLoadFence();
+			if ((int) INT.getVolatile(s, b + W_SEQ) == seq1) {
+				return count;
+			}
+		}
+		return -1;
+	}
+
+	private static String utf8(MemorySegment s, long off, int max) {
+		int n = 0;
+		while (n < max && s.get(java.lang.foreign.ValueLayout.JAVA_BYTE, off + n) != 0) {
+			n++;
+		}
+		byte[] bytes = new byte[n];
+		for (int i = 0; i < n; i++) {
+			bytes[i] = s.get(java.lang.foreign.ValueLayout.JAVA_BYTE, off + i);
+		}
+		return new String(bytes, java.nio.charset.StandardCharsets.UTF_8);
+	}
+
 	public static final class Enemy {
 		public int id, flags;
 		public float x, y, z, width, height, health, maxHealth, yaw;

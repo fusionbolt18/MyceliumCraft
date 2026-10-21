@@ -29,7 +29,7 @@ a block without locks.
 - **Reader:** read `seq`. If it's odd, try again. Read the fields, then read `seq` again. If it
   changed, try again.
 
-## Layout (version 23)
+## Layout (version 24)
 
 ### Header @ 0x000
 
@@ -91,6 +91,7 @@ Positions are in **Minecraft coordinates**: blocks, Y up, +Z is south.
 | 0x84 | f32 | FOV multiplier now: Minecraft's own (sprinting, speed, bow, spyglass; scaled by its "FOV Effects" setting). 0 = not sent (since version 14) |
 | 0x88 | f32 | eye height now ÷ standing eye height: Minecraft's smoothed camera eye height (crouching about 0.78). 0 = not sent |
 | 0x8C | f32 | Minecraft's "Damage Tilt" accessibility setting, 0 (off) to 1 (full): how far Mycelium's camera tilts toward a hit. Since version 20 |
+| 0x90 | u32 | the weapon (Weapons table id) whose carrot is in the main hand; 0 = none. The spore holds that weapon. Since version 24 |
 
 Like SkyCraft: with the raw ticks and their time, Mycelium can work out where Minecraft's player is at
 *any* moment on its own clock, as Minecraft's renderer does with partial ticks:
@@ -223,6 +224,34 @@ grown by its pick radius), for `-mcShowHitboxes`. After the textures; the mappin
 | 0x00 | u32 | seq |
 | 0x04 | u32 | count (at most 64) |
 | 0x10 + 0x20·i | entry | u32 enemy id, f32 min x, y, z, max x, y, z (Minecraft coordinates), pad |
+
+### Weapons @ after HitBoxes (Mycelium → Minecraft, seqlock). Since version 24
+
+Your Mycelium weapons, one carrot each in Minecraft's inventory (`WeaponBag.cs`, `MycWeapons.java`).
+The mapping grows by 0x4000. Strings are UTF-8, zero-terminated.
+
+| Off | Type | Field |
+|---|---|---|
+| 0x00 | u32 | seq |
+| 0x04 | u32 | count (at most 32) |
+| 0x08 | u32 | version: changes whenever a weapon or any number changes |
+| 0x0C | u32 | select seq: changes when Mycelium asks Minecraft to select a weapon (after a pickup) |
+| 0x10 | u32 | select id: that weapon |
+| 0x14 | u32 | the weapon the spore holds |
+| 0x18 | f32 | damage scale: Mycelium damage per Minecraft damage point (`damageScale=`) |
+| 0x20 + 0x100·i | entry | below |
+
+| Entry off | Type | Field |
+|---|---|---|
+| 0x00 | u32 | id (1, 2, …; never reused in a session) |
+| 0x04 | u32 | type: 0 Slash, 1 Smash, 2 Stab |
+| 0x08 | f32 | damage per swing (Mycelium), with the spore as it is now |
+| 0x0C | f32 | swings per second |
+| 0x10 | f32 | knockback (Mycelium) |
+| 0x14 | f32 | damage multiplier (weapon and attributes) |
+| 0x18 | f32 | attack speed modifier |
+| 0x20 | utf8[64] | name |
+| 0x60 | utf8[160] | attributes, "Name: description; Name: description" |
 
 ### GroundGrid @ 0x1000 (Mycelium → Minecraft, seqlock)
 

@@ -59,6 +59,10 @@ namespace MyceliumCraft
         // Minecraft's red hurt flash on enemies that lost health this frame (from anything).
         readonly HurtFlash hurt = new HurtFlash();
         public HurtFlash Hurt => hurt;
+        /// <summary>The held weapon's knockback (WeaponBag), put on enemies Minecraft hits; NaN = none known.</summary>
+        public float HeldKnockback = float.NaN;
+        MethodInfo knockback;
+        bool knockbackLooked;
         readonly Dictionary<Component, float> lastHealth = new Dictionary<Component, float>();
         readonly List<Component> forget = new List<Component>();
 
@@ -202,6 +206,7 @@ namespace MyceliumCraft
                 {
                     takeDamage.Invoke(enemy, new object[] { mycDamage, false, true });
                     hitsApplied++;
+                    Knockback(enemy);
                     if (hitboxes != null) hitboxes.Flash(id);
                     float left = (float)currentHealthField.GetValue(enemy);
                     McLog.Info($"combat: Minecraft hit '{enemy.gameObject.name}' #{id} for {damage:F2} points{((hitFlags & Proto.HitCrit) != 0 ? " (critical)" : "")} -> {mycDamage:F1} Mycelium damage; health now {left:F1}");
@@ -211,6 +216,27 @@ namespace MyceliumCraft
                     McLog.Info($"combat: applying a hit failed: {(e.InnerException ?? e).Message}");
                 }
             }
+        }
+
+        /// <summary>
+        /// The held weapon's knockback on an enemy Minecraft hit, as Mycelium's own swing does
+        /// (WeaponCollision: EnemyKnockback.Knockback(knockback, the spore, the enemy, false)).
+        /// </summary>
+        void Knockback(Component enemy)
+        {
+            if (float.IsNaN(HeldKnockback) || HeldKnockback <= 0f) return;
+            Type kt = Type.GetType("EnemyKnockback, Assembly-CSharp");
+            if (!knockbackLooked)
+            {
+                knockbackLooked = true;
+                knockback = kt?.GetMethod("Knockback", BindingFlags.Public | BindingFlags.Instance, null, new[] { typeof(float), typeof(Transform), typeof(Transform), typeof(bool) }, null);
+                if (knockback == null) McLog.Info("combat: EnemyKnockback.Knockback not found; Minecraft's hits don't knock enemies back");
+            }
+            GameObject player = GameObject.FindWithTag("currentPlayer");
+            Component k = kt != null ? enemy.GetComponent(kt) : null;
+            if (knockback == null || k == null || player == null) return;
+            try { knockback.Invoke(k, new object[] { HeldKnockback, player.transform, enemy.transform, false }); }
+            catch (Exception e) { McLog.Info($"combat: knockback failed: {(e.InnerException ?? e).Message}"); }
         }
 
         void Find()
