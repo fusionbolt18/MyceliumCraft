@@ -1,5 +1,65 @@
 # MODLOG
 
+## 2026-10-21 Better Combat first person, third try: depth cleared the right way
+
+**Your report:** still invisible.
+
+**From your log:** this time the arms *were* drawn: 580 frames during your attacks, all from
+Minecraft's world list (0 posed by us). So the first test's missing player was likely just no
+attack in that run, and the real fault was in the drawing.
+
+**Cause:** Minecraft 26.3 counts depth backwards: its depth buffer starts at 0 for "nothing drawn
+yet" (`GameRenderer` clears it to 0). I cleared it to 1.0, which meant "something is already in
+front of every pixel", so every pixel of the arms was thrown away.
+
+**Changed:** `MycFirstPersonArms.java` clears depth to 0.
+
+**Tested how:** built only. **Not tested.**
+
+## 2026-10-21 Better Combat first person, second try: we pose the arms when PAL wants them
+
+**Your report:** the arm and weapon became invisible during Better Combat's animations.
+
+**From your log:** the arms were drawn only in 14 frames at startup. During your attacks
+Minecraft's world list held 0 things, so the player PAL should have put there never arrived. Yet
+PAL hid the hand, and it uses the same test for both. Why the player was missing isn't known.
+
+**Changed (`MycFirstPersonArms.java`):**
+- Asks PAL's own test (`ClientUtil.shouldBeFirstPersonPass`) whether to draw the arms.
+- If the world's list has no player then, it poses your player itself and marks it first-person
+  the way PAL does (`playerAnimLib$setFirstPersonPass`). These are PAL's public methods, called
+  by reflection; PAL isn't changed.
+- **Correction:** last time I wrote that Minecraft's draw list grew every frame while the world
+  was skipped. That was wrong: Minecraft empties it itself at the start of every frame
+  (`LevelRenderState.reset`). The emptying I added is removed.
+- The 10-second log line says how many frames used the list and how many we posed.
+
+**Tested how:** built only. **Not tested.**
+
+## 2026-10-21 Better Combat: first-person attack animations in the overlay
+
+**Your request:** get the overlay working with Better Combat's animations in first person (third
+person already worked).
+
+**What was wrong:** Better Combat animates through Player Animation Library (PAL). In first person,
+during an animation, PAL hides Minecraft's normal hand and draws your arms as part of the world
+instead. The overlay skips Minecraft's world, so nothing was drawn.
+
+**Changed:**
+- **New: `MycFirstPersonArms.java`.** In place of the world, it draws only your own player from
+  Minecraft's list of things to draw, with the world's camera, into the overlay picture. It's
+  only in that list when PAL wants it drawn.
+- **`LevelRendererMixin.java`:** calls it while the overlay is on.
+- Minecraft's draw list is emptied every frame. (Wrong: it never grew; see the entry above.)
+- Better Combat and PAL are untouched (only read with `javap` to see how they work).
+- DESIGN §5.4, README.
+
+**Tested how:** built only. **Not tested**: the fake Minecraft can't run Better Combat.
+
+**Still broken / not tested:**
+- **Not tested in Minecraft.**
+- Not sure the arms are lit exactly as in a normal world. They use the world's lighting setup.
+
 ## 2026-10-21 A thrown weapon's pop-up moves with it (it stays interactable)
 
 **Your note:** it took far too long for the weapon to become interactable again, so make the

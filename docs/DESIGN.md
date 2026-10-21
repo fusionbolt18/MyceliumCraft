@@ -1102,6 +1102,24 @@ While Mycelium shows a level (and `overlay=1`), Mycelium sets `OVERLAY` in its s
     during play.
 - **Size:** the picture is Minecraft's window size, stretched to Mycelium's window. It looks right
   when both windows have the same shape; the log warns if they don't.
+- **Better Combat in first person** (since 2026-10-21; `MycFirstPersonArms.java`):
+  - **How Better Combat draws it:** its attack animations run through Player Animation Library
+    (PAL). In first person, while an animation plays, PAL hides Minecraft's normal hand and puts
+    your whole player into the world's list of things to draw, marked so only the arms and held
+    items show.
+  - **Why it was missing:** the overlay skips Minecraft's world, so those arms were never drawn.
+  - **Now:** in place of the world, our mod draws just your own player, with the world's camera,
+    into Minecraft's picture (the same steps Minecraft uses for the normal hand).
+  - **Which player:** the one PAL put in the world's list if it's there. In your first test it never
+    was during attacks, though PAL had hidden the hand. Both use PAL's own test
+    (`ClientUtil.shouldBeFirstPersonPass`). So when that test says yes and the list has no player,
+    our mod poses your player itself and marks it first-person as PAL does
+    (`playerAnimLib$setFirstPersonPass`). Both are PAL's public methods, called by reflection.
+    Better Combat and PAL aren't changed (AGENTS.md rule 7).
+  - **Depth:** 26.3's depth is reversed (0 = nothing drawn yet). Clearing to 1.0 hid the arms
+    completely (your second test).
+  - **Log** (every 10 s): frames the arms were drawn, how many came from the world's list and how
+    many we posed, and the most things in that list.
 
 ### 5.4.1 Your Minecraft body instead of the spore, in third person
 

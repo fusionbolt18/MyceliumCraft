@@ -124,6 +124,8 @@ Single-player and offline only.
   (inventory, chat) are drawn on top of Mycelium, and Minecraft stops drawing its own world
   (`overlay=0` in `MyceliumCraft.cfg` turns it off). Tested with a fake Minecraft's test picture,
   which showed with exact colors.
+- **Better Combat's attack animations in first person: not tested.** Your arms swinging the weapon
+  are drawn in the overlay (third person already worked, you saw it).
 - **Cursor in Minecraft's screens, and pausing: not tested in real Minecraft.**
   - **Mouse pointer:** while a Minecraft screen is open, Windows' own mouse pointer is free (it can
     leave the window), and you can click in Minecraft's inventory, chat and menus.
