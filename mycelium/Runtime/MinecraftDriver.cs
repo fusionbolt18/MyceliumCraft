@@ -209,9 +209,19 @@ namespace MyceliumCraft
             // Test aid: "-mcPickupTest" puts a Cactus Mace on the ground in front of the spore 4 s into
             // driving and picks it up through Mycelium's own WeaponInteraction.Interact.
             if (Array.IndexOf(args, "-mcPickupTest") >= 0) StartCoroutine(PickupTest());
+            // Test aid: "-mcRepickTest" picks up the nearest weapon lying in the world (tag "Weapon")
+            // 8 s into driving, through WeaponInteraction.Interact (for thrown weapons).
+            if (Array.IndexOf(args, "-mcRepickTest") >= 0) StartCoroutine(RepickTest());
+            // Test aid: "-mcInteractWatch" logs whenever Mycelium's closest interactable thing (what its
+            // pop-up and Interact key are for) changes, with where it is.
+            if (Array.IndexOf(args, "-mcInteractWatch") >= 0) StartCoroutine(InteractWatch());
             // Test aid: "-mcSwingTest" plays the spore's Slash, Smash and Stab animations at its attack
             // speed 4 s into driving and times each to 90 % (when PlayerAttack gives the controls back).
             if (Array.IndexOf(args, "-mcSwingTest") >= 0) StartCoroutine(SwingTest());
+            // Test aid: "-mcAttribute <Name>" gives the held weapon that attribute (as Mycelium adds one:
+            // AttributeAssigner.PickAttFromString, then Equipped) 1 s into driving.
+            int attArg = Array.IndexOf(args, "-mcAttribute");
+            if (attArg >= 0 && attArg + 1 < args.Length) StartCoroutine(AttributeTest(args[attArg + 1]));
             // Test aid: "-mcHealthTest" halves the spore's health 4 s into driving, then raises its
             // Vitality by 5 and takes it away again (max health up, then down), 1.5 s apart. Not in
             // The Carcass (Vitality there can earn achievements).
@@ -304,7 +314,7 @@ namespace MyceliumCraft
             float health = 0f, maxHealth = 0f;
             if (rb != null) ReadHealth(out health, out maxHealth);
             link.WriteMycState(flags, pos.x, pos.y, pos.z, yaw, frame, tp, rb != null ? playerHeightBlocks : 0f, health, maxHealth,
-                               rb != null ? ReadNutrients() : -1, sprout.Update());
+                               rb != null ? ReadNutrients() : -1, sprout.Update(), rb != null ? SpeedFactor() : 0f);
 
             bool alive = link.MinecraftAlive;
             if (alive != mcWasAlive)
@@ -393,8 +403,10 @@ namespace MyceliumCraft
             keys.Update(alive && phase != Phase.Idle, mcScreenOpen);
             // Combat: Mycelium's enemies to Minecraft's stand-ins, and their hits back.
             // Your weapons: the bag, Minecraft's carrots, the one Minecraft's hand holds.
-            if (rb != null) weapons.Update(this, link, alive && phase == Phase.Driving && camFresh2, camFresh2 ? lastCamMc.HandWeapon : 0u);
+            if (rb != null) weapons.Update(this, link, alive && phase == Phase.Driving && camFresh2, camFresh2 ? lastCamMc.HandWeapon : 0u, map);
             combat.HeldKnockback = weapons.HeldKnockback;
+            // Mycelium's attack events for Minecraft's swings (weapon attributes).
+            if (rb != null) combat.FollowSwings(lastCamMc.Swings, camFresh2 && alive);
             if (rb != null) combat.Update(link, rb.position, map);
             if (shakeTest && look && Time.realtimeSinceStartup >= nextShakeTime) FireTestShake();
             if (holdTest && controller != null && (phase == Phase.Driving || holdTestStep > 0)) RunHoldTest();
@@ -890,6 +902,32 @@ namespace MyceliumCraft
                 McLog.Info($"health: Mycelium {health:F1} of {max:F1} -> Minecraft {health / 5f:F2} of {max / 5f:F2} (half hearts)");
             }
         }
+        float lastSpeedLog = -1f, nextSpeedLog;
+
+        /// <summary>
+        /// The spore's walking speed as a multiple of its base speed, for Minecraft's movement speed
+        /// (your request, 2026-10-21): PlayerController.moveSpeed (base + the Speed level's bonus,
+        /// changed while speed effects last: Nimble's boost, slows) / SporeAttributeRanges.moveSpeedBase.
+        /// 1 at Speed level 1 with no effects. 0 when not known.
+        /// </summary>
+        float SpeedFactor()
+        {
+            GameObject parent = GameObject.Find("PlayerParent");
+            Type rt = Type.GetType("SporeAttributeRanges, Assembly-CSharp");
+            Component ranges = parent != null && rt != null ? parent.GetComponent(rt) : null;
+            object b = ranges != null ? rt.GetField("moveSpeedBase")?.GetValue(ranges) : null;
+            float baseSpeed = b is float f ? f : 0f, speed = OwnSpeed();
+            if (baseSpeed <= 0.01f || speed <= 0f) return 0f;
+            float factor = speed / baseSpeed;
+            if (Mathf.Abs(factor - lastSpeedLog) > 0.02f && Time.realtimeSinceStartup >= nextSpeedLog)
+            {
+                lastSpeedLog = factor;
+                nextSpeedLog = Time.realtimeSinceStartup + 0.5f; // a fading effect changes it every frame
+                McLog.Info($"speed: the spore walks at {speed:F2} (base {baseSpeed:F2}) -> Minecraft's movement speed x{factor:F2}");
+            }
+            return factor;
+        }
+
         Component ratioFrom;
         float ratioLastHealth, ratioLastMax;
 
@@ -1303,6 +1341,43 @@ namespace MyceliumCraft
             McLog.Info($"health test: now {(float)currentHealthField.GetValue(playerHealth):F1} of {(float)maxHealthField.GetValue(playerHealth):F1}");
         }
 
+        /// <summary>Test aid (-mcAttribute): give the held weapon an attribute.</summary>
+        System.Collections.IEnumerator AttributeTest(string name)
+        {
+            while (phase != Phase.Driving) yield return null;
+            yield return new WaitForSeconds(1f);
+            GameObject weapon = GameObject.FindWithTag("currentWeapon");
+            Type at = Type.GetType("AttributeAssigner, Assembly-CSharp");
+            object assigner = at?.GetField("Instance", BindingFlags.Public | BindingFlags.Static)?.GetValue(null);
+            MethodInfo pick = at?.GetMethod("PickAttFromString");
+            if (weapon == null || assigner == null || pick == null) { McLog.Info("attribute test: no weapon or AttributeAssigner"); yield break; }
+            var att = pick.Invoke(assigner, new object[] { weapon, name }) as Component;
+            if (att == null) { McLog.Info($"attribute test: '{name}' not found"); yield break; }
+            yield return null;
+            att.GetType().GetMethod("Equipped")?.Invoke(att, null);
+            McLog.Info($"attribute test: '{weapon.name}' has '{name}' now");
+            // What the attribute put on the spore and on enemies afterwards (effects are components).
+            GameObject player = GameObject.FindWithTag("currentPlayer");
+            string lastSeen = null;
+            for (int i = 0; i < 40; i++)
+            {
+                yield return new WaitForSeconds(0.25f);
+                var onPlayer = new System.Collections.Generic.List<string>();
+                if (player != null)
+                    foreach (string effect in new[] { "SpeedChange", "Poison", "Root", "Vulnerable" })
+                    {
+                        Type et = Type.GetType(effect + ", Assembly-CSharp");
+                        if (et != null && player.GetComponent(et) != null) onPlayer.Add(effect);
+                    }
+                int poisoned = 0;
+                Type pt = Type.GetType("Poison, Assembly-CSharp");
+                if (pt != null) poisoned = FindObjectsOfType(pt).Length;
+                string seen = $"spore effects [{string.Join(", ", onPlayer)}], Poison effects in the level {poisoned}";
+                if (seen != lastSeen) McLog.Info("attribute test: " + seen);
+                lastSeen = seen;
+            }
+        }
+
         /// <summary>Test aid (-mcSwingTest): how long each attack animation really runs to 90 %.</summary>
         System.Collections.IEnumerator SwingTest()
         {
@@ -1331,6 +1406,48 @@ namespace MyceliumCraft
                 a.speed = speed;
                 yield return new WaitForSeconds(0.5f);
             }
+        }
+
+        /// <summary>Test aid (-mcInteractWatch): log changes of SporeInteractableFinder.closestInteractableObject.</summary>
+        System.Collections.IEnumerator InteractWatch()
+        {
+            GameObject last = null;
+            bool first = true;
+            while (true)
+            {
+                yield return new WaitForSeconds(0.05f);
+                GameObject parent = GameObject.Find("PlayerParent");
+                Type ft = Type.GetType("SporeInteractableFinder, Assembly-CSharp");
+                Component finder = null;
+                if (parent != null && ft != null) finder = parent.GetComponentInChildren(ft);
+                if (finder == null && ft != null) finder = FindObjectOfType(ft) as Component;
+                var now = finder != null ? ft.GetField("closestInteractableObject")?.GetValue(finder) as GameObject : null;
+                if (!first && ReferenceEquals(now, last)) continue;
+                first = false;
+                last = now;
+                McLog.Info(now != null ? $"interact watch: closest interactable is '{now.name}' at {now.transform.position:F1}" : "interact watch: nothing interactable near");
+            }
+        }
+
+        /// <summary>Test aid (-mcRepickTest): pick up the nearest weapon lying in the world.</summary>
+        System.Collections.IEnumerator RepickTest()
+        {
+            while (phase != Phase.Driving) yield return null;
+            yield return new WaitForSeconds(8f);
+            GameObject nearest = null;
+            float best = 20f;
+            foreach (GameObject o in GameObject.FindGameObjectsWithTag("Weapon"))
+            {
+                float d = rb != null ? Vector3.Distance(o.transform.position, rb.position) : float.MaxValue;
+                if (d < best) { best = d; nearest = o; }
+            }
+            Type t = Type.GetType("WeaponInteraction, Assembly-CSharp");
+            Component interact = nearest != null && t != null ? nearest.GetComponent(t) : null;
+            if (interact == null) { McLog.Info("repick test: no weapon lying within 20 units"); yield break; }
+            Collider col = nearest.GetComponent<Collider>();
+            McLog.Info($"repick test: picking up '{nearest.name}' {best:F1} units away (layer {LayerMask.LayerToName(nearest.layer)}, collider {(col != null && col.enabled ? "on" : "off")})");
+            try { t.GetMethod("Interact", BindingFlags.Public | BindingFlags.Instance).Invoke(interact, new object[] { nearest }); }
+            catch (Exception e) { McLog.Info("repick test: Interact failed: " + (e.InnerException ?? e).Message); }
         }
 
         /// <summary>Test aid (-mcPickupTest): a weapon pickup through Mycelium's own code.</summary>

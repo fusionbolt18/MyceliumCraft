@@ -204,9 +204,18 @@ namespace MyceliumCraft
                 float mycDamage = damage * McConfig.DamageScale;
                 try
                 {
+                    // Through the held weapon first, as its own collision does: its attributes see
+                    // the hit and may change the damage (Critical, Repulsive...).
+                    string through = "";
+                    float before = mycDamage;
+                    mycDamage = WeaponHit(enemy, mycDamage, ref through);
                     takeDamage.Invoke(enemy, new object[] { mycDamage, false, true });
                     hitsApplied++;
+                    AfterWeaponHit(enemy, mycDamage);
                     Knockback(enemy);
+                    PlaySound("Impact", enemy.transform);
+                    if (through.Length > 0 || Mathf.Abs(before - mycDamage) > 0.01f)
+                        McLog.Info($"combat: through '{through}': {before:F1} -> {mycDamage:F1} Mycelium damage");
                     if (hitboxes != null) hitboxes.Flash(id);
                     float left = (float)currentHealthField.GetValue(enemy);
                     McLog.Info($"combat: Minecraft hit '{enemy.gameObject.name}' #{id} for {damage:F2} points{((hitFlags & Proto.HitCrit) != 0 ? " (critical)" : "")} -> {mycDamage:F1} Mycelium damage; health now {left:F1}");
@@ -217,6 +226,145 @@ namespace MyceliumCraft
                 }
             }
         }
+
+        // --- Mycelium's own attack events, for Minecraft's swings and hits, so weapon attributes work
+        // (your request, 2026-10-21). Attributes react to PlayerAttack.StartedAttack/FinishedAttack
+        // (Fragile, Nimble, Enigmatic, Flourishing; WeaponStats rolls skill procs on FinishedAttack
+        // after a hit) and to the weapon's WeaponCollision.HitEnemy (Critical, Repulsive, Sticky,
+        // Nasty, Hazardous, Vampiric, Feline...). Minecraft's attacks raised none of them.
+        const float SwingSeconds = 0.35f; // a swing "finishes" this long after it starts (or at the next)
+        uint swingsSeen;
+        bool swingsKnown;
+        float swingEnds = -1f;
+        int swingsRaised, hitsThroughWeapon;
+        float nextSwingLog;
+
+        /// <summary>Every frame: Minecraft's melee attack count (McState); raise Mycelium's attack events.</summary>
+        public void FollowSwings(uint count, bool fresh)
+        {
+            if (fresh)
+            {
+                if (!swingsKnown) { swingsKnown = true; swingsSeen = count; }
+                else if (count != swingsSeen)
+                {
+                    swingsSeen = count;
+                    StartSwing();
+                }
+            }
+            if (swingEnds >= 0f && Time.time >= swingEnds) FinishSwing();
+            if (swingsRaised > 0 && Time.realtimeSinceStartup >= nextSwingLog)
+            {
+                nextSwingLog = Time.realtimeSinceStartup + 10f;
+                McLog.Info($"combat: Mycelium's attack events raised for {swingsRaised} Minecraft swings, {hitsThroughWeapon} hits through the held weapon (last 10 s)");
+                swingsRaised = hitsThroughWeapon = 0;
+            }
+        }
+
+        void StartSwing()
+        {
+            if (swingEnds >= 0f) FinishSwing();
+            RaiseAttack("StartedAttack");
+            swingEnds = Time.time + SwingSeconds;
+            swingsRaised++;
+        }
+
+        void FinishSwing()
+        {
+            swingEnds = -1f;
+            RaiseAttack("FinishedAttack");
+        }
+
+        void RaiseAttack(string name)
+        {
+            GameObject parent = GameObject.Find("PlayerParent");
+            Type t = Type.GetType("PlayerAttack, Assembly-CSharp");
+            Component attack = parent != null && t != null ? parent.GetComponent(t) : null;
+            if (attack == null) return;
+            try { (t.GetField(name)?.GetValue(attack) as Action)?.Invoke(); }
+            catch (Exception e)
+            {
+                Exception inner = e.InnerException ?? e;
+                string where = inner.StackTrace ?? "";
+                int cut = 0;
+                for (int i = 0, lines = 0; i < where.Length && lines < 4; i++) if (where[i] == '\n') { lines++; cut = i; }
+                McLog.Info($"combat: PlayerAttack.{name} failed in a listener: {inner.Message}\n{(cut > 0 ? where.Substring(0, cut) : where)}");
+            }
+        }
+
+        /// <summary>The held weapon's WeaponCollision, or null.</summary>
+        static Component HeldCollision()
+        {
+            GameObject parent = GameObject.Find("PlayerParent");
+            Type st = Type.GetType("SwapWeapon, Assembly-CSharp"), ct = Type.GetType("WeaponCollision, Assembly-CSharp");
+            Component swap = parent != null && st != null ? parent.GetComponent(st) : null;
+            var weapon = swap != null ? st.GetProperty("O_curWeapon")?.GetValue(swap) as GameObject : null;
+            return weapon != null && ct != null ? weapon.GetComponent(ct) : null;
+        }
+
+        /// <summary>
+        /// A Minecraft hit through the held weapon, as WeaponCollision.OnTriggerEnter does: damage
+        /// plus its Sentience and reflect bonuses into dmgDealt, HitEnemy raised (attributes may
+        /// change dmgDealt), and what's left is the damage. A hit without a swing open (an arrow, a
+        /// sweep's late part) opens one, so the swing-end attributes see it.
+        /// </summary>
+        float WeaponHit(Component enemy, float damage, ref string through)
+        {
+            if (swingEnds < 0f) StartSwing();
+            Component wc = HeldCollision();
+            if (wc == null) return damage;
+            Type t = wc.GetType();
+            float total = damage + Num(t.GetField("sentienceBonusDamage")?.GetValue(wc)) + Num(t.GetField("reflectBonusDamage")?.GetValue(wc));
+            FieldInfo dealt = t.GetField("dmgDealt");
+            dealt?.SetValue(wc, total);
+            try { (t.GetField("HitEnemy")?.GetValue(wc) as Action<GameObject, float>)?.Invoke(enemy.gameObject, total); }
+            catch (Exception e) { McLog.Info($"combat: a weapon attribute failed on the hit: {(e.InnerException ?? e).Message}"); }
+            float after = dealt != null ? Num(dealt.GetValue(wc)) : total;
+            t.GetField("reflectBonusDamage")?.SetValue(wc, 0f);
+            through = wc.gameObject.name;
+            hitsThroughWeapon++;
+            return after;
+        }
+
+        /// <summary>After the damage, as WeaponCollision: Relentless Fury's frenzy heals a quarter of it.</summary>
+        void AfterWeaponHit(Component enemy, float damage)
+        {
+            Component wc = HeldCollision();
+            if (wc == null) return;
+            object fury = wc.GetType().GetField("relentlessFury", BindingFlags.NonPublic | BindingFlags.Instance)?.GetValue(wc);
+            if (fury == null || !(fury.GetType().GetField("isFrenzied")?.GetValue(fury) is bool frenzied) || !frenzied) return;
+            GameObject parent = GameObject.Find("PlayerParent");
+            Type ht = Type.GetType("PlayerHealth, Assembly-CSharp");
+            Component health = parent != null && ht != null ? parent.GetComponent(ht) : null;
+            ht?.GetMethod("PlayerHeal")?.Invoke(health, new object[] { damage / 4f });
+        }
+
+        /// <summary>SoundEffectManager.Instance.PlaySound(name, at), as Mycelium's weapon does on a hit.</summary>
+        static void PlaySound(string name, Transform at)
+        {
+            Type t = Type.GetType("SoundEffectManager, Assembly-CSharp");
+            object manager = t?.GetField("Instance", BindingFlags.Public | BindingFlags.Static)?.GetValue(null)
+                          ?? t?.GetProperty("Instance", BindingFlags.Public | BindingFlags.Static)?.GetValue(null);
+            if (manager == null) return;
+            foreach (MethodInfo m in t.GetMethods())
+            {
+                ParameterInfo[] ps = m.GetParameters();
+                if (m.Name != "PlaySound" || ps.Length < 2 || ps[0].ParameterType != typeof(string) || ps[1].ParameterType != typeof(Transform)) continue;
+                var args = new object[ps.Length];
+                args[0] = name;
+                args[1] = at;
+                bool ok = true;
+                for (int i = 2; i < ps.Length; i++)
+                {
+                    if (ps[i].HasDefaultValue) args[i] = ps[i].DefaultValue;
+                    else { ok = false; break; }
+                }
+                if (!ok) continue;
+                try { m.Invoke(manager, args); } catch (Exception) { }
+                return;
+            }
+        }
+
+        static float Num(object v) => v is float f ? f : v is double d ? (float)d : v is int i ? i : 0f;
 
         /// <summary>
         /// The held weapon's knockback on an enemy Minecraft hit, as Mycelium's own swing does

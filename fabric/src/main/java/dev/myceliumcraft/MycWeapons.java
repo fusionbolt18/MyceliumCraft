@@ -30,8 +30,9 @@ import net.minecraft.world.item.component.ItemAttributeModifiers;
 import net.minecraft.world.item.component.ItemLore;
 
 /**
- * Your Mycelium weapons as carrots in Minecraft's inventory (your choice, 2026-10-20; the looks come
- * later). Mycelium sends the table (Weapons block, WeaponBag.cs); this keeps exactly one carrot per
+ * Your Mycelium weapons as food items in Minecraft's inventory, by type (your choices, 2026-10-20/21;
+ * the looks come later): Slash weapons are bread, Smash weapons beetroot, Stab weapons carrots. Below,
+ * "carrot" means any of them. Mycelium sends the table (Weapons block, WeaponBag.cs); this keeps exactly one carrot per
  * weapon, marked with the weapon's id in its custom data:
  *  - its name, and attribute modifiers for the main hand: attack damage = the weapon's damage per
  *    swing in Mycelium / Mycelium's damageScale (so a full-strength hit does that damage there),
@@ -41,8 +42,14 @@ import net.minecraft.world.item.component.ItemLore;
  *  - not food (it can't be eaten).
  * Rewritten when Mycelium's numbers change (levelling up, a stat attribute, Fungal Might). Carrots of
  * weapons Mycelium doesn't have any more are removed (a new run starts with only the Stick), and so
- * are copies (a carrot dropped and picked up, or left on the ground: it's made again in the
- * inventory and the dropped one is removed). After a pickup Minecraft selects the new carrot.
+ * are copies. After a pickup Minecraft selects the new carrot.
+ *
+ * Throwing one (your choice, 2026-10-21): the item flies through Minecraft's world as usual (its own
+ * physics, on Mycelium's ground), nobody can pick it up, and its position goes to Mycelium every
+ * frame (Thrown block), which shows the real weapon on the same path and takes it out of your bag.
+ * Once it has rested on the ground for 5 ticks (or after 10 s) the item is removed, and the real
+ * weapon stays on Mycelium's ground as a pickup. While it flies, its weapon counts as present, so it
+ * isn't put back in the inventory.
  * The carrot in the main hand is sent back (McState), and the spore holds that weapon.
  * Changes are made on the integrated server; the client only reads and selects.
  */
@@ -68,7 +75,7 @@ public final class MycWeapons {
 
 	/** The weapon id on a stack (0 = not one of ours). */
 	public static int weaponId(ItemStack stack) {
-		if (stack == null || stack.isEmpty() || !stack.is(Items.CARROT)) {
+		if (stack == null || stack.isEmpty() || !(stack.is(Items.BREAD) || stack.is(Items.BEETROOT) || stack.is(Items.CARROT))) {
 			return 0;
 		}
 		CustomData data = stack.get(DataComponents.CUSTOM_DATA);
@@ -153,6 +160,10 @@ public final class MycWeapons {
 		}
 		Inventory inv = sp.getInventory();
 		Set<Integer> seen = new HashSet<>();
+		// Thrown weapons flying or lying in the world are present: not made again.
+		for (ItemEntity item : sp.level().getEntities(EntityTypes.ITEM, e -> weaponId(e.getItem()) != 0)) {
+			seen.add(weaponId(item.getItem()));
+		}
 		int removed = 0, updated = 0, added = 0;
 		for (int slot = 0; slot < inv.getContainerSize(); slot++) {
 			ItemStack stack = inv.getItem(slot);
@@ -168,6 +179,14 @@ public final class MycWeapons {
 			}
 			if (stack.getCount() != 1) {
 				stack.setCount(1);
+			}
+			if (!stack.is(item(w.type))) {
+				// The wrong item for its type (made before Slash became bread, Smash beetroot): swap it in place.
+				stack = new ItemStack(item(w.type));
+				inv.setItem(slot, stack);
+				apply(stack, w, scale);
+				updated++;
+				continue;
 			}
 			int stamp = stamp(w, scale);
 			if (stack.get(DataComponents.CUSTOM_DATA).copyTag().getIntOr(STAMP_KEY, 0) != stamp) {
@@ -188,7 +207,7 @@ public final class MycWeapons {
 			if (seen.contains(w.id)) {
 				continue;
 			}
-			ItemStack stack = new ItemStack(Items.CARROT);
+			ItemStack stack = new ItemStack(item(w.type));
 			apply(stack, w, scale);
 			if (inv.add(stack)) {
 				added++;
@@ -196,15 +215,69 @@ public final class MycWeapons {
 				MycLink.LOG.info("MyceliumCraft: weapons: no room in the inventory for '{}' (#{})", w.name, w.id);
 			}
 		}
-		// Carrots lying in the world (dropped, or left by a death before this): gone, they live in the inventory.
-		int discarded = 0;
-		for (ItemEntity item : sp.level().getEntities(EntityTypes.ITEM, e -> weaponId(e.getItem()) != 0)) {
-			item.discard();
-			discarded++;
+		if (removed + updated + added > 0) {
+			MycLink.LOG.info("MyceliumCraft: weapons: inventory: {} added, {} rewritten, {} removed", added, updated, removed);
 		}
-		if (removed + updated + added + discarded > 0) {
-			MycLink.LOG.info("MyceliumCraft: weapons: inventory: {} added, {} rewritten, {} removed, {} on the ground removed", added, updated, removed, discarded);
+	}
+
+	/** The item for a weapon type: Slash bread, Smash beetroot, Stab carrot. */
+	private static net.minecraft.world.item.Item item(int type) {
+		return type == 0 ? Items.BREAD : type == 1 ? Items.BEETROOT : Items.CARROT;
+	}
+
+	private static final int[] THROWN_IDS = new int[Proto.THR_MAX], THROWN_FLAGS = new int[Proto.THR_MAX];
+	private static final double[] THROWN_XYZ = new double[Proto.THR_MAX * 3];
+	private static int lastThrownCount;
+
+	/** Every frame (render thread): your weapon items in the world, for Mycelium (Thrown block). */
+	public static void thrownFrame(Minecraft minecraft, float partial) {
+		int n = 0;
+		if (minecraft.level != null) {
+			for (var entity : minecraft.level.entitiesForRendering()) {
+				if (n >= Proto.THR_MAX || !(entity instanceof ItemEntity item) || item.isRemoved()) {
+					continue;
+				}
+				int id = weaponId(item.getItem());
+				if (id == 0) {
+					continue;
+				}
+				var pos = item.getPosition(partial);
+				THROWN_IDS[n] = id;
+				THROWN_FLAGS[n] = item.onGround() && item.getDeltaMovement().lengthSqr() < 1e-4 ? Proto.THR_LANDED : 0;
+				THROWN_XYZ[n * 3] = pos.x;
+				THROWN_XYZ[n * 3 + 1] = pos.y;
+				THROWN_XYZ[n * 3 + 2] = pos.z;
+				n++;
+			}
 		}
+		if (n != lastThrownCount) {
+			MycLink.LOG.info("MyceliumCraft: weapons: {} thrown weapon(s) in the world", n);
+			lastThrownCount = n;
+		}
+		MycLink.writeThrown(n, THROWN_IDS, THROWN_FLAGS, THROWN_XYZ);
+	}
+
+	private static final Map<ItemEntity, Integer> RESTING = new java.util.WeakHashMap<>();
+
+	/** Every server tick: thrown weapon items can't be picked up, and go once they've landed. */
+	public static void init() {
+		net.fabricmc.fabric.api.event.lifecycle.v1.ServerTickEvents.END_SERVER_TICK.register(server -> {
+			for (var level : server.getAllLevels()) {
+				for (ItemEntity item : level.getEntities(EntityTypes.ITEM, e -> weaponId(e.getItem()) != 0)) {
+					item.setNeverPickUp(); // it's the real weapon in Mycelium now
+					boolean resting = item.onGround() && item.getDeltaMovement().lengthSqr() < 1e-4;
+					int ticks = resting ? RESTING.getOrDefault(item, 0) + 1 : 0;
+					RESTING.put(item, ticks);
+					if (ticks >= 5 || item.getAge() > 200) {
+						MycLink.LOG.info("MyceliumCraft: weapons: thrown #{} {} at ({}, {}, {}); its item is removed, the weapon stays in Mycelium",
+							weaponId(item.getItem()), ticks >= 5 ? "landed" : "still flying after 10 s",
+							String.format("%.2f", item.getX()), String.format("%.2f", item.getY()), String.format("%.2f", item.getZ()));
+						item.discard();
+						RESTING.remove(item);
+					}
+				}
+			}
+		});
 	}
 
 	/** Take every weapon carrot away (server thread): before Minecraft's death drop. */

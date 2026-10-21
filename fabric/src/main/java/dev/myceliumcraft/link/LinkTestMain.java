@@ -48,6 +48,13 @@ public final class LinkTestMain {
 	private static final boolean SCREEN = "1".equals(System.getenv("LINKTEST_SCREEN"));
 	// LINKTEST_HAND=1: the main hand holds weapon #1 from 7.5 s, nothing (empty) from 8.5 s, #2 from 9.5 s.
 	private static final boolean HAND = "1".equals(System.getenv("LINKTEST_HAND"));
+	// LINKTEST_HOLD=<id>: the main hand holds that weapon the whole time.
+	private static final int HOLD = Integer.parseInt(System.getenv().getOrDefault("LINKTEST_HOLD", "0"));
+	// LINKTEST_THROW=<id>: that weapon thrown from 5 s: flying 3 blocks forward (where the player faces) in an arc until 6.5 s,
+	// landed until 7 s, then gone (removed), as Minecraft reports a thrown weapon item.
+	private static final int THROW = Integer.parseInt(System.getenv().getOrDefault("LINKTEST_THROW", "0"));
+	private static final int[] THROW_IDS = new int[1], THROW_FLAGS = new int[1];
+	private static final double[] THROW_XYZ = new double[3];
 	private static final MycLink.Enemy[] ENEMIES = new MycLink.Enemy[Proto.E_MAX];
 	private static long nextHit, nextEnemyLog;
 	private static boolean modelTextureSent;
@@ -200,6 +207,7 @@ public final class LinkTestMain {
 		ok &= check("Mycelium max health", myc.maxHealth, 150);
 		ok &= check("Mycelium nutrients", myc.nutrients, 42);
 		ok &= check("Mycelium sprout progress", myc.emerge, 0.25);
+		ok &= check("Mycelium speed factor", myc.speed, 1.25);
 		MycLink.Weapon[] weapons = new MycLink.Weapon[Proto.W_MAX];
 		for (int i = 0; i < weapons.length; i++) {
 			weapons[i] = new MycLink.Weapon();
@@ -305,8 +313,22 @@ public final class LinkTestMain {
 			}
 			// LINKTEST_FOVEYE=1: sprint FOV (x1.15) and crouch eye height (x0.78) from 4 to 7 s.
 			boolean feel = FOVEYE && t >= 4 && t < 7;
-			int hand = !HAND || t < 7.5 ? 0 : t < 8.5 ? 1 : t < 9.5 ? 0 : 2;
+			int hand = HOLD != 0 ? HOLD : !HAND || t < 7.5 ? 0 : t < 8.5 ? 1 : t < 9.5 ? 0 : 2;
 			MycLink.writeMcState(flags, px, y, pz, yaw, pitch, frames++, 1, ack, cameraMode, bodyYaw, tick, feel ? 1.15f : 1f, feel ? 0.78f : 1f, 1f, hand);
+			if (THROW != 0) {
+				int n = 0;
+				if (t >= 5 && t < 7) {
+					double f = Math.min(1, (t - 5) / 1.5); // 0..1 through the flight
+					THROW_IDS[0] = THROW;
+					THROW_FLAGS[0] = f >= 1 ? Proto.THR_LANDED : 0;
+					double fx = -Math.sin(Math.toRadians(yaw)), fz = Math.cos(Math.toRadians(yaw)); // Minecraft: yaw 0 faces +Z
+					THROW_XYZ[0] = px + (0.3 + 3 * f) * fx;
+					THROW_XYZ[1] = y + 1.2 + 1.5 * f - 2.7 * f * f; // up from the hand, then down onto the ground
+					THROW_XYZ[2] = pz + (0.3 + 3 * f) * fz;
+					n = 1;
+				}
+				MycLink.writeThrown(n, THROW_IDS, THROW_FLAGS, THROW_XYZ);
+			}
 			if (OVERLAY) {
 				writeTestPicture();
 			}

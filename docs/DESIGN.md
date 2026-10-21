@@ -338,6 +338,25 @@ prevented fall or heal is logged at most once a second.
     51.4 (51 %, after some regeneration). No hurt tilt.
 - **Outside Mycelium's levels** (max 0 or no spore): not synced, and max health is put back to 20.
 
+### 5.0.2.2 Walking speed follows Mycelium's Speed stat (since 2026-10-21)
+
+- While Minecraft drives, the spore follows Minecraft's player. So Mycelium's Speed stat, and its
+  speed effects (Nimble's boost, slows), changed nothing until now.
+- **Mycelium sends** the spore's walking speed as a multiple of its base speed (MycState 0x60,
+  protocol v26): `PlayerController.moveSpeed` ÷ `SporeAttributeRanges.moveSpeedBase`.
+  `moveSpeed` is the base plus the Speed level's bonus, and speed effects change it while they
+  last.
+- **Minecraft multiplies** the player's movement speed by it: a modifier "myceliumcraft:speed",
+  `ADD_MULTIPLIED_TOTAL` (factor − 1), on the integrated server when it changes by more than 1 %.
+  It's taken off outside Mycelium's levels. Sprinting and Minecraft's own effects multiply on top.
+  Minecraft widens its FOV with movement speed, as with a Speed potion, and Mycelium's camera
+  follows that.
+- **Checked:**
+  - In Daybreak Arboretum the spore walks at 6.00 with base 6.00: ×1.00.
+  - With `-mcAttribute Nimble` and the fake Minecraft's hits: ×1.30 after a hit, fading back to
+    ×1.
+  - Both stand-ins pass the 0x60 check (1.25).
+
 ### 5.0.2.1 Experience level = nutrients (since 2026-10-19)
 
 Mycelium reads `NutrientTracker.currentNutrients` (found by name; on 'NutrientCounter') and sends it
@@ -392,7 +411,12 @@ change. The crosshair picks on the client's copy, which before this kept Minecra
      and every detail of the enemy's look stays visible (a flat 40 % red layer covered them);
   2. add (0.12, 0.03, 0.03) of red light, so the flash isn't darker than the enemy.
 
-  The two passes are tagged SRPDefaultUnlit and UniversalForward, so URP draws both. Taking it away removes only that material. `-mcFlashCheck` logs the colour and
+  The two passes are tagged SRPDefaultUnlit and UniversalForward, so URP draws both.
+  **Poisoned enemies flash green** (since 2026-10-21, your choice). If Mycelium's `Poison` effect
+  is on the enemy when its health drops, the same shader is used with red and green swapped:
+  multiply (0.72, 1, 0.72), add (0.03, 0.12, 0.03). Poison hurts every 0.5 s for about 5 s, so a
+  poisoned enemy stays green while it lasts. An enemy poisoned or cured mid-flash has its colour
+  swapped in place. Taking it away removes only that material. `-mcFlashCheck` logs the colour and
   detail on screen around an enemy during and after its flash.
 
 **Hurt camera tilt, as Minecraft's** (since 2026-10-19, `HurtTilt`): when the spore loses health
@@ -503,7 +527,45 @@ Stick.
     the held weapon's value (`EnemyKnockback.Knockback`, as `WeaponCollision` does).
 - Sent in the Weapons table (protocol v24) with a version number that changes on any change.
 
+**Weapon attributes work with Minecraft's attacks** (since 2026-10-21). Mycelium's attributes hook
+in three ways:
+
+| Hook | Attributes | With Minecraft's attacks |
+|---|---|---|
+| `Initialize`: the weapon's own numbers | Heavy, Light, Rapid, Massive, Tiny, Bouncy, Nutritious, Stickbuggy… | in the item's numbers (worked already) |
+| `Equipped`/`Unequipped`: the spore's stats while held | Agile, Athletic, Beefy, Golden, Savvy, Sharp, Smart, Strong, Tenacious, Tough, Vigorous, Resourceful, Stinky, Vampiric | done by the weapon switching (worked already) |
+| `Hit`: the weapon's `WeaponCollision.HitEnemy` | Critical, Repulsive, Nasty, Hazardous, Sticky, Feline, Vampiric, Fragile, Nimble, Enigmatic, Flourishing | **now:** every Minecraft hit goes through the held weapon |
+| `StartAttack`/`StopAttack`: `PlayerAttack.StartedAttack`/`FinishedAttack` | Fragile, Nimble, Enigmatic, Flourishing; skill procs (Bursting, Erupting, Toxicating, Undergrown, Mycelic) roll in `WeaponStats` after a swing that hit | **now:** raised for every Minecraft swing |
+
+- **Swings:** Minecraft counts melee attacks that go ahead (`MinecraftMixin.startAttack`) and
+  sends the count (McState 0x94, protocol v25). For each new one, Mycelium raises
+  `StartedAttack`, then `FinishedAttack` 0.35 s later, or at the next swing (`EnemyCombat`).
+- **Hits:** each one is put through the held weapon as `WeaponCollision.OnTriggerEnter` does:
+  1. Minecraft's damage × `damageScale`, plus the weapon's Sentience and reflect bonuses, goes into
+     `dmgDealt`;
+  2. `HitEnemy` is raised, with the enemy's object;
+  3. what's left in `dmgDealt` is the damage (Critical can double it; Repulsive makes it 0 and
+     poisons);
+  4. then Relentless Fury's frenzy heal (a quarter of it), the knockback, and the "Impact" sound.
+
+  A hit with no swing open (an arrow) opens one.
+- **Fragile and Enigmatic replace the held weapon themselves.** Fragile breaks into a Stick;
+  Enigmatic turns into a random weapon with the same attributes. They do it by destroying it
+  in the middle of a level. The bag keeps the new one in the old one's place: same id, same slot,
+  its item and numbers updated.
+- **Checked** with the fake Minecraft's hits (`LINKTEST_HIT=1`) and `-mcAttribute <Name>` (gives
+  the held weapon that attribute):
+  - Repulsive: 10 → 0 damage, and a Poison effect on the enemy.
+  - Nimble: the spore's speed effect appeared 0.45 s after each hit (the swing's end) for 1.5 s.
+  - Enigmatic (`LINKTEST_HOLD=1`, so the Stick was really held): it turned into a Bamboo
+    Partisan, then an Avocado Flamberge, then a Rose Mace, all as #1.
+- Not every attribute is tested; skill procs are random (15 %). "Sticky" isn't in Mycelium's
+  attribute lists, so the game never gives it out.
+
 **Minecraft side** (`MycWeapons`, on the integrated server; the client only reads and selects):
+- **The item depends on the weapon type** (since 2026-10-21, your choice): Slash weapons are
+  bread, Smash weapons beetroot, Stab weapons carrots. Below, "carrot" means any of them. A weapon
+  with the wrong item for its type (made before this) is swapped in place, in the same slot.
 - **One carrot per weapon,** marked with the weapon's id and a stamp of its numbers in custom data.
   Made, rewritten (when the stamp differs), or removed (weapons Mycelium doesn't have; copies) on
   any table change and twice a second.
@@ -516,8 +578,32 @@ Stick.
   - **Description:** type, damage (×multiplier), swings per second (×modifier), knockback, then
     the attributes.
   - Not food: `FOOD` and `CONSUMABLE` are removed.
-- **Copies:** a weapon carrot lying in the world (dropped, or thrown) is removed, and made again in
-  the inventory. The one on the cursor in an open inventory counts as held.
+- **Throwing a weapon** (since 2026-10-21, your choice; before, a dropped carrot was removed and
+  put back in the inventory):
+  1. The item flies through Minecraft's world as usual: Minecraft's own throw speed and physics, on
+     Mycelium's ground. Nobody can pick it up (`setNeverPickUp`, every server tick), and while it's
+     in the world its weapon counts as present, so it isn't made again in the inventory.
+  2. Every frame, the client sends each weapon item's id, position (interpolated) and "landed"
+     (on the ground, not moving) to Mycelium: the Thrown block, protocol v27.
+  3. Mycelium (`WeaponBag.FollowThrown`) takes the weapon out of the bag and puts the real one in
+     the world as Mycelium drops one: tag and layer "Weapon", collider on, so it can be interacted
+     with all the time. **Its pop-up moves with it.** `TooltipManager` places the pop-up once,
+     where the thing is at that moment (Mycelium's lying weapons never move), so a thrown weapon's
+     pop-up was left behind in the air (your report). While it flies, its pop-up is moved by as
+     much as the weapon each frame, when the pop-up is the weapon's
+     (`TooltipManager.currentParent`). A first fix kept the collider off until it landed, but that
+     took too long, so it was replaced.
+     - **The held one** leaves the hand with its attributes unequipped, and the hand is emptied
+       (the invisible stand-in). It's marked as flying first, because emptying the hand removes
+       whatever the spore holds unless it's flying; the first test lost the mace that way.
+     - **One from the bag** is built from its prefab in the hand slot (for the hand's scale, which
+       Mycelium's dropped weapons keep), let go, and its attributes added back a frame later (not
+       Equipped).
+  4. It's moved onto the item every frame, 0.25 blocks up, and spins as Mycelium's lying weapons do.
+  5. Once the item has rested on the ground for 5 ticks (or after 10 s), Minecraft removes it. The
+     weapon stays where it is as a pickup. Picking it up is an ordinary pickup: it comes back as a
+     new weapon with its attributes.
+- The carrot on the cursor in an open inventory counts as held.
 - **Pickups:** the new carrot is selected once it's in the hotbar (within 3 s; a full hotbar
   means it isn't).
 - **Death:** the carrots are taken out just before Mycelium's death kills the Minecraft player,
@@ -851,6 +937,11 @@ Minecraft's window.
   - Minecraft's "inactive" frame-rate limit is bypassed (`FramerateLimitTrackerMixin` returns your
     own frame-rate setting), and bridged input counts as input for its idle timer. Your log showed
     Minecraft dropping from 120 to 30 fps for stretches while bridged.
+  - **Also whenever Mycelium is in a level showing Minecraft's overlay** (since 2026-10-21), bridge
+    on or off. A minimized Minecraft caps itself at 10 fps. During the death fall and the respawn
+    emerge, Mycelium has the controls, so the bridge is off. Your body is captured once per
+    Minecraft frame, so those animations updated 10 times a second ("player model: sent 10 times",
+    88 seconds of your log) and looked choppy.
 - **Stopping:** when it stops being active, every held key and button is released.
 
 **Which game owns which key** (`KeyOwnership.cs`, while Minecraft drives the spore;
@@ -1091,7 +1182,7 @@ finished screen with the overlay on and off:
 - the empty spot unchanged
 - about 60 pictures a second, 0.03–0.08 ms each to upload at 640×360
 
-## 5.9 Server stalls (being investigated, 2026-10-21)
+## 5.9 Server stalls (found and fixed, 2026-10-21)
 
 **Late hits come from Minecraft's integrated server stalling.** All hits on enemy stand-ins are
 handled on that server.
@@ -1106,7 +1197,18 @@ handled on that server.
 - **Ruled out:** building collision shapes from the grid. A scratch program timed the mod's own
   code on a real dumped grid (128 × 128 cells, up to 4 pieces each): 1–4 µs per block, so 2 s
   would take about a million blocks.
-- **`ServerStallWatch`** (diagnostic, changes nothing):
+- **Found** (`ServerStallWatch`, your next session, 13:27–13:28): 54 slow ticks of 0.26–1.6 s at
+  the end of a level. All 23 stacks caught were in the same chain:
+  1. `EnemyProxies.tick`, then `EnemyProxy.setSize`;
+  2. the synced size changing, which calls `refreshDimensions`;
+  3. Minecraft's `fudgePositionAfterSizeChange`, then `CollisionGetter.findFreePosition`: it
+     gathers every collision shape around the entity (Mycelium's ground included) and merges them.
+
+  Enemies' boxes wobble as they animate, so this ran over and over.
+- **Fixed:** a stand-in doesn't get pushed out of blocks (`fudgePositionAfterSizeChange` does
+  nothing). It's put exactly onto its enemy every tick and never moves by physics. Its size is
+  only updated when it changes by more than 0.05 blocks (was 0.01).
+- **`ServerStallWatch`** stays, as a diagnostic that changes nothing:
   - every server tick is timed;
   - while one has run 0.4 s (and again at 1.5 s), a watcher thread logs the server thread's
     stack ("server stall: tick N has run X ms so far; the server thread is in: …");

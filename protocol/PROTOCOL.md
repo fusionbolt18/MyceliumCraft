@@ -29,7 +29,7 @@ a block without locks.
 - **Reader:** read `seq`. If it's odd, try again. Read the fields, then read `seq` again. If it
   changed, try again.
 
-## Layout (version 24)
+## Layout (version 27)
 
 ### Header @ 0x000
 
@@ -63,6 +63,7 @@ a block without locks.
 | 0x54 | f32 | Mycelium's max health; 0 = no spore health known (Minecraft's health isn't synced then) |
 | 0x58 | i32 | Mycelium's nutrients; −1 = not known (Minecraft's experience level follows it); since version 19 |
 | 0x5C | f32 | how far through Mycelium's sprout in The Carcass: 0 while waiting for it, then the Sprout animation's progress up to 1 (Minecraft plays the Warden's emerge over it); −1 = no sprout; since version 22 |
+| 0x60 | f32 | the spore's walking speed ÷ its base speed (`PlayerController.moveSpeed` ÷ `SporeAttributeRanges.moveSpeedBase`): the Speed stat and speed effects. Minecraft's movement speed is multiplied by it. 0 = not known. Since version 26 |
 
 ### McState @ 0x200 (Minecraft → Mycelium, seqlock)
 
@@ -92,6 +93,7 @@ Positions are in **Minecraft coordinates**: blocks, Y up, +Z is south.
 | 0x88 | f32 | eye height now ÷ standing eye height: Minecraft's smoothed camera eye height (crouching about 0.78). 0 = not sent |
 | 0x8C | f32 | Minecraft's "Damage Tilt" accessibility setting, 0 (off) to 1 (full): how far Mycelium's camera tilts toward a hit. Since version 20 |
 | 0x90 | u32 | the weapon (Weapons table id) whose carrot is in the main hand; 0 = none. The spore holds that weapon. Since version 24 |
+| 0x94 | u32 | melee attacks Minecraft has started (counts up): Mycelium raises its own attack-started/finished events for each, so weapon attributes work. Since version 25 |
 
 Like SkyCraft: with the raw ticks and their time, Mycelium can work out where Minecraft's player is at
 *any* moment on its own clock, as Minecraft's renderer does with partial ticks:
@@ -252,6 +254,18 @@ The mapping grows by 0x4000. Strings are UTF-8, zero-terminated.
 | 0x18 | f32 | attack speed modifier |
 | 0x20 | utf8[64] | name |
 | 0x60 | utf8[160] | attributes, "Name: description; Name: description" |
+
+### Thrown @ after Weapons (Minecraft → Mycelium, seqlock). Since version 27
+
+Your weapons flying through Minecraft's world as items after you throw them. Mycelium shows the real
+weapon on the same path and leaves it on the ground as a pickup once Minecraft removes the item. The
+mapping grows by 0x400.
+
+| Off | Type | Field |
+|---|---|---|
+| 0x00 | u32 | seq |
+| 0x04 | u32 | count (at most 16) |
+| 0x10 + 0x20·i | entry | u32 weapon id (Weapons table), u32 flags (bit0 landed), f64 x, y, z (Minecraft, the item's feet, interpolated to the frame) |
 
 ### GroundGrid @ 0x1000 (Mycelium → Minecraft, seqlock)
 

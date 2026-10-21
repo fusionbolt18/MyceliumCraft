@@ -37,6 +37,8 @@ public abstract class MinecraftMixin {
 	private void myceliumcraft$fullChargeOnly(CallbackInfoReturnable<Boolean> cir) {
 		if (MyceliumCraftClient.attackNotCharged((Minecraft) (Object) this)) {
 			cir.setReturnValue(false);
+		} else {
+			MyceliumCraftClient.swingStarted(); // Mycelium's attack events (weapon attributes)
 		}
 	}
 

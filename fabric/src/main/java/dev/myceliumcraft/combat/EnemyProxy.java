@@ -57,9 +57,12 @@ public class EnemyProxy extends Mob {
 		this.entityData.set(DATA_ENEMY_ID, id);
 	}
 
-	/** The enemy's size in blocks; the hitbox follows it, on the server and (synced) on the client. */
+	/**
+	 * The enemy's size in blocks; the hitbox follows it, on the server and (synced) on the client.
+	 * Only when it really changes (0.05 blocks): enemies' boxes wobble as they animate.
+	 */
 	public void setSize(float w, float h) {
-		if (Math.abs(w - this.entityData.get(DATA_WIDTH)) > 0.01f || Math.abs(h - this.entityData.get(DATA_HEIGHT)) > 0.01f) {
+		if (Math.abs(w - this.entityData.get(DATA_WIDTH)) > 0.05f || Math.abs(h - this.entityData.get(DATA_HEIGHT)) > 0.05f) {
 			this.entityData.set(DATA_WIDTH, w);
 			this.entityData.set(DATA_HEIGHT, h);
 			this.refreshDimensions();
@@ -72,6 +75,18 @@ public class EnemyProxy extends Mob {
 		if (DATA_WIDTH.equals(key) || DATA_HEIGHT.equals(key)) {
 			this.refreshDimensions(); // the client's copy takes the new size too
 		}
+	}
+
+	/**
+	 * After a size change Minecraft pushes an entity out of any block it now overlaps
+	 * (findFreePosition): it gathers and merges the collision shapes all around it, here with
+	 * Mycelium's ground. That took 0.3-1.6 s on the server near the end of a level, many times,
+	 * so hits waited and came out weak (your report, 2026-10-21; ServerStallWatch caught it).
+	 * A stand-in is put exactly onto its enemy every tick and never moves by physics: no push.
+	 */
+	@Override
+	public boolean fudgePositionAfterSizeChange(EntityDimensions previous) {
+		return false;
 	}
 
 	@Override

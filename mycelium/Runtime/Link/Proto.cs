@@ -64,9 +64,18 @@ namespace MyceliumCraft.Link
         public const int WeId = 0x00, WeType = 0x04, WeDamage = 0x08, WePerSecond = 0x0C, WeKnockback = 0x10, WeDamageMult = 0x14, WeSpeedMod = 0x18;
         public const int WeName = 0x20, WeNameBytes = 0x40, WeAtts = 0x60, WeAttsBytes = 0xA0;
 
-        public const int MappingBytes = OffWeapons + WeaponsBytes;
+        // Thrown (Minecraft -> Mycelium, seqlock): your weapons flying through Minecraft's world as
+        // items, for Mycelium to show the real weapon on the same path (since v27).
+        public const int OffThrown = OffWeapons + WeaponsBytes;
+        public const int ThrownBytes = 0x400;
+        public const int ThrSeq = 0x00, ThrCount = 0x04, ThrList = 0x10;
+        public const int ThrMax = 16;
+        public const int ThrSize = 0x20;        // u32 weapon id, u32 flags, f64 x, y, z (Minecraft, the item's feet)
+        public const uint ThrLanded = 1u << 0;  // resting on the ground
+
+        public const int MappingBytes = OffThrown + ThrownBytes;
         public const uint Magic = 0x4343594D; // "MYCC"
-        public const uint Version = 24;
+        public const uint Version = 27;
         public const ulong HeartbeatTimeoutMs = 3000;
 
         // Header @0x000
@@ -97,6 +106,7 @@ namespace MyceliumCraft.Link
         public const int MyMaxHealth = 0x54;   // Mycelium's max health; 0 = no spore health known
         public const int MyNutrients = 0x58;   // Mycelium's nutrients (i32); -1 = not known; since v19
         public const int MyEmerge = 0x5C;      // how far through Mycelium's sprout (0..1); -1 = no sprout; since v22
+        public const int MySpeed = 0x60;       // the spore's walking speed / its base speed (Speed stat, speed effects); 0 = not known; since v26
         public const uint MycInLevel = 1u << 0;
         public const uint MycPaused = 1u << 1;
         public const uint MycOverlay = 1u << 2; // Mycelium shows Minecraft's overlay: Minecraft skips drawing its world
@@ -124,6 +134,7 @@ namespace MyceliumCraft.Link
         public const int McEyeScale = 0x88;   // eye height now / standing eye height (crouching ~0.78); 0 = not sent
         public const int McDamageTilt = 0x8C; // Minecraft's "Damage Tilt" setting, 0 (off) .. 1; since v20
         public const int McHandWeapon = 0x90; // u32: the weapon (Weapons table id) whose carrot is in Minecraft's main hand; 0 = none; since v24
+        public const int McSwings = 0x94;     // u32: melee attacks Minecraft has started (counts up); since v25
         public const uint McInWorld = 1u << 0;
         public const uint McScreenOpen = 1u << 1;
         public const uint McOnGround = 1u << 2;

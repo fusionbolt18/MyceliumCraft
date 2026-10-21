@@ -22,6 +22,7 @@ namespace MyceliumCraft.Link
         public float FovScale, EyeScale; // Minecraft's FOV multiplier and eye height / standing (0: not sent)
         public float DamageTilt;         // Minecraft's "Damage Tilt" setting, 0 (off) .. 1
         public uint HandWeapon;          // the weapon whose carrot is in Minecraft's main hand (0 = none)
+        public uint Swings;              // melee attacks Minecraft has started (counts up)
 
         public bool HasTicks => TickMs > 0f && TickQpc != 0;
 
@@ -150,7 +151,7 @@ namespace MyceliumCraft.Link
         }
 
         /// <summary>Seqlock write of MycState.</summary>
-        public void WriteMycState(uint flags, double x, double y, double z, float yaw, ulong frame, in Teleport tp, float playerHeightBlocks, float health = 0f, float maxHealth = 0f, int nutrients = -1, float emerge = -1f)
+        public void WriteMycState(uint flags, double x, double y, double z, float yaw, ulong frame, in Teleport tp, float playerHeightBlocks, float health = 0f, float maxHealth = 0f, int nutrients = -1, float emerge = -1f, float speed = 0f)
         {
             int b = Proto.OffMycState;
             uint seq = ReadU32(view, b + Proto.MySeq);
@@ -172,6 +173,7 @@ namespace MyceliumCraft.Link
             WriteF32(view, b + Proto.MyMaxHealth, maxHealth);
             Marshal.WriteInt32(view, b + Proto.MyNutrients, nutrients);
             WriteF32(view, b + Proto.MyEmerge, emerge);
+            WriteF32(view, b + Proto.MySpeed, speed);
             Thread.MemoryBarrier();
             WriteU32(view, b + Proto.MySeq, seq + 2); // even: done
         }
@@ -251,6 +253,7 @@ namespace MyceliumCraft.Link
                 s.EyeScale = ReadF32(view, b + Proto.McEyeScale);
                 s.DamageTilt = ReadF32(view, b + Proto.McDamageTilt);
                 s.HandWeapon = ReadU32(view, b + Proto.McHandWeapon);
+                s.Swings = ReadU32(view, b + Proto.McSwings);
                 Thread.MemoryBarrier();
                 if (ReadU32(view, b + Proto.McSeq) == seq1) return true;
             }
@@ -361,6 +364,31 @@ namespace MyceliumCraft.Link
         }
 
         /// <summary>Seqlock write of the enemy table (count entries of ids/flags/values).</summary>
+        /// <summary>Seqlock read of the Thrown table: ids, flags, and x, y, z (Minecraft) per item. Count, or -1.</summary>
+        public int TryReadThrown(uint[] ids, uint[] flags, double[] xyz)
+        {
+            int b = Proto.OffThrown;
+            for (int attempt = 0; attempt < 16; attempt++)
+            {
+                uint seq1 = ReadU32(view, b + Proto.ThrSeq);
+                Thread.MemoryBarrier();
+                if ((seq1 & 1) != 0) { Thread.SpinWait(20); continue; }
+                int count = (int)Math.Min(ReadU32(view, b + Proto.ThrCount), (uint)Math.Min(Proto.ThrMax, ids.Length));
+                for (int i = 0; i < count; i++)
+                {
+                    int e = b + Proto.ThrList + i * Proto.ThrSize;
+                    ids[i] = ReadU32(view, e);
+                    flags[i] = ReadU32(view, e + 4);
+                    xyz[i * 3] = BitConverter.Int64BitsToDouble(Marshal.ReadInt64(view, e + 8));
+                    xyz[i * 3 + 1] = BitConverter.Int64BitsToDouble(Marshal.ReadInt64(view, e + 16));
+                    xyz[i * 3 + 2] = BitConverter.Int64BitsToDouble(Marshal.ReadInt64(view, e + 24));
+                }
+                Thread.MemoryBarrier();
+                if (ReadU32(view, b + Proto.ThrSeq) == seq1) return count;
+            }
+            return -1;
+        }
+
         /// <summary>One weapon for the Weapons table.</summary>
         public struct WeaponEntry
         {

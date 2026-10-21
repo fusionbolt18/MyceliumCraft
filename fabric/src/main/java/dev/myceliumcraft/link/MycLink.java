@@ -153,6 +153,12 @@ public final class MycLink {
 	/** Seqlock write of McState, with the weapon in the main hand (Weapons id, 0 = none). */
 	public static void writeMcState(int flags, double x, double y, double z, float yaw, float pitch, long frame, int epoch, int teleportAck, int cameraMode, float bodyYaw, Tick tick,
 		float fovScale, float eyeScale, float damageTilt, int handWeapon) {
+		writeMcState(flags, x, y, z, yaw, pitch, frame, epoch, teleportAck, cameraMode, bodyYaw, tick, fovScale, eyeScale, damageTilt, handWeapon, 0);
+	}
+
+	/** Seqlock write of McState, with the count of melee attacks started (for Mycelium's attack events). */
+	public static void writeMcState(int flags, double x, double y, double z, float yaw, float pitch, long frame, int epoch, int teleportAck, int cameraMode, float bodyYaw, Tick tick,
+		float fovScale, float eyeScale, float damageTilt, int handWeapon, int swings) {
 		MemorySegment s = shm;
 		if (s == null) {
 			return;
@@ -186,6 +192,7 @@ public final class MycLink {
 		s.set(JAVA_FLOAT, b + MC_EYE_SCALE, eyeScale);
 		s.set(JAVA_FLOAT, b + MC_DAMAGE_TILT, damageTilt);
 		s.set(JAVA_INT, b + MC_HAND_WEAPON, handWeapon);
+		s.set(JAVA_INT, b + MC_SWINGS, swings);
 		INT.setRelease(s, b + MC_SEQ, seq + 2); // even: done
 	}
 
@@ -288,6 +295,29 @@ public final class MycLink {
 	}
 
 	/** One of Mycelium's enemies, as Minecraft's stand-in should be. */
+	/** Seqlock write of the Thrown table: weapon ids, flags, and positions (x, y, z per item). */
+	public static void writeThrown(int count, int[] ids, int[] flags, double[] xyz) {
+		MemorySegment s = shm;
+		if (s == null) {
+			return;
+		}
+		long b = OFF_THROWN;
+		int seq = s.get(JAVA_INT, b + THR_SEQ);
+		INT.setRelease(s, b + THR_SEQ, seq + 1);
+		VarHandle.storeStoreFence();
+		count = Math.min(count, THR_MAX);
+		s.set(JAVA_INT, b + THR_COUNT, count);
+		for (int i = 0; i < count; i++) {
+			long e = b + THR_LIST + i * THR_SIZE;
+			s.set(JAVA_INT, e, ids[i]);
+			s.set(JAVA_INT, e + 4, flags[i]);
+			s.set(JAVA_DOUBLE, e + 8, xyz[i * 3]);
+			s.set(JAVA_DOUBLE, e + 16, xyz[i * 3 + 1]);
+			s.set(JAVA_DOUBLE, e + 24, xyz[i * 3 + 2]);
+		}
+		INT.setRelease(s, b + THR_SEQ, seq + 2);
+	}
+
 	/** One of your weapons (Weapons table). */
 	public static final class Weapon {
 		public int id, type;
@@ -449,6 +479,8 @@ public final class MycLink {
 		public int nutrients = -1;
 		/** How far through Mycelium's sprout in The Carcass (0..1; -1 = none). */
 		public float emerge = -1f;
+		/** The spore's walking speed / its base speed (0 = not known). */
+		public float speed;
 
 		public boolean inLevel() {
 			return (this.flags & MYC_IN_LEVEL) != 0;
@@ -484,6 +516,7 @@ public final class MycLink {
 			out.maxHealth = s.get(JAVA_FLOAT, b + MY_MAX_HEALTH);
 			out.nutrients = s.get(JAVA_INT, b + MY_NUTRIENTS);
 			out.emerge = s.get(JAVA_FLOAT, b + MY_EMERGE);
+			out.speed = s.get(JAVA_FLOAT, b + MY_SPEED);
 			VarHandle.loadLoadFence();
 			int seq2 = (int) INT.getVolatile(s, b + MY_SEQ);
 			if (seq1 == seq2) {

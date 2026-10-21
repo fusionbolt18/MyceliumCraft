@@ -1,5 +1,288 @@
 # MODLOG
 
+## 2026-10-21 A thrown weapon's pop-up moves with it (it stays interactable)
+
+**Your note:** it took far too long for the weapon to become interactable again, so make the
+pop-up move with the weapon instead.
+
+**Changed:**
+- **`WeaponBag.cs`:**
+  - A thrown weapon's collider is on again from the start, so it's always interactable.
+  - New: `MovePopUp`. While it flies, if Mycelium's open pop-up is this weapon's
+    (`TooltipManager.currentParent`), the pop-up (`currentTooltip`) moves by as much as the weapon
+    each frame.
+  - The "lies at" line says for how many frames the pop-up was moved, and where it ended.
+- **`LinkTestMain.java`:** `LINKTEST_THROW` now throws where the fake player faces (east before).
+  Mycelium only offers things in a 90° cone in front of the spore.
+- DESIGN §5.0.4.
+
+**Tested how:** the real build with the fake Minecraft throwing the held Stick forward
+(`LINKTEST_HOLD=1`, `LINKTEST_THROW=1`), using `-mcInteractWatch`.
+
+**Result:**
+- Mycelium offered the flying Stick at once (its pop-up opened).
+- The pop-up moved with it for 45 frames and ended on the landed weapon: both at (4.4, 0.6, 281.0).
+
+**Dead ends on the way:**
+1. Earlier throws went east, outside the spore's 90° cone, so no pop-up ever opened.
+2. A run after `-mcPickupTest` kept Mycelium's finder stuck on the picked-up mace. The test aid
+   calls `Interact` directly, which skips the finder's cleanup.
+
+**Still broken / not tested:**
+- **Not tested in Minecraft.**
+
+## 2026-10-21 A thrown weapon's pop-up no longer stays behind in the air
+
+**Problem (your report):** when you threw a weapon, its pop-up appeared but didn't follow it.
+
+**Cause:**
+- Mycelium's `TooltipManager` places the pop-up once, where the thing is at that moment
+  (`tooltipPosition = parent.transform.position`). Mycelium's lying weapons never move.
+- A thrown weapon starts right next to you, so it was noticed (by its collider, through
+  `SporeInteractableFinder`) and got its pop-up at once.
+
+**Changed:**
+- **`WeaponBag.cs`:** a thrown weapon's collider is off while it flies, and switched on when the
+  item is removed after landing. So no pop-up and no pickup in flight; Mycelium notices it where it
+  lies.
+- **New test aid:** `-mcInteractWatch` logs whenever Mycelium's closest interactable thing changes.
+- DESIGN §5.0.4.
+
+**Tested how:** the real build with the fake Minecraft throwing the held mace
+(`LINKTEST_HOLD=2`, `LINKTEST_THROW=2`), using `-mcPickupTest -mcInteractWatch`.
+
+**Result:**
+- The mace was noticed lying on the ground before the pickup.
+- During the flight (18.2 to 20.2 s), it never became the closest interactable thing.
+- It landed 5 units away, out of reach, so "nothing interactable near".
+
+**Still broken / not tested:**
+- **Not tested in Minecraft.**
+- Not tested with the weapon landing within reach: that the pop-up appears where it lies. The fake
+  throw always lands 3 blocks away.
+
+## 2026-10-21 Throwing a weapon throws the real one (protocol v27)
+
+**What you asked:** a weapon thrown from the inventory should fly into the world with the Minecraft
+item's speed and path. The item is removed, leaving the weapon on the ground to pick up again.
+Before, a thrown weapon item was removed at once and put back in the inventory.
+
+**Changed:**
+- **Protocol v27:** the Thrown block (after Weapons, 0x400): weapon id, flags (landed) and position
+  for each weapon item in Minecraft's world.
+- **`MycWeapons.java`:**
+  - `thrownFrame` (client, every frame) writes it.
+  - `init` (every server tick): no pickup, and the item is removed after 5 ticks resting on the
+    ground (or 10 s).
+  - `sync` counts weapons in the world as present, and no longer removes ground copies.
+- **`WeaponBag.cs`:** `FollowThrown`, `ThrowOut`, `MakeWorldWeapon`, `AddAttributes`.
+  - The weapon leaves the bag. The held one leaves the hand (attributes unequipped) and the hand
+    is emptied; one from the bag is built from its prefab with its attributes.
+  - It follows the item, and stays as a pickup.
+  - Switching and emptying the hand never remove a flying weapon.
+- **Stand-ins and test aids:** `LINKTEST_THROW=<id>` (the fake Minecraft throws that weapon in an
+  arc from 5 s) and `-mcRepickTest` (picks up the nearest weapon lying in the world).
+- DESIGN §5.0.4, PROTOCOL, README.
+
+**Tested how:** the real build with the fake Minecraft in Daybreak Arboretum, with `-mcPickupTest`
+(Stick #1 and a mace #2), `LINKTEST_HOLD=2`, and `LINKTEST_THROW=1` or `2`.
+
+**Result:**
+- **From the bag (the Stick):** "thrown … out of the bag", then "lies at (9.6, 0.6, 275.7), ready
+  to pick up". The mace stayed in the hand.
+- **The held mace:** it left the hand, the hand was emptied, and it lay at (9.5, 0.6, 276.0).
+- **Picking it back up** (`-mcRepickTest`): layer Weapon, collider on, picked up through Mycelium's
+  `Interact`. It came back as #3 with the same attributes and numbers (×1.60, ×1.15, Sharp
+  Hazardous Nasty).
+
+**Dead end on the way:** the first held throw lost the mace. Emptying the hand runs at once, inside
+the throw, before the mace was marked as flying, so it was removed as an ordinary held weapon. Now
+it's marked first.
+
+**Still broken / not tested:**
+- **The Minecraft side isn't tested in Minecraft:** the item flying and landing, its removal,
+  not being put back in the inventory, and nobody picking it up.
+
+## 2026-10-21 Mycelium's Speed stat changes your walking speed (protocol v26)
+
+**Your question:** does the Speed stat change your speed? No, it didn't. While Minecraft drives, the
+spore follows Minecraft's player, which walked at Minecraft's normal speed.
+
+**Changed:**
+- **Protocol v26:** MycState 0x60, the spore's walking speed as a multiple of its base speed.
+- **`MinecraftDriver.cs`:** `SpeedFactor`, which is `PlayerController.moveSpeed` (base + the
+  Speed level's bonus, changed by speed effects) ÷ `SporeAttributeRanges.moveSpeedBase`. Changes
+  are logged at most twice a second.
+- **`MyceliumCraftClient.java`:** `syncSpeed`, a movement-speed modifier on the player
+  (`ADD_MULTIPLIED_TOTAL`, factor − 1), taken off outside Mycelium's levels.
+- **Stand-ins:** both pass the factor (1.25).
+- DESIGN §5.0.2.2, PROTOCOL, README.
+
+**Tested how:**
+1. `tools\FakeMycelium` + `gradlew linkTest`.
+2. The real build with the fake Minecraft's hits, using `-mcAttribute Nimble`.
+
+**Result:**
+1. "Mycelium speed factor: got 1.25", PASS.
+2. ×1.00 at the start (6.00 ÷ 6.00), then ×1.30 after a hit, fading back to ×1.
+
+**Still broken / not tested:**
+- **Not tested in Minecraft:** that you actually walk faster or slower.
+- Minecraft widens its view a little when you're faster, as with a Speed potion, and the camera
+  follows that.
+
+## 2026-10-21 Late, weak hits at the end of a level: fixed (enemy stand-in resizing stalled the server)
+
+**Problem (your report):**
+- Enemies took damage a split second after you clicked, at the end of the level.
+- Those hits did far less than your weapon should.
+
+**Found:**
+- `ServerStallWatch` logged 54 server ticks of 0.26–1.6 s (13:27:58 to 13:28:17).
+- Minecraft's "Can't keep up! … 2160ms behind".
+- All 23 captured stacks were the same chain: `EnemyProxies.tick`, then `EnemyProxy.setSize`, then
+  the synced size changing (`onSyncedDataUpdated`, `refreshDimensions`), then Minecraft's
+  `fudgePositionAfterSizeChange` and `findFreePosition`.
+- That last step gathers and merges every collision shape around the entity, Mycelium's ground
+  included.
+- Enemies' boxes change as they animate, so it ran again and again. While the server is frozen,
+  hits wait, and its attack charge lags your screen, so they come out scaled down.
+
+**Changed:**
+- **`EnemyProxy.java`:** `fudgePositionAfterSizeChange` does nothing (a stand-in is put exactly
+  onto its enemy every tick and never moves by physics). Its size is only updated when it changes
+  by more than 0.05 blocks (was 0.01).
+- DESIGN §5.9.
+
+**Tested how:** the jar builds. The stand-ins don't run Minecraft's server.
+
+**Still broken / not tested:**
+- **Not tested in Minecraft.** The proof is the "server stall" lines: there should be none at the
+  end of a level now.
+
+## 2026-10-21 Poisoned enemies flash green
+
+**Changed:**
+- **`HurtFlash.cs`:** a second tint material, green, from the same shader (multiply 0.72/1/0.72,
+  add 0.03/0.12/0.03). It's used when Mycelium's `Poison` effect is on the enemy as its health
+  drops. A flash already running swaps colour if the enemy is poisoned or cured meanwhile. The log
+  counts the green flashes.
+- **`MinecraftDriver.cs`:** `-mcAttribute` adds the attribute 1 s into driving, not 4 s, so the
+  fake Minecraft is still hitting.
+- DESIGN §5.0.3, README.
+
+**Why:** you asked for green instead of red on poisoned enemies.
+
+**Tested how:** the real build with the fake Minecraft's hits (`LINKTEST_HIT=1`,
+`LINKTEST_HOLD=1`), using `-mcAttribute Repulsive` (its hits poison) in Daybreak Arboretum.
+
+**Result:**
+- The Repulsive hits did 0 damage, so no flash.
+- The poison ticks after them flashed green: "1 … 5 … 23 flashes or re-flashes green (poisoned)".
+- The hits before the attribute flashed red.
+
+**Still broken / not tested:**
+- **How the green looks on screen isn't checked.**
+
+## 2026-10-21 Stuck-spore changes undone
+
+**Your note:** you were mistaken about being stuck, so you asked to undo both changes from that
+report.
+
+**Undone:**
+- the "stuck:" diagnosis line;
+- the walk-through (it was already removed);
+- the `-mcWedgeTest` test aid;
+- `LINKTEST_SPEED`.
+
+The resync rules are as before.
+
+**Tested how:** both builds.
+
+## 2026-10-21 Weapon attributes work with Minecraft's attacks (protocol v25)
+
+**Survey:**
+- Number attributes (Heavy, Rapid…) and stat attributes (Agile, Strong…) already worked.
+- Attributes that react to a hit (`WeaponCollision.HitEnemy`: Critical, Repulsive, Nasty,
+  Hazardous, Vampiric, Feline…) didn't. Minecraft's hits went straight to `EnemyTakeDamage`.
+- Neither did ones that react to a swing (`PlayerAttack.StartedAttack`/`FinishedAttack`: Fragile,
+  Nimble, Enigmatic, Flourishing) or skill procs (rolled after a swing that hit). Minecraft's swings
+  raised no Mycelium events.
+
+**Changed:**
+- **Protocol v25:** McState 0x94, the number of melee attacks Minecraft has started.
+- **`MinecraftMixin`, `MyceliumCraftClient`:** count each attack that goes ahead.
+- **`EnemyCombat.cs`:**
+  - For each new swing, raise Mycelium's `StartedAttack`, then `FinishedAttack` 0.35 s later.
+  - Each hit goes through the held weapon as its own collision does: `dmgDealt` (with the
+    Sentience and reflect bonuses), `HitEnemy` (attributes may change the damage), then the damage,
+    Relentless Fury's heal, knockback, and the "Impact" sound.
+  - A listener that fails is logged with where.
+- **`WeaponBag.cs`:** a held weapon replaced in the middle of a level (Fragile broke it, Enigmatic
+  changed it) keeps its bag entry and its slot.
+- **New test aids:** `-mcAttribute <Name>` (gives the held weapon an attribute) and
+  `LINKTEST_HOLD=<id>` (the fake Minecraft holds that weapon).
+- DESIGN §5.0.4, PROTOCOL, README.
+
+**Tested how:** the real build with the fake Minecraft's hits (`LINKTEST_HIT=1`) in Daybreak
+Arboretum.
+
+**Result:**
+- **Repulsive:** damage 10 → 0, and a Poison effect on the enemy.
+- **Nimble:** the spore's SpeedChange appeared 0.45 s after each hit and lasted 1.5 s.
+- **Enigmatic** (held Stick): it became a Bamboo Partisan, then an Avocado Flamberge, then a Rose
+  Mace, all as #1, with its numbers (24 damage with +50 %).
+
+**Dead ends on the way:**
+1. The first Nimble check looked every 2 s, but the effect lasts 1.5 s.
+2. The first Enigmatic run was on the empty-hand stand-in. The fake Minecraft never selects the
+   Stick, so it was put away. That gave a NullReferenceException in Enigmatic; with a real weapon
+   there was none.
+
+**Still broken / not tested:**
+- **Not tested in Minecraft.**
+- Not every attribute is tested; skill procs are random.
+- Mycelium's hit-stop (its animation pause on a hit) isn't copied: it would pause the hidden spore.
+
+## 2026-10-21 Slash weapons are bread, Smash weapons beetroot (Stab stays carrots)
+
+**Changed:**
+- **`MycWeapons.java`:** the item comes from the weapon's type. A weapon whose item is wrong for
+  its type (a carrot made before this) is swapped in place, in the same slot, with its name and
+  numbers. A weapon item is any of the three with the mod's id on it.
+- DESIGN §5.0.4, README.
+
+**Why:** you asked for bread for Slash and beetroot for Smash.
+
+**Tested how:** the jar builds. The stand-ins don't make Minecraft items.
+
+**Still broken / not tested:**
+- **Not tested in Minecraft.**
+
+## 2026-10-21 Death and respawn animations smooth with Minecraft minimized
+
+**Problem (your report):** dying or respawning while Minecraft's window was minimized gave choppy
+animations.
+
+**Cause:**
+- A minimized Minecraft caps itself at 10 fps. Your log has "player model: sent 10 times in the
+  last second" for 88 seconds.
+- `FramerateLimitTrackerMixin` only lifted that cap while the input bridge was on. During the
+  death fall and the emerge, Mycelium has the controls, so the bridge is off.
+- Your body is captured once per Minecraft frame, so it moved 10 times a second.
+
+**Changed:**
+- **`FramerateLimitTrackerMixin.java`:** your own frame-rate setting also applies whenever Mycelium
+  is in a level showing Minecraft's overlay (`MycOverlay.active()`).
+- DESIGN (input bridge).
+
+**Tested how:** the jar builds. The stand-ins don't run Minecraft's renderer.
+
+**Still broken / not tested:**
+- **Not tested in Minecraft.** Not sure Minecraft doesn't skip other work while minimized. If the
+  death or emerge is still choppy, the "player model: sent N times" lines will say how often the
+  body was captured.
+
 ## 2026-10-21 Late hits: Minecraft's server stalls (diagnosis; not fixed yet)
 
 **Problem (your report):** some enemies took damage a bit after you attacked, near the end of the

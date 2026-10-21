@@ -47,6 +47,7 @@ public final class MyceliumCraftClient implements ClientModInitializer {
 		dev.myceliumcraft.combat.EnemyProxies.init();
 		// Diagnostic: what stalls Minecraft's server (late hits, 2026-10-21).
 		ServerStallWatch.init();
+		MycWeapons.init(); // thrown weapons: no pickup, removed once landed
 		net.fabricmc.fabric.api.client.rendering.v1.EntityRendererRegistry.register(dev.myceliumcraft.combat.EnemyProxies.TYPE, net.minecraft.client.renderer.entity.NoopRenderer::new);
 		MycLink.LOG.info("MyceliumCraft: rules: no fall damage for players, no natural health regeneration (always, while the mod is installed)");
 	}
@@ -98,6 +99,7 @@ public final class MyceliumCraftClient implements ClientModInitializer {
 
 		syncHealth(minecraft, player, haveMyc && MycLink.myceliumAlive() && MYC.inLevel() && MYC.maxHealth > 0f);
 		syncLevel(minecraft, player, haveMyc && MycLink.myceliumAlive() && MYC.inLevel() && MYC.nutrients >= 0);
+		syncSpeed(minecraft, player, haveMyc && MycLink.myceliumAlive() && MYC.inLevel() && MYC.speed > 0f);
 		// Third person behind for the death animation or the emerge; your own view after.
 		logEmerge();
 		updateViewOverride(minecraft);
@@ -155,9 +157,11 @@ public final class MyceliumCraftClient implements ClientModInitializer {
 		float eyeScale = player.isDeadOrDying() ? 1f : standingEye > 0.01f ? eye / standingEye : 1f;
 		MycLink.writeMcState(flags, feet.x, feet.y, feet.z, player.getYRot(), player.getXRot(), frame, epoch, teleportAck, minecraft.options.getCameraType().ordinal(), bodyYaw, TICK, fovScale, eyeScale,
 			minecraft.options.damageTiltStrength().get().floatValue(), // Mycelium's camera tilts on hits by this much
-			MycWeapons.handWeapon(player)); // the spore holds this weapon
+			MycWeapons.handWeapon(player), // the spore holds this weapon
+			swings); // Mycelium raises its attack events for each
 		// Your Mycelium weapons as carrots in the inventory.
 		MycWeapons.frame(minecraft, player, haveMyc && MycLink.myceliumAlive() && MYC.inLevel());
+		MycWeapons.thrownFrame(minecraft, partial); // thrown weapons, for Mycelium to show
 		dev.myceliumcraft.combat.EnemyProxies.clientSnap(minecraft.level);
 		sendHitBoxes(minecraft);
 		// Third person: your Minecraft body, for Mycelium to draw instead of the spore.
@@ -201,6 +205,13 @@ public final class MyceliumCraftClient implements ClientModInitializer {
 		}
 	}
 
+	private static int swings;
+
+	/** A melee attack goes ahead (MinecraftMixin.startAttack): counted for Mycelium's attack events. */
+	public static void swingStarted() {
+		swings++;
+	}
+
 	private static long lastNotChargedLog;
 	private static int notCharged;
 
@@ -226,6 +237,38 @@ public final class MyceliumCraftClient implements ClientModInitializer {
 			notCharged = 0;
 		}
 		return true;
+	}
+
+	private static final net.minecraft.resources.Identifier SPEED_ID = net.minecraft.resources.Identifier.fromNamespaceAndPath("myceliumcraft", "speed");
+	private static float sentSpeed = Float.NaN;
+
+	/**
+	 * Mycelium's Speed stat (and its speed effects) on Minecraft's movement speed (your request,
+	 * 2026-10-21): a modifier on the player's movement speed, x(Mycelium's factor). Sprinting and
+	 * Minecraft's own effects multiply on top. Applied on the integrated server when the factor
+	 * changes by more than 1 %; taken off outside Mycelium's levels.
+	 */
+	private static void syncSpeed(Minecraft minecraft, LocalPlayer player, boolean sync) {
+		var server = minecraft.getSingleplayerServer();
+		float want = sync ? MYC.speed : 1f;
+		if (server == null || (!Float.isNaN(sentSpeed) && Math.abs(want - sentSpeed) <= 0.01f)) {
+			return;
+		}
+		sentSpeed = want;
+		var uuid = player.getUUID();
+		server.execute(() -> {
+			ServerPlayer sp = server.getPlayerList().getPlayer(uuid);
+			AttributeInstance speed = sp == null ? null : sp.getAttribute(Attributes.MOVEMENT_SPEED);
+			if (speed == null) {
+				return;
+			}
+			speed.removeModifier(SPEED_ID);
+			if (Math.abs(want - 1f) > 0.001f) {
+				speed.addTransientModifier(new net.minecraft.world.entity.ai.attributes.AttributeModifier(SPEED_ID, want - 1.0,
+					net.minecraft.world.entity.ai.attributes.AttributeModifier.Operation.ADD_MULTIPLIED_TOTAL));
+			}
+		});
+		MycLink.LOG.info("MyceliumCraft: speed: Minecraft's movement speed x{} (Mycelium's Speed stat and speed effects)", String.format("%.2f", want));
 	}
 
 	private static int sentLevel = -1;

@@ -56,9 +56,18 @@ public final class Proto {
 	public static final long WE_NAME = 0x20, WE_ATTS = 0x60;
 	public static final int WE_NAME_BYTES = 0x40, WE_ATTS_BYTES = 0xA0;
 
-	public static final long MAPPING_BYTES = OFF_WEAPONS + WEAPONS_BYTES;
+	// Thrown (Minecraft -> Mycelium, seqlock): your weapons flying through Minecraft's world as items,
+	// for Mycelium to show the real weapon on the same path (since v27).
+	public static final long OFF_THROWN = OFF_WEAPONS + WEAPONS_BYTES;
+	public static final long THROWN_BYTES = 0x400;
+	public static final long THR_SEQ = 0x00, THR_COUNT = 0x04, THR_LIST = 0x10;
+	public static final int THR_MAX = 16;
+	public static final long THR_SIZE = 0x20; // u32 weapon id, u32 flags, f64 x, y, z (Minecraft, the item's feet)
+	public static final int THR_LANDED = 1 << 0; // resting on the ground
+
+	public static final long MAPPING_BYTES = OFF_THROWN + THROWN_BYTES;
 	public static final int MAGIC = 0x4343594D; // "MYCC"
-	public static final int VERSION = 24;
+	public static final int VERSION = 27;
 	/** A side is alive if its heartbeat is younger than this. */
 	public static final long HEARTBEAT_TIMEOUT_MS = 3000;
 
@@ -90,6 +99,7 @@ public final class Proto {
 	public static final long MY_MAX_HEALTH = 0x54; // Mycelium's max health; 0 = no spore health known
 	public static final long MY_NUTRIENTS = 0x58;  // Mycelium's nutrients (i32); -1 = not known; since v19
 	public static final long MY_EMERGE = 0x5C; // how far through Mycelium's sprout (0..1); -1 = no sprout; since v22
+	public static final long MY_SPEED = 0x60; // the spore's walking speed / its base speed (Speed stat, speed effects); 0 = not known; since v26
 	public static final int MYC_IN_LEVEL = 1 << 0;
 	public static final int MYC_PAUSED = 1 << 1;
 	public static final int MYC_OVERLAY = 1 << 2; // Mycelium shows Minecraft's overlay: Minecraft skips drawing its world
@@ -117,6 +127,7 @@ public final class Proto {
 	public static final long MC_EYE_SCALE = 0x88; // eye height now / standing eye height (crouching ~0.78); 0 = not sent
 	public static final long MC_DAMAGE_TILT = 0x8C; // Minecraft's "Damage Tilt" setting, 0 (off) .. 1; since v20
 	public static final long MC_HAND_WEAPON = 0x90; // u32: the weapon whose carrot is in the main hand (Weapons id); 0 = none; since v24
+	public static final long MC_SWINGS = 0x94; // u32: melee attacks Minecraft has started (counts up); since v25
 	public static final int MC_IN_WORLD = 1 << 0;
 	public static final int MC_SCREEN_OPEN = 1 << 1;
 	public static final int MC_ON_GROUND = 1 << 2;

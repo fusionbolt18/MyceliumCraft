@@ -30,6 +30,12 @@ namespace MyceliumCraft
     ///    least one attribute): no weapon effects, no knockback. Before, the last weapon stayed
     ///    (your report, 2026-10-20).
     ///  - After a pickup Minecraft is asked to select the new weapon's carrot.
+    ///  - Throwing one in Minecraft (your choice, 2026-10-21): the item flies through Minecraft's
+    ///    world (its own physics, on Mycelium's ground) and Minecraft sends where it is every frame
+    ///    (Thrown block). The real weapon leaves the bag and is put in the world (the held one leaves
+    ///    the hand, attributes unequipped, and the hand is emptied; one from the bag is built from its
+    ///    prefab with its attributes), follows the item, and stays as a pickup when Minecraft removes
+    ///    the item after it lands.
     ///  - Arriving in The Carcass (a death or a finished run) empties the bag; the next run's Stick
     ///    is added when the spore gets it.
     ///  - For each weapon the numbers a swing has with it, with the spore as it is now (Primal and
@@ -63,6 +69,12 @@ namespace MyceliumCraft
         readonly List<Weapon> bag = new List<Weapon>();
         uint nextId = 1, heldId, version = 1;
         bool emptyHand; // the spore holds the invisible stand-in (heldId is 0 then)
+        // Thrown weapons: Minecraft's Thrown table, and the real weapons flying with their items.
+        readonly uint[] thrIds = new uint[Proto.ThrMax], thrFlags = new uint[Proto.ThrMax];
+        readonly double[] thrXyz = new double[Proto.ThrMax * 3];
+        readonly Dictionary<uint, GameObject> flying = new Dictionary<uint, GameObject>();
+        readonly HashSet<uint> seenThrown = new HashSet<uint>();
+        const float ThrownLift = 0.25f; // blocks: the weapon floats this far above the item's feet
         const string EmptyHandPath = "Slash/Stick";
         GameObject lastCur;
         bool busy;
@@ -95,12 +107,13 @@ namespace MyceliumCraft
             bag.Clear();
             heldId = 0;
             emptyHand = false;
+            flying.Clear();
             pendingSelect = 0;
             version++;
         }
 
         /// <summary>Every frame: watch the held weapon, follow Minecraft's selection, send the table.</summary>
-        public void Update(MonoBehaviour host, MyceliumLink link, bool minecraftDriving, uint minecraftHand)
+        public void Update(MonoBehaviour host, MyceliumLink link, bool minecraftDriving, uint minecraftHand, WorldMapping map)
         {
             Component swap = FindSwap();
             if (swap == null) { link.WriteWeapons(version, 0, null, selectSeq, selectId, 0, McConfig.DamageScale); return; }
@@ -117,6 +130,7 @@ namespace MyceliumCraft
             if (changed) version++;
 
             if (minecraftDriving) Follow(host, minecraftHand);
+            if (minecraftDriving) FollowThrown(host, link, map);
             link.WriteWeapons(version, bag.Count, Table(), selectSeq, selectId, heldId, McConfig.DamageScale);
 
             if (Time.realtimeSinceStartup >= nextLog && bag.Count > 0)
@@ -139,6 +153,8 @@ namespace MyceliumCraft
                 return;
             }
             bool pickup = lastCur != null && lastCur.CompareTag("Weapon") && lastCur.transform.parent == null;
+            foreach (uint key in new List<uint>(flying.Keys))
+                if (ReferenceEquals(flying[key], cur)) flying.Remove(key); // caught in flight: yours again
             if (pickup && emptyHand && heldId == 0)
             {
                 // Picked up with an empty hand: the stand-in was let go; it's not a weapon of yours.
@@ -174,9 +190,21 @@ namespace MyceliumCraft
             Weapon same = Find(heldId);
             if (same != null && lastCur == null)
             {
-                // A new level: Mycelium rebuilt the held weapon from what it saved.
                 same.Live = cur;
-                McLog.Info($"weapons: new level, the spore holds '{same.Name}' (#{same.Id}) again");
+                if (ReferenceEquals(lastCur, null))
+                {
+                    // A new level: Mycelium rebuilt the held weapon from what it saved.
+                    McLog.Info($"weapons: new level, the spore holds '{same.Name}' (#{same.Id}) again");
+                }
+                else
+                {
+                    // In the middle of a level Mycelium destroyed the held weapon and put another in
+                    // the hand: Fragile broke (a Stick now) or Enigmatic changed it (a random weapon,
+                    // same attributes). It takes the old one's place in the bag, and its carrot.
+                    ReadLive(same, cur);
+                    version++;
+                    McLog.Info($"weapons: Mycelium replaced the held weapon (Fragile broke it, or Enigmatic changed it): #{same.Id} is '{same.Name}' ({same.Path}) now");
+                }
                 return;
             }
             Weapon w2 = NewWeapon(cur, bag.Count == 0 ? "the run's first weapon" : "given by Mycelium");
@@ -283,7 +311,7 @@ namespace MyceliumCraft
                 busy = false;
                 yield break;
             }
-            if (cur != null)
+            if (cur != null && !Thrown(cur))
             {
                 if (held != null) Stash(held, cur, unequip: true);
                 cur.tag = "Untagged";
@@ -357,7 +385,7 @@ namespace MyceliumCraft
             }
             Weapon held = Find(heldId);
             GameObject cur = Get(swap, "O_curWeapon") as GameObject;
-            if (cur != null)
+            if (cur != null && !Thrown(cur))
             {
                 if (held != null) Stash(held, cur, unequip: true);
                 cur.tag = "Untagged";
@@ -396,6 +424,142 @@ namespace MyceliumCraft
             }
             version++;
             busy = false;
+        }
+
+        bool Thrown(GameObject o)
+        {
+            foreach (GameObject f in flying.Values) if (ReferenceEquals(f, o)) return true;
+            return false;
+        }
+
+        /// <summary>Every frame: your weapons flying in Minecraft's world; the real ones follow them.</summary>
+        void FollowThrown(MonoBehaviour host, MyceliumLink link, WorldMapping map)
+        {
+            int n = link.TryReadThrown(thrIds, thrFlags, thrXyz);
+            if (n < 0) return;
+            seenThrown.Clear();
+            for (int i = 0; i < n; i++)
+            {
+                uint id = thrIds[i];
+                seenThrown.Add(id);
+                if (!flying.TryGetValue(id, out GameObject o))
+                {
+                    Weapon w = Find(id);
+                    if (w == null || busy) continue; // already out in the world, or mid-switch (next frame)
+                    o = ThrowOut(host, w);
+                    if (o == null) continue;
+                    flying[id] = o;
+                }
+                if (o == null) continue;
+                map.ToMyc(thrXyz[i * 3], thrXyz[i * 3 + 1] + ThrownLift, thrXyz[i * 3 + 2], out double x, out double y, out double z);
+                Vector3 from = o.transform.position;
+                o.transform.position = new Vector3((float)x, (float)y, (float)z);
+                if (MovePopUp(o, o.transform.position - from, out Vector3 at)) { popUpMoves++; popUpAt = at; }
+            }
+            foreach (uint id in new List<uint>(flying.Keys))
+            {
+                if (seenThrown.Contains(id)) continue;
+                GameObject o = flying[id];
+                flying.Remove(id);
+                if (o == null) continue;
+                McLog.Info($"weapons: thrown #{id} '{o.name}' lies at {o.transform.position:F1}, ready to pick up" +
+                           (popUpMoves > 0 ? $"; its pop-up moved with it for {popUpMoves} frames, now at {popUpAt:F1}" : "; it had no pop-up in flight"));
+                popUpMoves = 0;
+            }
+        }
+
+        /// <summary>
+        /// Mycelium's pop-up for the thing you can interact with (TooltipManager.currentTooltip) is
+        /// placed once, where the thing is then, and never moves: Mycelium's lying weapons don't. A
+        /// thrown weapon moves, so its pop-up goes with it (your choice, 2026-10-21; keeping it from
+        /// being interactable until it landed took too long).
+        /// </summary>
+        static bool MovePopUp(GameObject weapon, Vector3 by, out Vector3 at)
+        {
+            at = Vector3.zero;
+            if (by.sqrMagnitude < 1e-8f) return false;
+            Type t = Type.GetType("TooltipManager, Assembly-CSharp");
+            object manager = t?.GetField("Instance", BindingFlags.Public | BindingFlags.Static)?.GetValue(null);
+            if (manager == null) return false;
+            var parent = t.GetField("currentParent", BindingFlags.NonPublic | BindingFlags.Instance)?.GetValue(manager) as GameObject;
+            var popUp = t.GetField("currentTooltip", BindingFlags.Public | BindingFlags.Instance)?.GetValue(manager) as GameObject;
+            if (popUp == null || !ReferenceEquals(parent, weapon) || popUp.transform.parent != null) return false;
+            popUp.transform.position += by;
+            at = popUp.transform.position;
+            return true;
+        }
+
+        int popUpMoves;
+        Vector3 popUpAt;
+
+        /// <summary>A weapon of yours leaves the bag for the world, as Mycelium drops one: tag and layer
+        /// "Weapon", collider on (WeaponInteraction.Interact does the same to the weapon you let go).</summary>
+        GameObject ThrowOut(MonoBehaviour host, Weapon w)
+        {
+            GameObject o;
+            if (w.Id == heldId && w.Live != null)
+            {
+                o = w.Live;
+                foreach (Component c in o.GetComponents<Component>())
+                    if (c != null && IsA(c.GetType(), "AttributeBase")) Call(c, "Unequipped");
+                o.transform.parent = null;
+                heldId = 0;
+                w.Live = null;
+                MakeWorldWeapon(o);
+                // Flying before the hand is emptied: EmptyHand runs at once, and it removes whatever the
+                // spore holds unless it's flying (it removed the thrown mace in the first test).
+                flying[w.Id] = o;
+                host.StartCoroutine(EmptyHand()); // the spore needs something in its hand
+            }
+            else
+            {
+                GameObject slot = GameObject.FindWithTag("WeaponSlot");
+                UnityEngine.Object prefab = Resources.Load(w.Path);
+                if (slot == null || prefab == null)
+                {
+                    McLog.Info($"weapons: can't throw '{w.Name}': weapon slot {slot != null}, Resources/{w.Path} {prefab != null}");
+                    return null;
+                }
+                // Made in the hand slot for the hand's scale (as Mycelium's dropped weapons keep), then let go.
+                o = UnityEngine.Object.Instantiate(prefab, slot.transform) as GameObject;
+                Set(Comp(o, "WeaponStats"), "acceptingAttribute", false);
+                if (w.Name != "Stick") o.transform.localScale = o.transform.localScale / 0.03f / 100f / 1.2563f;
+                o.transform.parent = null;
+                MakeWorldWeapon(o);
+                host.StartCoroutine(AddAttributes(o, w));
+            }
+            bag.Remove(w);
+            version++;
+            McLog.Info($"weapons: '{w.Name}' (#{w.Id}) thrown in Minecraft: out of the bag, the real weapon follows the item");
+            return o;
+        }
+
+        static void MakeWorldWeapon(GameObject o)
+        {
+            o.tag = "Weapon";
+            o.layer = LayerMask.NameToLayer("Weapon");
+            Collider col = o.GetComponent<Collider>();
+            if (col != null) col.enabled = true;
+        }
+
+        /// <summary>A weapon built for the world gets its attributes back a frame later (not Equipped: not held).</summary>
+        IEnumerator AddAttributes(GameObject o, Weapon w)
+        {
+            yield return null;
+            if (o == null) yield break;
+            var builtIn = new List<Component>();
+            foreach (Component c in o.GetComponents<Component>())
+                if (c != null && IsA(c.GetType(), "AttributeBase")) builtIn.Add(c);
+            object assigner = GetStatic("AttributeAssigner", "Instance");
+            foreach (var (type, value, rating) in w.Atts)
+            {
+                Component att = builtIn.Find(c => c.GetType().Name == type);
+                if (att != null) builtIn.Remove(att);
+                else att = assigner != null ? Call(assigner, "PickAttFromString", o, type) as Component : null;
+                if (att == null) continue;
+                Set(att, "specialAttNum", value);
+                if (rating != null) Set(att, "rating", rating);
+            }
         }
 
         /// <summary>The empty hand's stand-in is never drawn (Renderer.enabled, which the camera's hiding doesn't touch).</summary>

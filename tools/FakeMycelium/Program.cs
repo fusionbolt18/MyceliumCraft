@@ -53,7 +53,7 @@ var lastPrint = DateTime.MinValue;
 while (DateTime.Now < deadline)
 {
     link.Beat();
-    link.WriteMycState(Proto.MycInLevel, sx, sy, sz, 0, frame++, tp, 0.964f, 37.5f, 150f, 42, 0.25f); // a spore 1.35 units tall at scale 1.4, health 37.5 of 150
+    link.WriteMycState(Proto.MycInLevel, sx, sy, sz, 0, frame++, tp, 0.964f, 37.5f, 150f, 42, 0.25f, 1.25f); // a spore 1.35 units tall at scale 1.4, health 37.5 of 150
     link.WriteWeapons(7, 2, new[]
     {
         new MyceliumLink.WeaponEntry { Id = 1, Type = 0, Damage = 10f, PerSecond = 1.25f, Knockback = 20f, DamageMult = 1f, SpeedMod = 1f, Name = "Stick", Attributes = "" },
