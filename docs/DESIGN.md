@@ -419,6 +419,18 @@ change. The crosshair picks on the client's copy, which before this kept Minecra
   swapped in place. Taking it away removes only that material. `-mcFlashCheck` logs the colour and
   detail on screen around an enemy during and after its flash.
 
+  **Models made of several sub-meshes** (since 2026-10-21). A sub-mesh is one part of a model
+  with its own material: the crab's body has 4, "SporeModel" enemies 2. Unity draws an extra
+  material over the last sub-mesh only, so those enemies hardly flashed (your report: crabs). They
+  get an **overlay copy** instead, made the first time they flash: a child renderer with the same
+  mesh (and, if skinned, the same bones, so it moves exactly with them). It has the tint on every
+  sub-mesh and no shadow, and is switched on only while flashing. One-part models keep the extra
+  material.
+  - The first time each kind of enemy flashes, the log lists its renderers, their sub-meshes and
+    materials, and which are tinted.
+  - `-mcFlashAll` flashes every enemy in the level once and counts the overlay copies drawn, 0.1 s
+    and 0.6 s later.
+
 **Hurt camera tilt, as Minecraft's** (since 2026-10-19, `HurtTilt`): when the spore loses health
 (and doesn't die), Mycelium's camera leans toward whatever hit it and swings back, in every view.
 - **The shape is Minecraft's** (`GameRenderer.bobHurt`): over 0.5 s (10 ticks), with f = time left
@@ -1103,6 +1115,12 @@ Whichever game shows its menu, the other one waits:
       a Minecraft screen is open;
     - re-sync teleports (`WaitingForTeleport`) count as driving for the bridge, as for key
       ownership.
+  - **A hit's knockback keeps the mouse buttons** (since 2026-10-22, protocol v29). Mycelium sends
+    a reason of its own for it (5, "knockback"). Minecraft keeps the bridge on (focus, grabbed
+    mouse), lets go of the keys, and skips mouse movement, scroll and typing, because Mycelium
+    moves the spore. The mouse buttons keep following what you hold. Letting go of them stopped
+    Better Combat's hold-to-attack on every hit (your report). `-mcKnockTest` (with `-mcHurtTest`)
+    adds Mycelium's own `PlayerController.Knockback` to each test hit.
   - **Test runs** (`-mcBackground`) never turn the bridge on. They log what it would do with your
     focus ("input bridge (test run, off): with focus it would be …"). `LINKTEST_SCREEN=1` keeps a
     Minecraft screen open from 4 to 10 s without pausing.
@@ -1164,6 +1182,9 @@ While Mycelium shows a level (and `overlay=1`), Mycelium sets `OVERLAY` in its s
     crits) would float over Mycelium's world. `MycFirstPersonArms` draws the kept ones in the same
     pass as the arms, in every camera view. They're on top of Mycelium's picture, so a wall
     between you and a trail doesn't hide it.
+  - **No fog:** they're drawn with Minecraft's "no fog" setting, as its own hand is
+    (`GameRenderer.render3dHud`). The world fog washed out their colours (your report,
+    2026-10-22); Mycelium draws the world, so Minecraft's fog doesn't belong on them.
   - **Depth:** 26.3's depth is reversed (0 = nothing drawn yet). Clearing to 1.0 hid the arms
     completely (your second test).
   - **Log** (every 10 s): frames the arms were drawn, how many came from the world's list and how

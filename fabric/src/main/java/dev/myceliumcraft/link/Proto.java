@@ -68,7 +68,7 @@ public final class Proto {
 
 	public static final long MAPPING_BYTES = OFF_THROWN + THROWN_BYTES;
 	public static final int MAGIC = 0x4343594D; // "MYCC"
-	public static final int VERSION = 28;
+	public static final int VERSION = 29;
 	/** A side is alive if its heartbeat is younger than this. */
 	public static final long HEARTBEAT_TIMEOUT_MS = 3000;
 
@@ -154,7 +154,9 @@ public final class Proto {
 	public static final int IN_CURSOR = 1 << 1; // a Minecraft screen is open: cursor position below is valid
 	public static final long IN_CURSOR_X = 0x170; // f64, 0..1 from the left of the picture
 	public static final long IN_CURSOR_Y = 0x178; // f64, 0..1 from the top
-	public static final String[] IN_REASONS = {"active", "Mycelium window not focused", "Mycelium has the controls (menu, pause or cutscene)", "Minecraft isn't driving the spore", "bridge turned off"};
+	public static final String[] IN_REASONS = {"active", "Mycelium window not focused", "Mycelium has the controls (menu, pause or cutscene)", "Minecraft isn't driving the spore", "bridge turned off",
+		"a hit's knockback has the spore: keys let go, mouse buttons kept"};
+	public static final int IN_REASON_KNOCKBACK = 5; // since v29
 
 	// Bindings @0x500 (Minecraft -> Mycelium, seqlock): what Mycelium's actions are bound to
 	public static final long OFF_BINDINGS = 0x500;

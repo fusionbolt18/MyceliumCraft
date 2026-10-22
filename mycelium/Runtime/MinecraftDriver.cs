@@ -184,6 +184,9 @@ namespace MyceliumCraft
             // Test aid: "-mcHurtTest" damages the spore by 1 every 3 s from a test hitter 1.5 units
             // away, going round it: in front, right, behind, left (for the hurt tilt).
             hurtTest = Array.IndexOf(args, "-mcHurtTest") >= 0;
+            // Test aid: "-mcKnockTest" (with -mcHurtTest): each test hit also knocks the spore back
+            // through Mycelium's own PlayerController.Knockback, as enemy hits do.
+            knockTest = Array.IndexOf(args, "-mcKnockTest") >= 0;
             // Test aid: "-mcOverlayCheck" reads back Mycelium's finished screen once a second where
             // the fake Minecraft's test picture (LINKTEST_OVERLAY=1) has its boxes, switching the
             // overlay on and off each time, and logs the colors.
@@ -202,6 +205,9 @@ namespace MyceliumCraft
             // Test aid: "-mcFlashCheck" reads back the screen around an enemy while its hurt flash is
             // on and just after, and logs colour and detail (neighbouring-pixel contrast) for both.
             if (Array.IndexOf(args, "-mcFlashCheck") >= 0) StartCoroutine(FlashCheck());
+            // Test aid: "-mcFlashAll" flashes every enemy in the level once, 4 s into driving, so the
+            // log describes each kind's renderers (HurtFlash.Describe).
+            if (Array.IndexOf(args, "-mcFlashAll") >= 0) StartCoroutine(FlashAll());
             // Test aid: "-mcSwapTest" swaps weapons the way picking one up does (WeaponInteraction: the
             // old one is let go into the world, a new one goes in the hand) 4 s into driving, and logs
             // which of the two Mycelium draws.
@@ -355,6 +361,7 @@ namespace MyceliumCraft
             bool mcScreenOpen = camFresh2 && (lastCamMc.Flags & Proto.McScreenOpen) != 0;
             bool myceliumControls = MyceliumHasControls(out string bridgeWhy) && !(mcScreenOpen && bridgeWhy.EndsWith("knockback"));
             uint playReason = !(alive && phase != Phase.Idle) ? Proto.ReasonNotDriving
+                            : myceliumControls && bridgeWhy.EndsWith("knockback") ? Proto.ReasonKnockback
                             : myceliumControls ? Proto.ReasonMyceliumControls
                             : Proto.ReasonActive;
             uint reason = !McConfig.InputBridge || BackgroundWindow.Enabled ? Proto.ReasonOff
@@ -1000,6 +1007,27 @@ namespace MyceliumCraft
             }
         }
 
+        /// <summary>Test aid: see "-mcFlashAll" in Awake.</summary>
+        System.Collections.IEnumerator FlashAll()
+        {
+            while (phase != Phase.Driving) yield return null;
+            yield return new WaitForSeconds(4f);
+            Type t = Type.GetType("EnemyHealth, Assembly-CSharp");
+            if (t == null) { McLog.Info("flash all: no EnemyHealth"); yield break; }
+            int n = 0;
+            foreach (UnityEngine.Object o in FindObjectsOfType(t)) { combat.Hurt.Flash((Component)o); n++; }
+            McLog.Info($"flash all: flashed {n} enemies");
+            // The overlay copies (multi-part models such as the crab): on during the flash, off after.
+            foreach (float wait in new[] { 0.1f, 0.6f })
+            {
+                yield return new WaitForSeconds(wait);
+                int on = 0, all = 0;
+                foreach (Renderer r in FindObjectsOfType<Renderer>(true))
+                    if (r.name == "MyceliumCraft hurt tint") { all++; if (r.enabled) on++; }
+                McLog.Info($"flash all: {on} of {all} overlay copies drawn, {wait:F1} s later");
+            }
+        }
+
         /// <summary>Test aid: see "-mcFlashCheck" in Awake.</summary>
         System.Collections.IEnumerator FlashCheck()
         {
@@ -1522,7 +1550,7 @@ namespace MyceliumCraft
         }
 
         uint lastPlayReason = uint.MaxValue;
-        bool hurtTest;
+        bool hurtTest, knockTest;
         float nextHurtTime;
         int hurtTestStep;
         GameObject testHitter;
@@ -1554,6 +1582,13 @@ namespace MyceliumCraft
             {
                 take.Invoke(playerHealth, new object[] { 1f });
                 McLog.Info($"hurt test: 1 damage from the test hitter {sides[side]} of the spore");
+                if (knockTest)
+                {
+                    Type ct = Type.GetType("PlayerController, Assembly-CSharp");
+                    Component controller = ct != null ? FindObjectOfType(ct) as Component : null;
+                    ct?.GetMethod("Knockback", BindingFlags.Public | BindingFlags.Instance)?.Invoke(controller, new object[] { testHitter, 10f, false });
+                    McLog.Info($"hurt test: knocked back ({(controller != null ? "PlayerController.Knockback" : "no PlayerController")})");
+                }
             }
             catch (Exception e)
             {

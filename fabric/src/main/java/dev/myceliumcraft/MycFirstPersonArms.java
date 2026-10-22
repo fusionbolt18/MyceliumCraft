@@ -6,12 +6,14 @@ import com.mojang.blaze3d.vertex.PoseStack;
 import com.mojang.renderpearl.api.buffers.GpuBufferSlice;
 import com.mojang.renderpearl.api.commands.RenderPass;
 import dev.myceliumcraft.link.MycLink;
+import dev.myceliumcraft.mixin.GameRendererAccessor;
 import java.lang.reflect.Method;
 import java.util.Optional;
 import java.util.OptionalDouble;
 import net.minecraft.client.Camera;
 import net.minecraft.client.Minecraft;
 import net.minecraft.client.renderer.SubmitNodeStorage;
+import net.minecraft.client.renderer.fog.FogRenderer;
 import net.minecraft.client.renderer.entity.state.AvatarRenderState;
 import net.minecraft.client.renderer.entity.state.EntityRenderState;
 import net.minecraft.client.renderer.feature.FeatureRenderDispatcher;
@@ -112,7 +114,9 @@ public final class MycFirstPersonArms {
 				level.particlesRenderState.submit(STORAGE, camera);
 				particleFrames++;
 			}
-			RenderSystem.setShaderFog(fog);
+			// No fog, as Minecraft's own hand (GameRenderer.render3dHud): Mycelium draws the world, and
+			// Minecraft's world fog washed out the arms' colours (your report, 2026-10-22).
+			RenderSystem.setShaderFog(((GameRendererAccessor) minecraft.gameRenderer).myceliumcraft$fogRenderer().getBuffer(FogRenderer.FogMode.NONE));
 			minecraft.gameRenderer.lighting().setupFor(Lighting.Entry.LEVEL);
 			var target = minecraft.gameRenderer.mainRenderTarget();
 			try (FeatureRenderDispatcher.PreparedFrame frame = minecraft.gameRenderer.featureRenderDispatcher().prepareFrame(STORAGE)) {

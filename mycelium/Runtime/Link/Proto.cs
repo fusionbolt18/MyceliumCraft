@@ -76,7 +76,7 @@ namespace MyceliumCraft.Link
 
         public const int MappingBytes = OffThrown + ThrownBytes;
         public const uint Magic = 0x4343594D; // "MYCC"
-        public const uint Version = 28;
+        public const uint Version = 29;
         public const ulong HeartbeatTimeoutMs = 3000;
 
         // Header @0x000
@@ -162,6 +162,7 @@ namespace MyceliumCraft.Link
         public const int InCursorX = 0x170;    // f64, 0..1 from the left of the picture
         public const int InCursorY = 0x178;    // f64, 0..1 from the top
         public const uint ReasonActive = 0, ReasonNotFocused = 1, ReasonMyceliumControls = 2, ReasonNotDriving = 3, ReasonOff = 4;
+        public const uint ReasonKnockback = 5; // a hit's knockback has the spore: keys let go, mouse buttons kept (since v29)
 
         // Bindings @0x500 (Minecraft -> Mycelium, seqlock): what Mycelium's actions are bound to,
         // as set in Minecraft's Controls menu

@@ -17,6 +17,10 @@ import org.lwjgl.sdl.SDLKeyboard;
  * While active, the mixins make Minecraft believe its window is focused and active, keep it off the
  * real cursor, and answer isKeyDown() from these keys. Mouse look then goes through Minecraft's own
  * turning (sensitivity, smooth camera, spyglass all apply), and clicks are ordinary attack/use.
+ *
+ * A hit's knockback takes the spore for a moment (reason "knockback"): the keys are let go then
+ * (Mycelium moves the spore), but the mouse buttons stay as you hold them. Letting go of the
+ * attack button stopped Better Combat's hold-to-attack on every hit (your report, 2026-10-22).
  */
 public final class MycInputBridge {
 	private static final boolean[] KEYS = new boolean[Proto.IN_KEY_BYTES * 8];
@@ -32,6 +36,7 @@ public final class MycInputBridge {
 	private static int keyEvents, buttonEvents;
 	private static double moved;
 	private static boolean cursorMode;
+	private static int knockbackFrames;
 
 	private MycInputBridge() {
 	}
@@ -49,12 +54,16 @@ public final class MycInputBridge {
 	public static void beginFrame(Minecraft minecraft) {
 		MycLink.poll();
 		boolean read = MycLink.mapped() && MycLink.myceliumAlive() && MycLink.readInput(IN);
-		boolean nowActive = read && IN.active();
+		boolean knockback = read && IN.reason == Proto.IN_REASON_KNOCKBACK;
+		// A knockback keeps the bridge on (Minecraft still thinks its window is focused, the mouse
+		// stays grabbed), with only the keys let go and mouse movement ignored (below).
+		boolean nowActive = read && (IN.active() || knockback);
 		int reason = read ? IN.reason : -1;
 		if (reason != lastReason) {
 			lastReason = reason;
 			MycLink.LOG.info("MyceliumCraft: input bridge {}", reason == -1 ? "off (no Mycelium)"
 				: reason == 0 ? "ON: playing from Mycelium's keyboard and mouse"
+				: knockback ? "on, held (" + Proto.IN_REASONS[reason] + ")"
 				: "off (" + (reason > 0 && reason < Proto.IN_REASONS.length ? Proto.IN_REASONS[reason] : "reason " + reason) + ")");
 		}
 		if (nowActive != active) {
@@ -69,7 +78,8 @@ public final class MycInputBridge {
 				minecraft.options.pauseOnLostFocus = false;
 				active = true;
 			} else {
-				releaseAll(minecraft);
+				releaseKeys(minecraft);
+				releaseButtons(minecraft);
 				active = false;
 				if (savedPauseOnLostFocus != null) {
 					minecraft.options.pauseOnLostFocus = savedPauseOnLostFocus;
@@ -82,6 +92,22 @@ public final class MycInputBridge {
 		}
 		if (!active) {
 			return;
+		}
+		if (knockback) {
+			// Mycelium moves the spore: keys let go, mouse movement, scroll and typing skipped. The
+			// mouse buttons follow what you hold (Better Combat's hold-to-attack keeps going).
+			releaseKeys(minecraft);
+			lastDX = IN.totalDX;
+			lastDY = IN.totalDY;
+			lastScroll = IN.totalScroll;
+			lastText = IN.textCount;
+			syncButtons(minecraft, minecraft.getWindow().handle());
+			knockbackFrames++;
+			return;
+		}
+		if (knockbackFrames > 0) {
+			MycLink.LOG.info("MyceliumCraft: input bridge: knockback over after {} frames; mouse buttons kept throughout ({})", knockbackFrames, describeButtons());
+			knockbackFrames = 0;
 		}
 
 		long handle = minecraft.getWindow().handle();
@@ -97,14 +123,7 @@ public final class MycInputBridge {
 				key(minecraft, handle, sc, down);
 			}
 		}
-		for (int button = 1; button < BUTTONS.length; button++) {
-			boolean down = (IN.buttons & (1 << button)) != 0;
-			if (down != BUTTONS[button]) {
-				BUTTONS[button] = down;
-				buttonEvents++;
-				minecraft.mouseHandler.onButton(handle, new MouseButtonInfo(button, modifiers), down ? 1 : 0);
-			}
-		}
+		syncButtons(minecraft, handle);
 
 		double dx = IN.totalDX - lastDX, dy = IN.totalDY - lastDY;
 		lastDX = IN.totalDX;
@@ -197,8 +216,30 @@ public final class MycInputBridge {
 		modifiers = m;
 	}
 
-	/** Lift every key and button we think is held (bridge turned off, Mycelium menu, focus moved). */
-	private static void releaseAll(Minecraft minecraft) {
+	/** Press or lift the mouse buttons that changed since last applied. */
+	private static void syncButtons(Minecraft minecraft, long handle) {
+		for (int button = 1; button < BUTTONS.length; button++) {
+			boolean down = (IN.buttons & (1 << button)) != 0;
+			if (down != BUTTONS[button]) {
+				BUTTONS[button] = down;
+				buttonEvents++;
+				minecraft.mouseHandler.onButton(handle, new MouseButtonInfo(button, modifiers), down ? 1 : 0);
+			}
+		}
+	}
+
+	private static String describeButtons() {
+		StringBuilder sb = new StringBuilder();
+		for (int button = 1; button < BUTTONS.length; button++) {
+			if (BUTTONS[button]) {
+				sb.append(sb.length() > 0 ? ", " : "").append(button == 1 ? "left" : button == 3 ? "right" : "button " + button);
+			}
+		}
+		return sb.length() > 0 ? sb + " held" : "none held";
+	}
+
+	/** Lift every key we think is held (bridge turned off, Mycelium menu, focus moved, a knockback). */
+	private static void releaseKeys(Minecraft minecraft) {
 		long handle = minecraft.getWindow().handle();
 		for (int sc = 0; sc < KEYS.length; sc++) {
 			if (KEYS[sc]) {
@@ -207,6 +248,11 @@ public final class MycInputBridge {
 				minecraft.keyboardHandler.keyPress(handle, 0, new KeyEvent(sc, SDLKeyboard.SDL_GetKeyFromScancode(sc, (short) 0, true), modifiers));
 			}
 		}
+	}
+
+	/** Lift every mouse button we think is held (bridge turned off, Mycelium menu, focus moved). */
+	private static void releaseButtons(Minecraft minecraft) {
+		long handle = minecraft.getWindow().handle();
 		for (int button = 1; button < BUTTONS.length; button++) {
 			if (BUTTONS[button]) {
 				BUTTONS[button] = false;

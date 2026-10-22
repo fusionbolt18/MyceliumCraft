@@ -12,6 +12,7 @@
   ],
   "client": [
     "CameraAccessor",
+    "GameRendererAccessor",
     "FramerateLimitTrackerMixin",
     "GuiDeathScreenMixin",
     "HumanoidEmergeMixin",

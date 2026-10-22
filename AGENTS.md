@@ -20,6 +20,10 @@ Play Mycelium while being a Minecraft Player
    game's own option is fine. Bypassing anti-cheat is never fine.
 6. **Never put credentials in the repo or in any file you can read:** no API keys,
    no tokens, no passwords.
+7. **Do not modify any Minecraft mods that you did not create yourself.** I may 
+   add additional Minecraft mods. Do not modify them in any way. If you need to 
+   create a mod yourself, that is fine. You are allowed to edit ones that you 
+   create yourself.
 
 ## How to work
 

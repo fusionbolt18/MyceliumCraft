@@ -1,5 +1,76 @@
 # MODLOG
 
+## 2026-10-22 Holding attack keeps attacking through a hit (protocol v29)
+
+**Your report:** Better Combat keeps attacking while left click is held, but getting hit stops it.
+
+**Cause:** a hit's knockback takes the spore's controls in Mycelium until its "Hurt" animation is
+half done. The input bridge then switched off, and switching off lets go of every key and mouse
+button, including your held left click.
+
+**Changed:**
+- **Mycelium (`MinecraftDriver.cs`, `Link/Proto.cs`, `InputBridge.cs`):** a new bridge reason, 5
+  "knockback", instead of the general "Mycelium has the controls".
+- **Minecraft (`MycInputBridge.java`):** on that reason the bridge stays on, but it lets go of the
+  keys and ignores mouse movement, scroll and typing (Mycelium is moving the spore). The mouse
+  buttons keep following what you hold. When it ends, the log says how many frames it lasted and
+  which buttons were held.
+- **Test aid `-mcKnockTest`** (with `-mcHurtTest`): each test hit also calls Mycelium's
+  `PlayerController.Knockback`.
+- PROTOCOL (reason 5, v29), DESIGN §5.3.
+
+**Tested how:** the real Mycelium build with the fake Minecraft, `-mcHurtTest -mcKnockTest` in
+Daybreak Arboretum. On each of the 4 knocked-back hits the bridge reason went to "a hit's knockback
+has the spore (mouse buttons kept)", then back to ON. Before `-mcKnockTest`, the test hits didn't
+knock back, so they never showed this.
+
+**Still broken / not tested:**
+- **Not tested in Minecraft:** that Better Combat keeps attacking. The fake Minecraft has no
+  Better Combat.
+
+## 2026-10-22 First-person Better Combat arms: no washed-out colours (no fog)
+
+**Your report:** the colours in Better Combat's first-person animations look a bit washed out.
+
+**Cause:** Minecraft draws its normal hand with no fog. My arms step (`MycFirstPersonArms`)
+passed in the world's fog, which blends colours toward the fog colour. The swing particles too.
+
+**Changed:**
+- **`MycFirstPersonArms.java`:** the arms and swing particles use Minecraft's "no fog" setting.
+- **New `GameRendererAccessor.java`:** reads Minecraft's fog renderer to get that setting.
+- DESIGN §5.4.
+
+**Tested how:** built only. **Not tested.** Not sure the fog was the whole cause. The arms also
+use the world's lighting, as Minecraft uses for players seen in the world.
+
+## 2026-10-21 Crabs flash red (and green) all over
+
+**Your report:** crab enemies don't flash red when taking damage (or green from poison).
+
+**Cause, from the log:** the crab's body is one renderer with 4 sub-meshes (parts with their own
+material). The flash adds its tint as an extra material, and Unity draws an extra material over
+the last sub-mesh only. So only one small part of the crab was tinted. The new log line
+showed it: "'Crab' SkinnedMeshRenderer 4 sub-meshes, 4 materials". "SporeModel" enemies have 2
+sub-meshes and had the same problem.
+
+**Changed:**
+- **`HurtFlash.cs`:** a renderer with several sub-meshes gets an overlay copy, made the first
+  time it flashes. It's a child renderer with the same mesh and bones, the tint on every
+  sub-mesh, and no shadow, switched on only while flashing. One-part models are unchanged.
+- **New log:** the first time each kind of enemy flashes, its renderers, sub-meshes and
+  materials are listed.
+- **Test aid `-mcFlashAll`:** flashes every enemy once and counts the overlay copies drawn.
+- DESIGN §5.0.3 (hurt flash), README.
+
+**Tested how:** the real Mycelium build with the fake Minecraft.
+- **Daybreak Arboretum** (`-mcFlashAll`): beetles and stickbugs are all one sub-mesh per
+  renderer, so they're unchanged. No crab in that map.
+- **Delta Crag:** 78 enemies flashed. Overlay copies were made for 5 crabs (4 sub-meshes) and 10
+  SporeModels (2). "15 of 15 overlay copies drawn, 0.1 s later" and "0 of 15 … 0.6 s later".
+
+**Still broken / not tested:**
+- **Not seen:** what the crab looks like flashing (log only).
+
 ## 2026-10-21 Attack ranges 25% bigger
 
 **Your request:** make all the attack ranges about 25% bigger.

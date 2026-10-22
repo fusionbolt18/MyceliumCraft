@@ -54,6 +54,8 @@ Single-player and offline only.
     Smash weapons slam two-handed. Each weapon's attack range is its real reach in Mycelium
     plus 25% (measured; a weapon gets it the first time you hold it).
   - **Poisoned enemies flash green** instead of red (tested in Mycelium).
+  - **Crabs (and other enemies whose model has several parts) flash fully** now (tested in Mycelium:
+    the tinted copies switch on and off; not looked at).
   - **Attributes work:** every weapon attribute, including on-hit ones (Critical, Repulsive,
     Nasty, Vampiric…), swing ones (Fragile, Nimble, Enigmatic, Flourishing) and skill procs. Tested
     in Mycelium with a fake Minecraft for Repulsive, Nimble and Enigmatic.

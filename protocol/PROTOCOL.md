@@ -112,7 +112,7 @@ lost if a read is missed.
 |---|---|---|
 | 0x00 | u32 | seq |
 | 0x04 | u32 | flags: bit0 `ACTIVE`, meaning Minecraft should play from this input (Mycelium is focused, and it's normal play); bit1 `CURSOR`, a Minecraft screen is open and the cursor position below is valid (since version 13) |
-| 0x08 | u32 | reason when not active: 0 active, 1 Mycelium window not focused, 2 Mycelium has the controls (its menu, pause or cutscene), 3 Minecraft isn't driving the spore, 4 bridge turned off |
+| 0x08 | u32 | reason when not active: 0 active, 1 Mycelium window not focused, 2 Mycelium has the controls (its menu, pause or cutscene), 3 Minecraft isn't driving the spore, 4 bridge turned off, 5 a hit's knockback has the spore (since version 29: Minecraft lets go of the keys and ignores mouse movement, but keeps following the mouse buttons) |
 | 0x0C | u32 | mouse buttons held: bit n = SDL button n (1 left, 2 middle, 3 right, 4 back, 5 forward) |
 | 0x10 | u8[64] | keys held: bit n = SDL scancode n (USB HID usage), 0..511 |
 | 0x50 | f64 | total mouse movement X since Mycelium started (pixels, right +) |
