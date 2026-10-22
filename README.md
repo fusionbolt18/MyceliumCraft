@@ -50,6 +50,9 @@ Single-player and offline only.
     Minecraft item, then lies on Mycelium's ground ready to pick up again. Tested in Mycelium with a
     fake throw.
   - **Knockback:** your Minecraft hits now also knock enemies back by the held weapon's knockback.
+  - **Better Combat animations: not tested.** Slash weapons swing right then left, Stab weapons stab,
+    Smash weapons slam two-handed. Each weapon's attack range is its real reach in Mycelium
+    plus 25% (measured; a weapon gets it the first time you hold it).
   - **Poisoned enemies flash green** instead of red (tested in Mycelium).
   - **Attributes work:** every weapon attribute, including on-hit ones (Critical, Repulsive,
     Nasty, Vampiric…), swing ones (Fragile, Nimble, Enigmatic, Flourishing) and skill procs. Tested

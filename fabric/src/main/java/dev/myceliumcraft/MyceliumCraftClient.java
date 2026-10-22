@@ -48,6 +48,7 @@ public final class MyceliumCraftClient implements ClientModInitializer {
 		// Diagnostic: what stalls Minecraft's server (late hits, 2026-10-21).
 		ServerStallWatch.init();
 		MycWeapons.init(); // thrown weapons: no pickup, removed once landed
+		MycBetterCombat.init(); // Better Combat's attack starts count as Mycelium swings
 		net.fabricmc.fabric.api.client.rendering.v1.EntityRendererRegistry.register(dev.myceliumcraft.combat.EnemyProxies.TYPE, net.minecraft.client.renderer.entity.NoopRenderer::new);
 		MycLink.LOG.info("MyceliumCraft: rules: no fall damage for players, no natural health regeneration (always, while the mod is installed)");
 	}

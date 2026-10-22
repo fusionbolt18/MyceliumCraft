@@ -1,5 +1,60 @@
 # MODLOG
 
+## 2026-10-21 Attack ranges 25% bigger
+
+**Your request:** make all the attack ranges about 25% bigger.
+
+**Changed:** `MycWeapons.java`: the range given to Better Combat is the measured reach × 1.25
+(`REACH_SCALE`). A weapon never held yet gets 3 × 1.25 = 3.75 blocks. The item description and the
+Minecraft log show the range used. Minecraft side only.
+
+**Tested how:** built into `dist/` (after you closed Minecraft, which had the old jar open).
+**Not tested.**
+
+## 2026-10-21 Better Combat animations, timing and reach for weapons (protocol v28)
+
+**Your request:** give the carrots, beetroots and bread Better Combat animations through an
+embedded datapack and `bettercombat:preset_id`: Slash `one_handed_slash_horizontal_right` and
+`_left`, Stab `one_handed_stab`, Smash `two_handed_slam`. Timing from the weapon's and player's
+stats, hitboxes like each weapon's.
+
+**Changed:**
+- **Presets:** `data/myceliumcraft/weapon_attributes/slash.json`, `stab.json` and `smash.json` in
+  the mod. Slash is a 180° flat arc (measured Mycelium swings span about 180°); Stab and Smash are
+  a box straight ahead. Upswing 0.5.
+- **`MycWeapons.java`:**
+  - Every weapon item gets `bettercombat:preset_id` for its type.
+  - It also gets an entity interaction range modifier: the weapon's reach. Better Combat uses that
+    as the attack range.
+  - Its description shows the reach.
+- **Timing:** nothing new. Better Combat's attack lasts the attack cooldown, which is already the
+  weapon's real swings per second from Mycelium's stats.
+- **Reach, Mycelium side (`WeaponBag.MeasureReach`):** the held weapon's attack is stepped
+  through on the spore's animator, and the farthest point its collider reaches is sent. New field
+  in the Weapons table (0x1C, protocol v28).
+- **Test aid `-mcReachTest`:** measures every weapon prefab.
+- **`MycBetterCombat.java`:** Better Combat runs its own attacks instead of Minecraft's
+  `startAttack`. So Mycelium's attack events (weapon attributes) now come from Better Combat's
+  public `ATTACK_START` event for its weapons. `MinecraftMixin` skips them, so a swing isn't
+  counted twice.
+- DESIGN §5.0.5, PROTOCOL, README.
+
+**Tested how:**
+- The real Mycelium build with the fake Minecraft in The Carcass (`-mcReachTest`): all 19 weapon
+  prefabs measured, 0.64 to 3.73 blocks (list in DESIGN §5.0.5).
+- In Daybreak Arboretum with the Stick really held (`LINKTEST_HOLD=1`): 1.65 blocks, the same as
+  the test.
+- The mod jar built (the presets are in it), and the fake Mycelium still builds.
+
+**Still broken / not tested:**
+- **Not tested in Minecraft:** the animations, the reach, the event listener.
+- Coal Axe and Eternal Torch measured only 0.64 blocks in the test. Their prefabs are built
+  differently, so the test may not place them as the game does. In play, the held weapon is
+  measured as it really is.
+- A weapon you've never held yet keeps Minecraft's 3 blocks until you first select it.
+- Not sure whether Better Combat's own attack also respects our "full charge only" rule. Its
+  attacks don't always pass through `startAttack`.
+
 ## 2026-10-21 Better Combat's swing particles in the overlay
 
 **Your request:** Better Combat's particle effects for weapon swings should be visible too.

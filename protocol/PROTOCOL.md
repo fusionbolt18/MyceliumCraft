@@ -252,6 +252,7 @@ The mapping grows by 0x4000. Strings are UTF-8, zero-terminated.
 | 0x10 | f32 | knockback (Mycelium) |
 | 0x14 | f32 | damage multiplier (weapon and attributes) |
 | 0x18 | f32 | attack speed modifier |
+| 0x1C | f32 | reach in blocks: how far the weapon's collider gets from the spore's middle in its attack; 0 = not measured yet (since version 28) |
 | 0x20 | utf8[64] | name |
 | 0x60 | utf8[160] | attributes, "Name: description; Name: description" |
 

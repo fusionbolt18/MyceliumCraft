@@ -62,6 +62,7 @@ namespace MyceliumCraft.Link
         public const int WMax = 32;
         public const int WSize = 0x100;       // u32 id, u32 type (0 Slash, 1 Smash, 2 Stab), f32 damage per swing (Mycelium), swings/s, knockback, damage mult, speed mod, pad, name, attributes
         public const int WeId = 0x00, WeType = 0x04, WeDamage = 0x08, WePerSecond = 0x0C, WeKnockback = 0x10, WeDamageMult = 0x14, WeSpeedMod = 0x18;
+        public const int WeReach = 0x1C; // f32 blocks: how far the weapon reaches in its attack (0 = not measured yet); since v28
         public const int WeName = 0x20, WeNameBytes = 0x40, WeAtts = 0x60, WeAttsBytes = 0xA0;
 
         // Thrown (Minecraft -> Mycelium, seqlock): your weapons flying through Minecraft's world as
@@ -75,7 +76,7 @@ namespace MyceliumCraft.Link
 
         public const int MappingBytes = OffThrown + ThrownBytes;
         public const uint Magic = 0x4343594D; // "MYCC"
-        public const uint Version = 27;
+        public const uint Version = 28;
         public const ulong HeartbeatTimeoutMs = 3000;
 
         // Header @0x000

@@ -11,10 +11,13 @@ import java.util.Objects;
 import java.util.Set;
 import net.minecraft.client.Minecraft;
 import net.minecraft.client.player.LocalPlayer;
+import net.minecraft.core.component.DataComponentType;
 import net.minecraft.core.component.DataComponents;
+import net.minecraft.core.registries.BuiltInRegistries;
 import net.minecraft.nbt.CompoundTag;
 import net.minecraft.network.chat.Component;
 import net.minecraft.network.chat.Style;
+import net.minecraft.resources.Identifier;
 import net.minecraft.server.level.ServerPlayer;
 import net.minecraft.world.entity.EntityTypes;
 import net.minecraft.world.entity.EquipmentSlotGroup;
@@ -57,6 +60,17 @@ public final class MycWeapons {
 	private static final String ID_KEY = "myceliumcraft_weapon";
 	private static final String STAMP_KEY = "myceliumcraft_stamp";
 	private static final String[] TYPES = { "Slash", "Smash", "Stab" };
+	// Better Combat presets in this mod's data (data/myceliumcraft/weapon_attributes), by type.
+	private static final Identifier[] PRESETS = {
+		Identifier.fromNamespaceAndPath("myceliumcraft", "slash"),
+		Identifier.fromNamespaceAndPath("myceliumcraft", "smash"),
+		Identifier.fromNamespaceAndPath("myceliumcraft", "stab"),
+	};
+	private static final Identifier REACH_ID = Identifier.fromNamespaceAndPath("myceliumcraft", "weapon_reach");
+	private static final double BASE_REACH = 3.0; // Minecraft's entity interaction range
+	private static final double REACH_SCALE = 1.25; // attack ranges 25% bigger than measured (your choice, 2026-10-21)
+	private static DataComponentType<Identifier> presetComponent;
+	private static boolean presetLooked;
 	private static final MycLink.Weapon[] TABLE = new MycLink.Weapon[Proto.W_MAX];
 	private static final MycLink.WeaponsHeader HEADER = new MycLink.WeaponsHeader();
 	private static int count = -1, lastVersion = Integer.MIN_VALUE, lastSelectSeq = Integer.MIN_VALUE;
@@ -296,6 +310,7 @@ public final class MycWeapons {
 			c.knockback = s.knockback;
 			c.damageMult = s.damageMult;
 			c.speedMod = s.speedMod;
+			c.reach = s.reach;
 			c.name = s.name;
 			c.attributes = s.attributes;
 			list.add(c);
@@ -304,7 +319,7 @@ public final class MycWeapons {
 	}
 
 	private static int stamp(MycLink.Weapon w, float scale) {
-		return Objects.hash(Math.round(w.damage * 100), Math.round(w.perSecond * 1000), Math.round(w.knockback * 10), w.type, w.name, w.attributes, Math.round(scale * 100), 1);
+		return Objects.hash(Math.round(w.damage * 100), Math.round(w.perSecond * 1000), Math.round(w.knockback * 10), w.type, w.name, w.attributes, Math.round(scale * 100), Math.round(w.reach * 100), 3);
 	}
 
 	/** Write a weapon onto a carrot. */
@@ -318,10 +333,18 @@ public final class MycWeapons {
 		stack.set(DataComponents.CUSTOM_NAME, Component.literal(w.name.isEmpty() ? "Weapon" : w.name).withStyle(Style.EMPTY.withItalic(false)));
 		// Minecraft's attack = the player's base (damage 1, speed 4) + these, in the main hand.
 		double points = w.damage / scale;
-		stack.set(DataComponents.ATTRIBUTE_MODIFIERS, ItemAttributeModifiers.builder()
+		var modifiers = ItemAttributeModifiers.builder()
 			.add(Attributes.ATTACK_DAMAGE, new AttributeModifier(Item.BASE_ATTACK_DAMAGE_ID, points - 1.0, AttributeModifier.Operation.ADD_VALUE), EquipmentSlotGroup.MAINHAND)
-			.add(Attributes.ATTACK_SPEED, new AttributeModifier(Item.BASE_ATTACK_SPEED_ID, Math.max(0.05, w.perSecond) - 4.0, AttributeModifier.Operation.ADD_VALUE), EquipmentSlotGroup.MAINHAND)
-			.build());
+			.add(Attributes.ATTACK_SPEED, new AttributeModifier(Item.BASE_ATTACK_SPEED_ID, Math.max(0.05, w.perSecond) - 4.0, AttributeModifier.Operation.ADD_VALUE), EquipmentSlotGroup.MAINHAND);
+		// Better Combat's attack range is the player's entity interaction range when the held item
+		// changes it (else its preset's range bonus): the weapon's reach in Mycelium (Minecraft's
+		// own 3 blocks if never held yet), 25% bigger.
+		double range = attackRange(w);
+		if (range != BASE_REACH) {
+			modifiers.add(Attributes.ENTITY_INTERACTION_RANGE, new AttributeModifier(REACH_ID, range - BASE_REACH, AttributeModifier.Operation.ADD_VALUE), EquipmentSlotGroup.MAINHAND);
+		}
+		stack.set(DataComponents.ATTRIBUTE_MODIFIERS, modifiers.build());
+		setPreset(stack, w.type);
 		List<Component> lore = new ArrayList<>();
 		Style gray = Style.EMPTY.withItalic(false).withColor(0xAAAAAA);
 		Style blue = Style.EMPTY.withItalic(false).withColor(0x5577FF);
@@ -329,6 +352,7 @@ public final class MycWeapons {
 		lore.add(Component.literal(String.format("Damage per swing: %.1f (x%.2f)", w.damage, w.damageMult)).withStyle(gray));
 		lore.add(Component.literal(String.format("Swings per second: %.2f (x%.2f)", w.perSecond, w.speedMod)).withStyle(gray));
 		lore.add(Component.literal(String.format("Knockback: %.1f", w.knockback)).withStyle(gray));
+		lore.add(Component.literal(w.reach > 0.1f ? String.format("Reach: %.2f blocks", range) : String.format("Reach: %.2f blocks until first held", range)).withStyle(gray));
 		for (String att : w.attributes.split("; ")) {
 			if (!att.isBlank()) {
 				lore.add(Component.literal(att).withStyle(blue));
@@ -337,12 +361,33 @@ public final class MycWeapons {
 		stack.set(DataComponents.LORE, new ItemLore(lore));
 	}
 
+	/** The attack range for Better Combat (blocks): the measured reach, or Minecraft's 3 blocks if not yet measured, 25% bigger. */
+	private static double attackRange(MycLink.Weapon w) {
+		return (w.reach > 0.1f ? w.reach : BASE_REACH) * REACH_SCALE;
+	}
+
+	/**
+	 * Better Combat's "bettercombat:preset_id" component: which of our presets animates this item.
+	 * Looked up by name, so nothing happens without Better Combat.
+	 */
+	@SuppressWarnings("unchecked")
+	private static void setPreset(ItemStack stack, int type) {
+		if (!presetLooked) {
+			presetLooked = true;
+			presetComponent = (DataComponentType<Identifier>) BuiltInRegistries.DATA_COMPONENT_TYPE.getValue(Identifier.fromNamespaceAndPath("bettercombat", "preset_id"));
+			MycLink.LOG.info("MyceliumCraft: Better Combat's preset_id component {}", presetComponent != null ? "found: weapons get our Slash/Smash/Stab presets" : "not found: no Better Combat animations");
+		}
+		if (presetComponent != null) {
+			stack.set(presetComponent, PRESETS[Math.max(0, Math.min(2, type))]);
+		}
+	}
+
 	private static String describe(int n) {
 		StringBuilder sb = new StringBuilder();
 		for (int i = 0; i < n; i++) {
 			MycLink.Weapon w = TABLE[i];
 			sb.append(i > 0 ? ", " : "").append('#').append(w.id).append(' ').append(w.name)
-				.append(String.format(" %.1f dmg %.2f/s", w.damage, w.perSecond));
+				.append(String.format(" %.1f dmg %.2f/s reach %.2f (range %.2f)", w.damage, w.perSecond, w.reach, attackRange(w)));
 		}
 		return sb.toString();
 	}

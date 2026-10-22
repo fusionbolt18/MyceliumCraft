@@ -62,6 +62,8 @@ namespace MyceliumCraft
             public GameObject Live;    // its object while held
             // Numbers sent to Minecraft
             public float Damage, PerSecond;
+            public float Reach;          // blocks, from MeasureReach; 0 = not measured yet
+            public GameObject ReachFrom; // the held object it was measured on
         }
 
         const string Carcass = "The Carcass";
@@ -127,6 +129,7 @@ namespace MyceliumCraft
             Weapon held = Find(heldId);
             if (!busy && held != null && held.Live != null) ReadLive(held, held.Live);
             bool changed = !busy && Compute(held);
+            if (!busy && held != null && held.Live != null && !ReferenceEquals(held.ReachFrom, held.Live) && MeasureReach(held, map)) changed = true;
             if (changed) version++;
 
             if (minecraftDriving) Follow(host, minecraftHand);
@@ -646,6 +649,120 @@ namespace MyceliumCraft
             return clipLength.TryGetValue(name, out float len) && len > 0.05f ? len : 1f;
         }
 
+        /// <summary>
+        /// How far the held weapon reaches in its attack, for Better Combat's attack range in
+        /// Minecraft (blocks). Mycelium hits with the weapon's own collider as the spore's attack
+        /// animation swings it, so the spore's attack state is stepped through (Play at a time,
+        /// Update(0), events off; put back within the frame, as ClipLength does) and the collider's
+        /// farthest corner from the spore's middle, flat on the ground, is the reach. Measured on the
+        /// real held object: Mycelium's hand, hold offsets and scale are all in it. Not while the
+        /// spore is attacking (tried again next frame). Also logs the swing's sideways spread and
+        /// when it reaches farthest, for the Better Combat presets.
+        /// </summary>
+        bool MeasureReach(Weapon w, WorldMapping map)
+        {
+            Component controller = FindComp("PlayerParent", "PlayerController");
+            if (controller != null && Get(controller, "canUseAttack") is bool can && !can) return false;
+            switch (MeasureOn(w.Live, w.Type, w.Name, map, out float reach))
+            {
+                case null: return false; // not now
+                case false: w.ReachFrom = w.Live; return false;
+            }
+            w.ReachFrom = w.Live;
+            w.Reach = reach;
+            return true;
+        }
+
+        /// <summary>
+        /// The measuring itself, on any weapon object in the spore's hand (also -mcReachTest).
+        /// Null: can't now (no animator); false: can't on this weapon.
+        /// </summary>
+        public static bool? MeasureOn(GameObject live, int type, string name, WorldMapping map, out float reachBlocks)
+        {
+            reachBlocks = 0f;
+            GameObject player = GameObject.FindWithTag("currentPlayer");
+            Animator a = player != null ? player.GetComponent<Animator>() : null;
+            if (a == null || !a.isActiveAndEnabled || a.runtimeAnimatorController == null || map == null || live == null) return null;
+            Collider col = live.GetComponent<Collider>();
+            if (col == null) { McLog.Info($"weapons: '{name}' has no collider; reach not measured"); return false; }
+            Vector3[] corners = LocalCorners(col);
+            string state = type == 1 ? "Smash" : type == 2 ? "Stab" : "Slash";
+            Transform root = player.transform;
+            AnimatorStateInfo before = a.GetCurrentAnimatorStateInfo(0);
+            float speed = a.speed;
+            bool events = a.fireEvents;
+            a.speed = 1f;
+            a.fireEvents = false;
+            const int Steps = 40;
+            var reach = new float[Steps + 1];
+            var yaw = new float[Steps + 1];
+            bool found = true;
+            try
+            {
+                for (int i = 0; i <= Steps; i++)
+                {
+                    a.Play(state, 0, i / (float)Steps);
+                    a.Update(0f);
+                    if (i == 0 && !a.GetCurrentAnimatorStateInfo(0).IsName(state)) { found = false; break; }
+                    foreach (Vector3 c in corners)
+                    {
+                        Vector3 rel = col.transform.TransformPoint(c) - root.position;
+                        rel.y = 0f;
+                        if (rel.magnitude > reach[i])
+                        {
+                            reach[i] = rel.magnitude;
+                            yaw[i] = Vector3.SignedAngle(Vector3.ProjectOnPlane(root.forward, Vector3.up), rel, Vector3.up);
+                        }
+                    }
+                }
+            }
+            finally
+            {
+                a.Play(before.fullPathHash, 0, before.normalizedTime);
+                a.Update(0f);
+                a.speed = speed;
+                a.fireEvents = events;
+            }
+            if (!found) { McLog.Info($"weapons: no '{state}' state on the spore; '{name}' reach not measured"); return false; }
+            int far = 0;
+            for (int i = 1; i <= Steps; i++) if (reach[i] > reach[far]) far = i;
+            float minYaw = 180f, maxYaw = -180f;
+            int front = far;
+            for (int i = 0; i <= Steps; i++)
+            {
+                if (reach[i] < 0.75f * reach[far]) continue;
+                minYaw = Mathf.Min(minYaw, yaw[i]);
+                maxYaw = Mathf.Max(maxYaw, yaw[i]);
+                if (Mathf.Abs(yaw[i]) < Mathf.Abs(yaw[front])) front = i;
+            }
+            reachBlocks = (float)(reach[far] / map.Scale);
+            McLog.Info($"weapons: '{name}' ({state}) reaches {reach[far]:F2} units = {reachBlocks:F2} blocks from the spore's middle, farthest at {far / (float)Steps:F2} of the attack" +
+                       $" (facing {yaw[far]:F0} deg); within 75% of that it spans {minYaw:F0}..{maxYaw:F0} deg, straight ahead at {front / (float)Steps:F2}; collider {col.GetType().Name}");
+            return true;
+        }
+
+        /// <summary>The 8 corners of a collider's shape, in its object's own space.</summary>
+        static Vector3[] LocalCorners(Collider col)
+        {
+            Vector3 center, half;
+            switch (col)
+            {
+                case BoxCollider b: center = b.center; half = b.size * 0.5f; break;
+                case SphereCollider s: center = s.center; half = Vector3.one * s.radius; break;
+                case CapsuleCollider c:
+                    center = c.center;
+                    half = Vector3.one * c.radius;
+                    half[c.direction] = Mathf.Max(c.radius, c.height * 0.5f);
+                    break;
+                case MeshCollider m when m.sharedMesh != null: center = m.sharedMesh.bounds.center; half = m.sharedMesh.bounds.extents; break;
+                default: center = Vector3.zero; half = Vector3.zero; break;
+            }
+            var corners = new Vector3[8];
+            for (int i = 0; i < 8; i++)
+                corners[i] = center + new Vector3((i & 1) == 0 ? -half.x : half.x, (i & 2) == 0 ? -half.y : half.y, (i & 4) == 0 ? -half.z : half.z);
+            return corners;
+        }
+
         string Len(string t) => clipLength.TryGetValue(t, out float l) ? l.ToString("F2") : "?";
 
         MyceliumLink.WeaponEntry[] Table()
@@ -657,7 +774,7 @@ namespace MyceliumCraft
                 t[i] = new MyceliumLink.WeaponEntry
                 {
                     Id = w.Id, Type = (uint)w.Type, Damage = w.Damage, PerSecond = w.PerSecond, Knockback = w.Knockback,
-                    DamageMult = w.DamageMult, SpeedMod = w.SpeedMod, Name = w.Name ?? "?", Attributes = w.AttText ?? ""
+                    DamageMult = w.DamageMult, SpeedMod = w.SpeedMod, Reach = w.Reach, Name = w.Name ?? "?", Attributes = w.AttText ?? ""
                 };
             }
             return t;

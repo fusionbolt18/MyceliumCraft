@@ -393,7 +393,7 @@ namespace MyceliumCraft.Link
         public struct WeaponEntry
         {
             public uint Id, Type;
-            public float Damage, PerSecond, Knockback, DamageMult, SpeedMod;
+            public float Damage, PerSecond, Knockback, DamageMult, SpeedMod, Reach;
             public string Name, Attributes;
         }
 
@@ -422,6 +422,7 @@ namespace MyceliumCraft.Link
                 WriteF32(view, e + Proto.WeKnockback, w.Knockback);
                 WriteF32(view, e + Proto.WeDamageMult, w.DamageMult);
                 WriteF32(view, e + Proto.WeSpeedMod, w.SpeedMod);
+                WriteF32(view, e + Proto.WeReach, w.Reach);
                 WriteUtf8(view, e + Proto.WeName, Proto.WeNameBytes, w.Name);
                 WriteUtf8(view, e + Proto.WeAtts, Proto.WeAttsBytes, w.Attributes);
             }

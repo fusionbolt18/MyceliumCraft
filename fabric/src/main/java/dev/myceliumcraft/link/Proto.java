@@ -53,6 +53,7 @@ public final class Proto {
 	public static final int W_MAX = 32;
 	public static final long W_SIZE = 0x100;
 	public static final long WE_ID = 0x00, WE_TYPE = 0x04, WE_DAMAGE = 0x08, WE_PER_SECOND = 0x0C, WE_KNOCKBACK = 0x10, WE_DAMAGE_MULT = 0x14, WE_SPEED_MOD = 0x18;
+	public static final long WE_REACH = 0x1C; // f32 blocks: how far the weapon reaches in its attack (0 = not measured yet); since v28
 	public static final long WE_NAME = 0x20, WE_ATTS = 0x60;
 	public static final int WE_NAME_BYTES = 0x40, WE_ATTS_BYTES = 0xA0;
 
@@ -67,7 +68,7 @@ public final class Proto {
 
 	public static final long MAPPING_BYTES = OFF_THROWN + THROWN_BYTES;
 	public static final int MAGIC = 0x4343594D; // "MYCC"
-	public static final int VERSION = 27;
+	public static final int VERSION = 28;
 	/** A side is alive if its heartbeat is younger than this. */
 	public static final long HEARTBEAT_TIMEOUT_MS = 3000;
 

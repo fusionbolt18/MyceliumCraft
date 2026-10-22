@@ -209,6 +209,9 @@ namespace MyceliumCraft
             // Test aid: "-mcPickupTest" puts a Cactus Mace on the ground in front of the spore 4 s into
             // driving and picks it up through Mycelium's own WeaponInteraction.Interact.
             if (Array.IndexOf(args, "-mcPickupTest") >= 0) StartCoroutine(PickupTest());
+            // Test aid: "-mcReachTest" measures every Slash, Smash and Stab weapon's reach 3 s into
+            // driving (each put in the spore's hand as Mycelium holds it, then removed; see the log).
+            if (Array.IndexOf(args, "-mcReachTest") >= 0) StartCoroutine(ReachTest());
             // Test aid: "-mcRepickTest" picks up the nearest weapon lying in the world (tag "Weapon")
             // 8 s into driving, through WeaponInteraction.Interact (for thrown weapons).
             if (Array.IndexOf(args, "-mcRepickTest") >= 0) StartCoroutine(RepickTest());
@@ -1448,6 +1451,48 @@ namespace MyceliumCraft
             McLog.Info($"repick test: picking up '{nearest.name}' {best:F1} units away (layer {LayerMask.LayerToName(nearest.layer)}, collider {(col != null && col.enabled ? "on" : "off")})");
             try { t.GetMethod("Interact", BindingFlags.Public | BindingFlags.Instance).Invoke(interact, new object[] { nearest }); }
             catch (Exception e) { McLog.Info("repick test: Interact failed: " + (e.InnerException ?? e).Message); }
+        }
+
+        /// <summary>
+        /// Test aid (-mcReachTest): each weapon prefab is built in the spore's hand as WeaponBag.Equip
+        /// and WeaponInteraction.ApplyWeaponPositionAndRotation place it, measured (WeaponBag.MeasureOn),
+        /// and destroyed, all in one frame. The held weapon stays as it was.
+        /// </summary>
+        System.Collections.IEnumerator ReachTest()
+        {
+            while (phase != Phase.Driving) yield return null;
+            yield return new WaitForSeconds(3f);
+            Type swapType = Type.GetType("SwapWeapon, Assembly-CSharp");
+            GameObject parent = GameObject.Find("PlayerParent");
+            Component swap = swapType != null && parent != null ? parent.GetComponent(swapType) : null;
+            Transform holder = swap != null ? swapType.GetField("weaponHolder")?.GetValue(swap) as Transform : null;
+            if (holder == null) holder = GameObject.FindWithTag("WeaponSlot")?.transform; // as Equip builds weapons
+            McLog.Info($"reach test: weapon holder '{(holder != null ? holder.name : "none")}' ({(swap != null ? "SwapWeapon found" : "no SwapWeapon")})");
+            Type statsType = Type.GetType("WeaponStats, Assembly-CSharp");
+            if (holder == null || statsType == null) { McLog.Info("reach test: no weapon holder or WeaponStats"); yield break; }
+            Vector3 holderAngles = holder.localEulerAngles;
+            var summary = new System.Collections.Generic.List<string>();
+            string[] folders = { "Slash", "Smash", "Stab" };
+            for (int type = 0; type < 3; type++)
+            {
+                foreach (GameObject prefab in Resources.LoadAll<GameObject>(folders[type]))
+                {
+                    var o = Instantiate(prefab, holder) as GameObject;
+                    if (prefab.name != "Stick") o.transform.localScale = o.transform.localScale / 0.03f / 100f / 1.2563f; // as Equip
+                    Collider col = o.GetComponent<Collider>();
+                    if (col != null) col.enabled = false;
+                    Component stats = o.GetComponent(statsType);
+                    o.transform.rotation = holder.rotation;
+                    o.transform.localPosition = stats != null && statsType.GetField("holdPositionOffset")?.GetValue(stats) is Vector3 p ? p : Vector3.zero;
+                    holder.localEulerAngles = stats != null && statsType.GetField("holdRotationOffset")?.GetValue(stats) is Vector3 r ? r : holderAngles;
+                    bool? ok = WeaponBag.MeasureOn(o, type, prefab.name, map, out float reach);
+                    summary.Add($"{prefab.name} {(ok == true ? reach.ToString("F2") : "?")}");
+                    holder.localEulerAngles = holderAngles;
+                    DestroyImmediate(o);
+                }
+                McLog.Info($"reach test: {folders[type]}: {string.Join(", ", summary)} blocks");
+                summary.Clear();
+            }
         }
 
         /// <summary>Test aid (-mcPickupTest): a weapon pickup through Mycelium's own code.</summary>

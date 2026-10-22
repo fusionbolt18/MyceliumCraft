@@ -321,7 +321,7 @@ public final class MycLink {
 	/** One of your weapons (Weapons table). */
 	public static final class Weapon {
 		public int id, type;
-		public float damage, perSecond, knockback, damageMult, speedMod;
+		public float damage, perSecond, knockback, damageMult, speedMod, reach;
 		public String name = "", attributes = "";
 	}
 
@@ -360,6 +360,7 @@ public final class MycLink {
 				w.knockback = s.get(JAVA_FLOAT, e + WE_KNOCKBACK);
 				w.damageMult = s.get(JAVA_FLOAT, e + WE_DAMAGE_MULT);
 				w.speedMod = s.get(JAVA_FLOAT, e + WE_SPEED_MOD);
+				w.reach = s.get(JAVA_FLOAT, e + WE_REACH);
 				w.name = utf8(s, e + WE_NAME, WE_NAME_BYTES);
 				w.attributes = utf8(s, e + WE_ATTS, WE_ATTS_BYTES);
 			}

@@ -621,6 +621,47 @@ in three ways:
     attributes, 2 of them the prefab's own.
 - **The Minecraft side isn't tested in Minecraft.**
 
+### 5.0.5 Better Combat animations, timing and reach for weapons (since 2026-10-21)
+
+**Presets:** our mod carries three Better Combat weapon presets as data
+(`fabric/src/main/resources/data/myceliumcraft/weapon_attributes/`; a mod's `data` folder is
+loaded like a built-in datapack). Every weapon item gets Better Combat's `bettercombat:preset_id`
+component naming one (`MycWeapons.setPreset`; the component is looked up by name, so nothing
+happens without Better Combat):
+- **Slash** (`myceliumcraft:slash`): `one_handed_slash_horizontal_right`, then `..._left`
+  (alternating combo), a 180° flat arc. Measured Mycelium Slash swings span about -90°..+94°.
+- **Stab** (`myceliumcraft:stab`): `one_handed_stab`, a box straight ahead.
+- **Smash** (`myceliumcraft:smash`): `two_handed_slam`, a box straight ahead, two-handed.
+- Upswing (when in the attack the hit lands) is Better Combat's usual 0.5, to match its animations.
+
+**Timing:** Better Combat's attack lasts Minecraft's attack cooldown, which comes from the item's
+attack speed. That is already the weapon's real Mycelium swings per second (state length, the
+spore's Speed level, the weapon's speed modifier; §5.0.4), so it follows the stats.
+
+**Reach:** Better Combat's attack range is the player's entity interaction range when the held
+item changes it. Each item sets it to the weapon's reach × 1.25 (your choice: ranges 25% bigger;
+`REACH_SCALE` in `MycWeapons`), through the modifier `myceliumcraft:weapon_reach`.
+- **Measured in Mycelium** (`WeaponBag.MeasureReach`), on the weapon object really in the spore's
+  hand, the first frame it's held. The spore's attack state is stepped through in 40 steps
+  (Play, Update(0), animation events off, all put back in the same frame). The weapon collider's
+  farthest corner from the spore's middle, flat on the ground, is the reach, divided by the world
+  scale.
+- A weapon never held yet has no reach (0). Its item gets Minecraft's 3 blocks × 1.25 until you
+  first select it.
+- **Measured with `-mcReachTest`** (every prefab put in the hand as Equip builds it), in blocks:
+  - Slash: Stick 1.65, Mandible Sickle 2.00, Razorvine 2.00, Obsidian Scimitar 1.83, Avocado
+    Flamberge 2.82. Coal Axe and Eternal Torch 0.64: built differently (root scale 1, not ~31),
+    so the test may not hold them as the game does. Not sure.
+  - Smash: Femur Club 2.09, Cactus/Rose Mace 2.74, Geode Hammer 2.91, Bert's Club/The Smacker 3.08,
+    THE LOG 3.73.
+  - Stab: Carpal Sais 1.52, Opal Rapier 2.26, Stickbug Spear 2.93, Bamboo/Perfect Partisan 3.04.
+  - The Stick really held in a level measured 1.65, the same as the test.
+
+**Attack events:** Better Combat cancels Minecraft's `startAttack` for the weapons it animates and
+runs its own attack. So Mycelium's attack events (`swingStarted`, which weapon attributes use) come
+from Better Combat's public `ATTACK_START` event for those (`MycBetterCombat`). `MinecraftMixin`
+skips them, so a swing isn't counted twice.
+
 ### 5.1 Body size: Minecraft's player is shrunk to the spore's height
 
 **The problem:** Minecraft's player is always 1.8 blocks tall. At scale 1.4 that's 2.52 units. The
