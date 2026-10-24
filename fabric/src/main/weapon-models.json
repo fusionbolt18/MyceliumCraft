@@ -1,0 +1,6 @@
+{
+  "_about": "Mycelium's weapon prefabs (Resources/<Type>/<name>.prefab), one model and dummy 16x16 texture each, made at build time by the weaponResources task in build.gradle. The item's custom_model_data string is the name in lower case with every run of other characters as one '_' (MycWeapons.modelKey). A weapon not listed keeps its plain bread / beetroot / carrot look.",
+  "slash": ["Stick", "AvocadoFlamberge", "Coal Axe", "Eternal Torch", "MandibleSickle", "ObsidianScimitar", "Razorvine"],
+  "smash": ["Bert's Club", "CactusMace", "FemurClub", "GeodeHammer", "RoseMace", "THE LOG", "The Smacker"],
+  "stab": ["BambooPartisan", "CarpalSais", "OpalRapier", "PerfectPartisan", "Stickbug Spear"]
+}

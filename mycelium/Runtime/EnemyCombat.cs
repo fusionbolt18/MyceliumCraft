@@ -233,6 +233,7 @@ namespace MyceliumCraft
         // after a hit) and to the weapon's WeaponCollision.HitEnemy (Critical, Repulsive, Sticky,
         // Nasty, Hazardous, Vampiric, Feline...). Minecraft's attacks raised none of them.
         const float SwingSeconds = 0.35f; // a swing "finishes" this long after it starts (or at the next)
+        bool swingHit; // the open swing has hit an enemy (Fungal Might ends with it)
         uint swingsSeen;
         bool swingsKnown;
         float swingEnds = -1f;
@@ -271,7 +272,31 @@ namespace MyceliumCraft
         void FinishSwing()
         {
             swingEnds = -1f;
+            if (swingHit) EndFungalMight();
+            swingHit = false;
             RaiseAttack("FinishedAttack");
+        }
+
+        /// <summary>
+        /// Fungal Might ends at the end of a swing that hit enemies (your rule, 2026-10-22); a swing
+        /// that misses keeps it. Mycelium's own attack clears it in every swing
+        /// (PlayerAttack.Attack calls ClearAllFungalMights before FinishedAttack): the same call
+        /// here, so the skill's border goes off and its real cooldown starts as in Mycelium.
+        /// </summary>
+        void EndFungalMight()
+        {
+            GameObject parent = GameObject.Find("PlayerParent");
+            Type t = Type.GetType("PlayerAttack, Assembly-CSharp");
+            Component attack = parent != null && t != null ? parent.GetComponent(t) : null;
+            if (attack == null) return;
+            float bonus = Num(t.GetField("fungalMightBonus", BindingFlags.NonPublic | BindingFlags.Instance)?.GetValue(attack));
+            if (Mathf.Abs(bonus - 1f) < 0.0001f) return; // not on: nothing to end
+            try
+            {
+                t.GetMethod("ClearAllFungalMights")?.Invoke(attack, null);
+                McLog.Info($"combat: Fungal Might (x{bonus:F2}) ended with the swing that hit");
+            }
+            catch (Exception e) { McLog.Info($"combat: ending Fungal Might failed: {(e.InnerException ?? e).Message}"); }
         }
 
         void RaiseAttack(string name)
@@ -310,6 +335,7 @@ namespace MyceliumCraft
         float WeaponHit(Component enemy, float damage, ref string through)
         {
             if (swingEnds < 0f) StartSwing();
+            swingHit = true;
             Component wc = HeldCollision();
             if (wc == null) return damage;
             Type t = wc.GetType();

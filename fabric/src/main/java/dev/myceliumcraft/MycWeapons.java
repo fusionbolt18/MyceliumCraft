@@ -29,6 +29,7 @@ import net.minecraft.world.item.Item;
 import net.minecraft.world.item.ItemStack;
 import net.minecraft.world.item.Items;
 import net.minecraft.world.item.component.CustomData;
+import net.minecraft.world.item.component.CustomModelData;
 import net.minecraft.world.item.component.ItemAttributeModifiers;
 import net.minecraft.world.item.component.ItemLore;
 
@@ -313,13 +314,14 @@ public final class MycWeapons {
 			c.reach = s.reach;
 			c.name = s.name;
 			c.attributes = s.attributes;
+			c.key = s.key;
 			list.add(c);
 		}
 		return list;
 	}
 
 	private static int stamp(MycLink.Weapon w, float scale) {
-		return Objects.hash(Math.round(w.damage * 100), Math.round(w.perSecond * 1000), Math.round(w.knockback * 10), w.type, w.name, w.attributes, Math.round(scale * 100), Math.round(w.reach * 100), 3);
+		return Objects.hash(Math.round(w.damage * 100), Math.round(w.perSecond * 1000), Math.round(w.knockback * 10), w.type, w.name, w.attributes, Math.round(scale * 100), Math.round(w.reach * 100), w.key, 4);
 	}
 
 	/** Write a weapon onto a carrot. */
@@ -345,6 +347,14 @@ public final class MycWeapons {
 		}
 		stack.set(DataComponents.ATTRIBUTE_MODIFIERS, modifiers.build());
 		setPreset(stack, w.type);
+		// Its own look from our built-in resource pack (src/main/weapon-models.json, made by the
+		// weaponResources task): the item definition picks the model by this string.
+		String model = modelKey(w.key);
+		if (model.isEmpty()) {
+			stack.remove(DataComponents.CUSTOM_MODEL_DATA);
+		} else {
+			stack.set(DataComponents.CUSTOM_MODEL_DATA, new CustomModelData(List.of(), List.of(), List.of(model), List.of()));
+		}
 		List<Component> lore = new ArrayList<>();
 		Style gray = Style.EMPTY.withItalic(false).withColor(0xAAAAAA);
 		Style blue = Style.EMPTY.withItalic(false).withColor(0x5577FF);
@@ -359,6 +369,11 @@ public final class MycWeapons {
 			}
 		}
 		stack.set(DataComponents.LORE, new ItemLore(lore));
+	}
+
+	/** A prefab name as our resource pack names it: lower case, every run of other characters one '_' (as build.gradle). */
+	public static String modelKey(String key) {
+		return key.toLowerCase(java.util.Locale.ROOT).replaceAll("[^a-z0-9]+", "_").replaceAll("^_+|_+$", "");
 	}
 
 	/** The attack range for Better Combat (blocks): the measured reach, or Minecraft's 3 blocks if not yet measured, 25% bigger. */
@@ -387,7 +402,7 @@ public final class MycWeapons {
 		for (int i = 0; i < n; i++) {
 			MycLink.Weapon w = TABLE[i];
 			sb.append(i > 0 ? ", " : "").append('#').append(w.id).append(' ').append(w.name)
-				.append(String.format(" %.1f dmg %.2f/s reach %.2f (range %.2f)", w.damage, w.perSecond, w.reach, attackRange(w)));
+				.append(String.format(" %.1f dmg %.2f/s reach %.2f (range %.2f) look '%s'", w.damage, w.perSecond, w.reach, attackRange(w), modelKey(w.key)));
 		}
 		return sb.toString();
 	}

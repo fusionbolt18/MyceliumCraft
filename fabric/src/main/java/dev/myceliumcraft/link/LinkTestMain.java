@@ -44,6 +44,9 @@ public final class LinkTestMain {
 	private static final boolean FOVEYE = "1".equals(System.getenv("LINKTEST_FOVEYE"));
 	/** "1": log Mycelium's enemy table once a second, and hit the nearest enemy for 2 points (10 Mycelium damage) every 2 s. */
 	private static final boolean HIT = "1".equals(System.getenv("LINKTEST_HIT"));
+	// LINKTEST_FUNGAL=1: a swing at 5 s that hits nothing, then a swing at 7 s that hits the nearest
+	// enemy once (from 7.1 s), for Fungal Might ending only with a swing that hits (-mcFungalTest).
+	private static final boolean FUNGAL = "1".equals(System.getenv("LINKTEST_FUNGAL"));
 	// LINKTEST_SCREEN=1: a Minecraft screen (an inventory) open from 4 to 10 s, without pausing.
 	private static final boolean SCREEN = "1".equals(System.getenv("LINKTEST_SCREEN"));
 	// LINKTEST_HAND=1: the main hand holds weapon #1 from 7.5 s, nothing (empty) from 8.5 s, #2 from 9.5 s.
@@ -222,6 +225,8 @@ public final class LinkTestMain {
 		ok &= check("weapon 2 damage", wn >= 2 ? weapons[1].damage : -1, 22.5);
 		ok &= check("weapon 2 swings/s", wn >= 2 ? weapons[1].perSecond : -1, 0.8);
 		ok &= check("weapon 2 attributes", wn >= 2 && weapons[1].attributes.startsWith("Heavy") ? 1 : 0, 1);
+		ok &= check("weapon 2 look (key 'Bert's Club' -> bert_s_club)", wn >= 2 && dev.myceliumcraft.MycWeapons.modelKey(weapons[1].key).equals("bert_s_club") ? 1 : 0, 1);
+		ok &= check("weapon 1 look (stick)", wn >= 1 && dev.myceliumcraft.MycWeapons.modelKey(weapons[0].key).equals("stick") ? 1 : 0, 1);
 		MycLink.MycInput in = new MycLink.MycInput();
 		ok &= check("input block read", MycLink.readInput(in) ? 1 : 0, 1);
 		ok &= check("input bridge active", in.active() ? 1 : 0, 1);
@@ -314,7 +319,11 @@ public final class LinkTestMain {
 			// LINKTEST_FOVEYE=1: sprint FOV (x1.15) and crouch eye height (x0.78) from 4 to 7 s.
 			boolean feel = FOVEYE && t >= 4 && t < 7;
 			int hand = HOLD != 0 ? HOLD : !HAND || t < 7.5 ? 0 : t < 8.5 ? 1 : t < 9.5 ? 0 : 2;
-			MycLink.writeMcState(flags, px, y, pz, yaw, pitch, frames++, 1, ack, cameraMode, bodyYaw, tick, feel ? 1.15f : 1f, feel ? 0.78f : 1f, 1f, hand);
+			int swings = FUNGAL ? (t >= 5 ? 1 : 0) + (t >= 7 ? 1 : 0) : 0;
+			MycLink.writeMcState(flags, px, y, pz, yaw, pitch, frames++, 1, ack, cameraMode, bodyYaw, tick, feel ? 1.15f : 1f, feel ? 0.78f : 1f, 1f, hand, swings);
+			if (FUNGAL && t >= 7.1 && t < 8) {
+				hitNearest(px, y, pz); // once: the next would be 2 s later
+			}
 			if (THROW != 0) {
 				int n = 0;
 				if (t >= 5 && t < 7) {

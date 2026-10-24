@@ -208,6 +208,9 @@ namespace MyceliumCraft
             // Test aid: "-mcFlashAll" flashes every enemy in the level once, 4 s into driving, so the
             // log describes each kind's renderers (HurtFlash.Describe).
             if (Array.IndexOf(args, "-mcFlashAll") >= 0) StartCoroutine(FlashAll());
+            // Test aid: "-mcFungalTest" switches Fungal Might on (x2, PlayerAttack.ActivateFungalMight)
+            // 0.5 s into driving and logs each change of it for 15 s (with LINKTEST_FUNGAL=1).
+            if (Array.IndexOf(args, "-mcFungalTest") >= 0) StartCoroutine(FungalTest());
             // Test aid: "-mcSwapTest" swaps weapons the way picking one up does (WeaponInteraction: the
             // old one is let go into the world, a new one goes in the hand) 4 s into driving, and logs
             // which of the two Mycelium draws.
@@ -1004,6 +1007,27 @@ namespace MyceliumCraft
                 pauseBlur.Set(false);
                 if (Time.timeScale == 0f) Time.timeScale = timeScaleBefore;
                 McLog.Info($"pause: Minecraft's pause menu closed, Mycelium's time runs again (time scale {Time.timeScale:F2})");
+            }
+        }
+
+        /// <summary>Test aid: see "-mcFungalTest" in Awake.</summary>
+        System.Collections.IEnumerator FungalTest()
+        {
+            while (phase != Phase.Driving) yield return null;
+            yield return new WaitForSeconds(0.5f);
+            Type t = Type.GetType("PlayerAttack, Assembly-CSharp");
+            GameObject parent = GameObject.Find("PlayerParent");
+            Component attack = parent != null && t != null ? parent.GetComponent(t) : null;
+            FieldInfo bonus = t?.GetField("fungalMightBonus", BindingFlags.NonPublic | BindingFlags.Instance);
+            if (attack == null || bonus == null) { McLog.Info("fungal test: no PlayerAttack.fungalMightBonus"); yield break; }
+            t.GetMethod("ActivateFungalMight")?.Invoke(attack, new object[] { 2f });
+            float start = Time.realtimeSinceStartup, last = -1f;
+            while (Time.realtimeSinceStartup - start < 15f && attack != null)
+            {
+                float now = (float)bonus.GetValue(attack);
+                if (now != last) McLog.Info($"fungal test: Fungal Might bonus x{now:F2} ({Time.realtimeSinceStartup - start:F2} s after switching it on)");
+                last = now;
+                yield return null;
             }
         }
 

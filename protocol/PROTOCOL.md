@@ -241,7 +241,7 @@ The mapping grows by 0x4000. Strings are UTF-8, zero-terminated.
 | 0x10 | u32 | select id: that weapon |
 | 0x14 | u32 | the weapon the spore holds |
 | 0x18 | f32 | damage scale: Mycelium damage per Minecraft damage point (`damageScale=`) |
-| 0x20 + 0x100·i | entry | below |
+| 0x20 + 0x120·i | entry (0x100·i before version 30) | below |
 
 | Entry off | Type | Field |
 |---|---|---|
@@ -255,6 +255,7 @@ The mapping grows by 0x4000. Strings are UTF-8, zero-terminated.
 | 0x1C | f32 | reach in blocks: how far the weapon's collider gets from the spore's middle in its attack; 0 = not measured yet (since version 28) |
 | 0x20 | utf8[64] | name |
 | 0x60 | utf8[160] | attributes, "Name: description; Name: description" |
+| 0x100 | utf8[32] | key: the weapon's prefab name (`Resources/<Type>/<key>`), which picks its look in our resource pack; entries are 0x120 bytes since version 30 (0x100 before) |
 
 ### Thrown @ after Weapons (Minecraft → Mycelium, seqlock). Since version 27
 

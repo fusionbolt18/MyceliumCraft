@@ -50,6 +50,9 @@ Single-player and offline only.
     Minecraft item, then lies on Mycelium's ground ready to pick up again. Tested in Mycelium with a
     fake throw.
   - **Knockback:** your Minecraft hits now also knock enemies back by the held weapon's knockback.
+  - **Each weapon has its own (dummy) texture: not tested in Minecraft.** From our built-in resource
+    pack, picked by the item's custom_model_data. Slash weapons look like blades, Smash like
+    clubs, Stab like spears, each its own colour.
   - **Better Combat animations: not tested.** Slash weapons swing right then left, Stab weapons stab,
     Smash weapons slam two-handed. Each weapon's attack range is its real reach in Mycelium
     plus 25% (measured; a weapon gets it the first time you hold it).
@@ -59,6 +62,8 @@ Single-player and offline only.
   - **Attributes work:** every weapon attribute, including on-hit ones (Critical, Repulsive,
     Nasty, Vampiric…), swing ones (Fragile, Nimble, Enigmatic, Flourishing) and skill procs. Tested
     in Mycelium with a fake Minecraft for Repulsive, Nimble and Enigmatic.
+  - **Fungal Might** ends only after a swing that hits enemies; a miss keeps it on (tested in
+    Mycelium with a fake Minecraft).
   - The Mycelium half is tested with a fake Minecraft.
 - **You can only attack when the attack indicator is full** (while Mycelium is playing): not tested
   in Minecraft. Bows are unchanged.

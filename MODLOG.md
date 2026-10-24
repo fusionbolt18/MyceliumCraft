@@ -1,5 +1,92 @@
 # MODLOG
 
+## 2026-10-22 Fungal Might ends only after a swing that hits
+
+**Your rule:** Fungal Might should end at the end of a swing that hits enemies; a swing that hits
+nothing keeps it on.
+
+**Before:** nothing ended it in our mod. Mycelium's own attack clears it in every swing
+(`PlayerAttack.Attack` → `ClearAllFungalMights`), but Minecraft's swings don't run that code.
+
+**Changed:**
+- **`EnemyCombat.cs`:** each swing remembers whether it hit. When a swing that hit finishes, if
+  Fungal Might is on, Mycelium's own `ClearAllFungalMights` runs (the skill's border goes off and
+  its cooldown starts, as in Mycelium), then `FinishedAttack`.
+- **Test aids:** `-mcFungalTest` (Mycelium) and `LINKTEST_FUNGAL=1` (fake Minecraft: a swing at 5
+  s that misses, a swing at 7 s that hits).
+- DESIGN §5.0.3, README.
+
+**Tested how:** the real Mycelium build with the fake Minecraft in Daybreak Arboretum:
+- "Fungal Might bonus x2.00" when switched on;
+- the missed swing (logged at 9.6 s) left it on;
+- the swing that hit a Stickbug (11.73 s) ended it 0.25 s later: "Fungal Might (x2.00) ended
+  with the swing that hit", then "bonus x1.00".
+
+**Still broken / not tested:**
+- **Not tested in Minecraft** with the real skill and Better Combat.
+
+## 2026-10-22 More of your weapon textures
+
+**Your request:** add your new texture changes.
+
+**Changed:** Avocado Flamberge, Cactus Mace, Opal Rapier, Rose Mace and Stickbug Spear copied into
+`fabric/src/main/weapon-textures/`. Your new Stick was already there. 10 of the 19 weapons are now
+hand-made.
+
+**Tested how:** built. All 19 textures in the jar are identical to your files in `dist/assets`.
+**Not seen in Minecraft.**
+
+## 2026-10-22 Your weapon textures in the mod
+
+**Your request:** apply your texture changes from `dist/assets` to the mod.
+
+**What changed in `dist/assets`:** five textures: Stick, Obsidian Scimitar, Bamboo Partisan, Perfect
+Partisan and THE LOG. The other 14 textures, the models, the bread / beetroot / carrot item
+definitions and the language file are byte-for-byte what the mod already had.
+
+**Changed:**
+- **New folder `fabric/src/main/weapon-textures/`:** your five textures.
+- **`build.gradle` (`weaponResources`):** a weapon with a texture in that folder uses it; the
+  others keep their drawn dummy. The build logs which are hand-made.
+- **`.gitignore`:** the whitelist lets in `/fabric/src/main/weapon-textures/*.png` (your own art,
+  your choice), so git tracks them. Only that folder: other .png files stay ignored.
+- DESIGN §5.0.6.
+
+**Tested how:** built. The jar's textures for those five (and Razorvine, unchanged) are identical
+to your files in `dist/assets`. **Not seen in Minecraft.**
+
+## 2026-10-22 Built-in resource pack: a dummy texture for each weapon (protocol v30)
+
+**Your request:** embed a resource pack in the mod, and give each weapon its own dummy 16x16
+texture through the `custom_model_data` component, so two Slash weapons look different although
+both are bread.
+
+**Changed:**
+- **New `fabric/src/main/weapon-models.json`:** the 19 weapon prefabs, by type.
+- **`build.gradle`, new task `weaponResources`** (runs before `processResources`). It draws a
+  16x16 texture for each weapon (Slash a blade, Smash a club, Stab a spear, each its own colour)
+  and writes its model. It also writes bread / beetroot / carrot item definitions that choose the
+  model by `custom_model_data`, falling back to the normal look. Drawn at build time because .png
+  isn't a source type in the repository.
+- **Key:** the weapon's prefab name, because two prefabs share the name "Rose Mace".
+  - Mycelium (`WeaponBag`, `MyceliumLink`, `Proto.cs`) sends it in the Weapons table. Entries grew
+    to 0x120 bytes and the key is at 0x100 (protocol v30).
+  - `MycWeapons` puts it on the item as `custom_model_data` (`modelKey`: "Bert's Club" →
+    `bert_s_club`).
+- **The fake Mycelium** sends keys, and `LinkTestMain` checks them.
+- PROTOCOL, DESIGN §5.0.6, README.
+
+**Tested how:**
+- `gradlew linkTest` with the fake Mycelium: all checks ok, including "weapon 2 look (key 'Bert's
+  Club' -> bert_s_club)" and "weapon 1 look (stick)".
+- The generated textures are 16x16 and all 19 differ.
+- The jar holds the 19 textures, 19 models and 3 item definitions.
+- Mycelium builds.
+
+**Still broken / not tested:**
+- **Not seen in Minecraft.** I haven't looked at the textures: they're simple shapes in a colour.
+- A weapon not in the list (a new prefab) keeps the plain bread / beetroot / carrot look.
+
 ## 2026-10-22 Holding attack keeps attacking through a hit (protocol v29)
 
 **Your report:** Better Combat keeps attacking while left click is held, but getting hit stops it.

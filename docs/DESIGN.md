@@ -552,6 +552,16 @@ in three ways:
 - **Swings:** Minecraft counts melee attacks that go ahead (`MinecraftMixin.startAttack`) and
   sends the count (McState 0x94, protocol v25). For each new one, Mycelium raises
   `StartedAttack`, then `FinishedAttack` 0.35 s later, or at the next swing (`EnemyCombat`).
+- **Fungal Might** (since 2026-10-22, your rule): it ends at the end of a swing that hit enemies.
+  A swing that misses keeps it. Mycelium's own attack ends it in every swing, so that call
+  (`PlayerAttack.ClearAllFungalMights`, which also turns off the skill's border and starts its
+  real cooldown) is made when a swing that hit finishes, before `FinishedAttack`. A hit with no
+  swing open (Better Combat lands its hits partway into a longer attack) opens one, so it ends
+  0.35 s after that hit.
+  - Its damage is in the weapon items while it's on (`WeaponBag.Compute` counts
+    `fungalMightBonus`), so the hit that ends it is still boosted.
+  - `-mcFungalTest` with `LINKTEST_FUNGAL=1` switches it on, then sends a swing that misses and
+    one that hits.
 - **Hits:** each one is put through the held weapon as `WeaponCollision.OnTriggerEnter` does:
   1. Minecraft's damage × `damageScale`, plus the weapon's Sentience and reflect bonuses, goes into
      `dmgDealt`;
@@ -673,6 +683,32 @@ item changes it. Each item sets it to the weapon's reach × 1.25 (your choice: r
 runs its own attack. So Mycelium's attack events (`swingStarted`, which weapon attributes use) come
 from Better Combat's public `ATTACK_START` event for those (`MycBetterCombat`). `MinecraftMixin`
 skips them, so a swing isn't counted twice.
+
+### 5.0.6 Weapon looks: our built-in resource pack (since 2026-10-22)
+
+A Fabric mod's `assets/` folder is loaded like a resource pack that's always on, so the mod jar
+carries our weapon looks. Each weapon has its own dummy 16x16 texture, even when two share an
+item (both Slash weapons are bread).
+- **The list:** `fabric/src/main/weapon-models.json`, Mycelium's weapon prefabs by type (19).
+- **Made at build time** (`weaponResources` task in `build.gradle`, into
+  `build/generated/weapon-resources`, packed into the jar):
+  - a texture per weapon (`myceliumcraft:item/weapon/<key>`). Your hand-made ones are in
+    `fabric/src/main/weapon-textures/<key>.png` (since 2026-10-22; 10 so far: Stick, Avocado
+    Flamberge, Obsidian Scimitar, Cactus Mace, Rose Mace, THE LOG, Bamboo Partisan, Opal Rapier,
+    Perfect Partisan, Stickbug Spear). The rest are dummies drawn by the build: Slash a blade,
+    Smash a club, Stab a spear, each weapon its own colour (hue spread over the type's weapons).
+    The build logs which are hand-made. To change one, put a 16x16 PNG with that name there;
+  - an item model per weapon (`parent: minecraft:item/handheld`);
+  - `minecraft:items/bread.json`, `beetroot.json` and `carrot.json`: a `minecraft:select` on
+    `minecraft:custom_model_data` (string 0), one case per weapon of that type. The fallback is
+    the normal bread / beetroot / carrot, so plain food items and unknown weapons look as usual.
+- **The key:** the prefab's name, not the weapon's name, because two prefabs (CactusMace,
+  RoseMace) are both called "Rose Mace". Mycelium sends it in the Weapons table (0x100,
+  protocol v30; entries are 0x120 bytes now). `MycWeapons.modelKey` makes it lower case, with every
+  run of other characters as one "_" ("Bert's Club" → `bert_s_club`), as the build does. It's put
+  on the item as `custom_model_data` strings[0].
+- **Checked** with the fake Mycelium (`gradlew linkTest`): the keys "Stick" and "Bert's Club"
+  arrive and become `stick` and `bert_s_club`. The 19 textures are 16x16 and all different.
 
 ### 5.1 Body size: Minecraft's player is shrunk to the spore's height
 

@@ -774,7 +774,8 @@ namespace MyceliumCraft
                 t[i] = new MyceliumLink.WeaponEntry
                 {
                     Id = w.Id, Type = (uint)w.Type, Damage = w.Damage, PerSecond = w.PerSecond, Knockback = w.Knockback,
-                    DamageMult = w.DamageMult, SpeedMod = w.SpeedMod, Reach = w.Reach, Name = w.Name ?? "?", Attributes = w.AttText ?? ""
+                    DamageMult = w.DamageMult, SpeedMod = w.SpeedMod, Reach = w.Reach, Name = w.Name ?? "?", Attributes = w.AttText ?? "",
+                    Key = w.Path != null ? w.Path.Substring(w.Path.LastIndexOf('/') + 1) : "" // its prefab: two weapons share "Rose Mace"
                 };
             }
             return t;

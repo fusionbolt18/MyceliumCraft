@@ -394,7 +394,7 @@ namespace MyceliumCraft.Link
         {
             public uint Id, Type;
             public float Damage, PerSecond, Knockback, DamageMult, SpeedMod, Reach;
-            public string Name, Attributes;
+            public string Name, Attributes, Key;
         }
 
         /// <summary>Seqlock write of the Weapons table (your weapons, for Minecraft's carrots).</summary>
@@ -425,6 +425,7 @@ namespace MyceliumCraft.Link
                 WriteF32(view, e + Proto.WeReach, w.Reach);
                 WriteUtf8(view, e + Proto.WeName, Proto.WeNameBytes, w.Name);
                 WriteUtf8(view, e + Proto.WeAtts, Proto.WeAttsBytes, w.Attributes);
+                WriteUtf8(view, e + Proto.WeKey, Proto.WeKeyBytes, w.Key ?? "");
             }
             Thread.MemoryBarrier();
             WriteU32(view, b + Proto.WSeq, seq + 2);

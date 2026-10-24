@@ -322,7 +322,7 @@ public final class MycLink {
 	public static final class Weapon {
 		public int id, type;
 		public float damage, perSecond, knockback, damageMult, speedMod, reach;
-		public String name = "", attributes = "";
+		public String name = "", attributes = "", key = "";
 	}
 
 	/** The Weapons table's header: version, select request (seq, id), the held weapon. */
@@ -363,6 +363,7 @@ public final class MycLink {
 				w.reach = s.get(JAVA_FLOAT, e + WE_REACH);
 				w.name = utf8(s, e + WE_NAME, WE_NAME_BYTES);
 				w.attributes = utf8(s, e + WE_ATTS, WE_ATTS_BYTES);
+				w.key = utf8(s, e + WE_KEY, WE_KEY_BYTES);
 			}
 			VarHandle.loadLoadFence();
 			if ((int) INT.getVolatile(s, b + W_SEQ) == seq1) {
