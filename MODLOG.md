@@ -1,5 +1,16 @@
 # MODLOG
 
+## 2026-10-24 Six more of your weapon textures
+
+**Your request:** rebuild the mod with the new art.
+
+**Changed:** Bert's Club, Coal Axe, Eternal Torch, Geode Hammer, Mandible Sickle and Razorvine
+copied from `dist/assets` into `fabric/src/main/weapon-textures/`. 16 of the 19 weapons are now
+hand-made; Femur Club, The Smacker and Carpal Sais keep their dummies.
+
+**Tested how:** rebuilt. All 19 textures in the jar are identical to your files in `dist/assets`.
+**Not seen in Minecraft.**
+
 ## 2026-10-22 Fungal Might ends only after a swing that hits
 
 **Your rule:** Fungal Might should end at the end of a swing that hits enemies; a swing that hits

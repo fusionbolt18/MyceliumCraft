@@ -693,9 +693,8 @@ item (both Slash weapons are bread).
 - **Made at build time** (`weaponResources` task in `build.gradle`, into
   `build/generated/weapon-resources`, packed into the jar):
   - a texture per weapon (`myceliumcraft:item/weapon/<key>`). Your hand-made ones are in
-    `fabric/src/main/weapon-textures/<key>.png` (since 2026-10-22; 10 so far: Stick, Avocado
-    Flamberge, Obsidian Scimitar, Cactus Mace, Rose Mace, THE LOG, Bamboo Partisan, Opal Rapier,
-    Perfect Partisan, Stickbug Spear). The rest are dummies drawn by the build: Slash a blade,
+    `fabric/src/main/weapon-textures/<key>.png` (since 2026-10-22; 16 of 19 by 2026-10-24: all but
+    Femur Club, The Smacker and Carpal Sais). The rest are dummies drawn by the build: Slash a blade,
     Smash a club, Stab a spear, each weapon its own colour (hue spread over the type's weapons).
     The build logs which are hand-made. To change one, put a 16x16 PNG with that name there;
   - an item model per weapon (`parent: minecraft:item/handheld`);
