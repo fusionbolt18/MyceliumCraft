@@ -14,6 +14,12 @@ namespace MyceliumCraft
     /// it's done. This tells Minecraft how far through that it is: 0 while waiting (the body stays
     /// buried), then the Sprout animation's progress up to 1 (Minecraft plays the whole Warden's
     /// emerge over it). -1 once it's over, or when the Sprout doesn't start within the wait + 3 s.
+    ///
+    /// The Sprout plays at normal speed (your rule, 2026-10-25). Mycelium runs the spore's whole
+    /// animator at its Speed level (CharacterStats: animator.speed = animatorSpeed), so a high Speed
+    /// sped the Sprout up, and with it the emerge. The animator is held at 1 while the Sprout plays
+    /// (GameManager gives the controls back when it ends, so that stays in step), then put back.
+    /// Test aid "-mcSproutSpeed n": the animator at n before the Sprout, as a Speed level would.
     /// </summary>
     sealed class SproutWatch
     {
@@ -22,6 +28,8 @@ namespace MyceliumCraft
         float arrived, wait;
         Animator animator;
         float nextLog;
+        float savedSpeed = -1f; // the animator's speed before the Sprout (-1: not held)
+        float testSpeed = -1f;
 
         /// <summary>A scene has loaded: arm on The Carcass when Mycelium will sprout the spore there.</summary>
         public void SceneLoaded(Scene scene)
@@ -44,6 +52,10 @@ namespace MyceliumCraft
             sawSprout = false;
             arrived = Time.time;
             animator = null;
+            savedSpeed = -1f;
+            string[] args = Environment.GetCommandLineArgs();
+            int i = Array.IndexOf(args, "-mcSproutSpeed");
+            testSpeed = i >= 0 && i + 1 < args.Length && float.TryParse(args[i + 1], System.Globalization.NumberStyles.Float, System.Globalization.CultureInfo.InvariantCulture, out float n) ? n : -1f;
             McLog.Info($"sprout: arrived in The Carcass; Mycelium sprouts the spore in {wait:F1} s");
         }
 
@@ -56,6 +68,11 @@ namespace MyceliumCraft
                 GameObject player = GameObject.FindWithTag("currentPlayer");
                 animator = player != null ? player.GetComponent<Animator>() : null;
             }
+            if (testSpeed > 0f && animator != null && !sawSprout && animator.speed != testSpeed)
+            {
+                animator.speed = testSpeed;
+                McLog.Info($"sprout: test: the spore's animator at x{testSpeed:F2}, as a Speed level would set it");
+            }
             float progress = 0f;
             if (animator != null && animator.isActiveAndEnabled && animator.GetCurrentAnimatorStateInfo(0).IsName("Sprout"))
             {
@@ -63,7 +80,9 @@ namespace MyceliumCraft
                 if (!sawSprout)
                 {
                     sawSprout = true;
-                    McLog.Info($"sprout: Mycelium's Sprout started {Time.time - arrived:F2} s after arriving ({state.length:F2} s long at its speed)");
+                    savedSpeed = animator.speed;
+                    animator.speed = 1f;
+                    McLog.Info($"sprout: Mycelium's Sprout started {Time.time - arrived:F2} s after arriving ({state.length:F2} s long); animator held at x1 (was x{savedSpeed:F2} from Speed)");
                 }
                 if (state.normalizedTime >= 1f) return Done("the Sprout animation finished");
                 progress = Mathf.Clamp01(state.normalizedTime);
@@ -87,6 +106,13 @@ namespace MyceliumCraft
         float Done(string why)
         {
             armed = false;
+            if (savedSpeed >= 0f && animator != null)
+            {
+                // Back to the Speed level's, unless something else set it meanwhile.
+                if (animator.speed == 1f) animator.speed = savedSpeed;
+                McLog.Info($"sprout: animator back to x{animator.speed:F2}");
+            }
+            savedSpeed = -1f;
             McLog.Info($"sprout: done ({why}), {Time.time - arrived:F2} s after arriving");
             return -1f;
         }

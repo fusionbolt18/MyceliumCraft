@@ -1,5 +1,58 @@
 # MODLOG
 
+## 2026-10-25 The respawn animation isn't sped up by the Speed stat
+
+**Your report:** the Speed stat changes the speed of the respawn animation; it shouldn't.
+
+**Cause:** the respawn (emerge) follows Mycelium's "Sprout" animation on the spore. Mycelium runs
+the spore's whole animator at its Speed level (`CharacterStats`: `animator.speed =
+animatorSpeed`), so a high Speed sped up the Sprout, the emerge with it, and the moment you get
+control back.
+
+**Changed:**
+- **`SproutWatch.cs`:** while the Sprout plays, the spore's animator is held at ×1. When it ends,
+  it goes back to the Speed value (unless something else changed it meanwhile).
+- **Test aid `-mcSproutSpeed n`:** the animator at ×n before the Sprout.
+- DESIGN §5.0.2 (emerge), README.
+
+**Tested how:** the real Mycelium build with the fake Minecraft in The Carcass, twice.
+- Without the aid: this save's spore was already at ×1.99 from its Speed level.
+- With `-mcSproutSpeed 2`: ×2.00.
+- Both runs: "animator held at x1", the sprout done "2.99 s after arriving" (as at normal speed
+  before), and the animator back to ×1.99 / ×2.00 afterwards.
+
+**Still broken / not tested:**
+- **Not seen in Minecraft.**
+
+## 2026-10-25 Your last three weapon textures
+
+**Changed:** Carpal Sais, Femur Club and The Smacker copied from `dist/assets` into
+`fabric/src/main/weapon-textures/`. All 19 weapons are hand-made now.
+
+**Tested how:** rebuilt. All 19 textures in the jar are identical to your files in `dist/assets`.
+**Not seen in Minecraft.**
+
+## 2026-10-24 Mycelium's window can be resized
+
+**Your request:** make the Mycelium window resizable.
+
+**Changed:**
+- **`mycelium/Editor/BuildMyceliumCraft.cs`:** sets `PlayerSettings.resizableWindow = true` on the
+  build's private copy of Mycelium. Your Mycelium project is untouched; it has the setting off.
+- **`BackgroundWindow.cs`:** one log line 1 s after start. It reads the real window's style from
+  Windows (resizable border, maximize button) and gives its size and Unity's window mode.
+- DESIGN §2 (the build), README.
+
+**Tested how:** built ("resizable window: True" in the Unity build log). Then run windowed
+(`-screen-fullscreen 0`, Unity's own option): "window: resizable border yes, maximize button yes;
+960x540, Windowed".
+
+**Still broken / not tested:**
+- Not dragged by hand.
+- Full screen is still the default; Alt+Enter gives the window.
+- The overlay picture is Minecraft's window size stretched to Mycelium's. A Mycelium window of a
+  different shape from Minecraft's stretches the hand and HUD (the log already warns).
+
 ## 2026-10-24 Six more of your weapon textures
 
 **Your request:** rebuild the mod with the new art.

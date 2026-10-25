@@ -19,6 +19,10 @@ namespace MyceliumCraft.Editor
             // Own name, so the build keeps its own save folder (AppData\LocalLow\<company>\MyceliumCraft)
             // and never touches your normal Mycelium saves.
             PlayerSettings.productName = "MyceliumCraft";
+            // A window you can resize (your request, 2026-10-24); Mycelium's own project has it off.
+            // Only this private copy's settings change.
+            PlayerSettings.resizableWindow = true;
+            Debug.Log("[MyceliumCraft] resizable window: " + PlayerSettings.resizableWindow + ", fullscreen mode " + PlayerSettings.fullScreenMode);
 
             string[] scenes = EditorBuildSettings.scenes.Where(s => s.enabled).Select(s => s.path).ToArray();
             Debug.Log("[MyceliumCraft] building " + scenes.Length + " scenes: " + string.Join(", ", scenes) + " -> " + outDir);

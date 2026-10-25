@@ -25,6 +25,11 @@ namespace MyceliumCraft
         [DllImport("user32.dll")] static extern bool IsWindowVisible(IntPtr hwnd);
         [DllImport("user32.dll")] static extern bool IsIconic(IntPtr hwnd);
         [DllImport("user32.dll")] static extern bool ShowWindow(IntPtr hwnd, int cmd);
+        [DllImport("user32.dll")] static extern int GetWindowLong(IntPtr hwnd, int index);
+
+        const int GWL_STYLE = -16;
+        const int WS_THICKFRAME = 0x00040000, WS_MAXIMIZEBOX = 0x00010000; // a border you can drag; the maximize button
+        static bool windowLogged;
 
         const int SW_MINIMIZE = 6; // minimize and activate the next window (gives the focus back)
 
@@ -45,6 +50,7 @@ namespace MyceliumCraft
         /// <summary>Call every frame: keeps the window minimized for the first 10 s; logs any time it had the focus.</summary>
         public static void Update()
         {
+            if (!windowLogged && Time.realtimeSinceStartup > 1f) LogWindow();
             if (!Enabled) return;
             if (Application.isFocused && !everFocused)
             {
@@ -57,6 +63,23 @@ namespace MyceliumCraft
             Minimize();
             if (Time.realtimeSinceStartup + 0.25f > until)
                 McLog.Info($"-mcBackground: minimized {minimized} times in the first 10 s; Mycelium focused now: {Application.isFocused}");
+        }
+
+        /// <summary>Once, 1 s in: can the window be resized (Windows' own style bits), its size and Unity's mode.</summary>
+        static void LogWindow()
+        {
+            windowLogged = true;
+            uint me = (uint)Process.GetCurrentProcess().Id;
+            string found = "no window found";
+            EnumWindows((hwnd, _) =>
+            {
+                GetWindowThreadProcessId(hwnd, out uint pid);
+                if (pid != me || !IsWindowVisible(hwnd)) return true;
+                int style = GetWindowLong(hwnd, GWL_STYLE);
+                found = $"resizable border {((style & WS_THICKFRAME) != 0 ? "yes" : "no")}, maximize button {((style & WS_MAXIMIZEBOX) != 0 ? "yes" : "no")}";
+                return false;
+            }, IntPtr.Zero);
+            McLog.Info($"window: {found}; {Screen.width}x{Screen.height}, {Screen.fullScreenMode} (Alt+Enter switches between full screen and a window)");
         }
 
         static void Minimize()

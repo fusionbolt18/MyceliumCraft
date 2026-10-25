@@ -55,7 +55,11 @@ Mycelium's source and the matching Unity (2022.3.0f1):
    cache, so it doesn't re-import 1 GB of assets). **The real Mycelium folder is only read.**
 2. It adds `"dev.myceliumcraft": "file:<repo>/mycelium"` to the copy's `Packages\manifest.json`.
 3. It runs Unity in batch mode with `MyceliumCraft.Editor.BuildMyceliumCraft.Build`, which builds
-   `work\build\MyceliumCraft.exe`.
+   `work\build\MyceliumCraft.exe`. It sets two of the copy's player settings first: the product
+   name "MyceliumCraft" (its own save folder) and, since 2026-10-24, a **resizable window**
+   (`resizableWindow`; Mycelium's project has it off). Full screen stays the default; Alt+Enter
+   switches to a window. The log says at start whether the window has a resizable border
+   ("window: resizable border yes …").
 
 The package changes none of Mycelium's code:
 - `MinecraftDriver` starts itself through `[RuntimeInitializeOnLoadMethod]` and survives scene
@@ -296,6 +300,12 @@ prevented fall or heal is logged at most once a second.
   - **Mycelium side** (`SproutWatch`): sends how far through that it is (MycState 0x5C, protocol
     v22). That's 0 while waiting, then the Sprout animation's progress up to 1, and −1 when there's
     no sprout.
+  - **Not sped up by Speed** (since 2026-10-25, your rule). Mycelium runs the spore's whole
+    animator at its Speed level (`CharacterStats`: `animator.speed = animatorSpeed`), which sped up
+    the Sprout and so the emerge. `SproutWatch` holds the animator at ×1 while the Sprout plays,
+    then puts the Speed value back. Mycelium gives the controls back when the Sprout ends, so the
+    two stay in step. `-mcSproutSpeed n` sets the animator to n before the Sprout, as a Speed level
+    would.
   - **Minecraft side:** Minecraft's view goes to third person *in front* for the emerge (facing
     you as you dig out; your choice, 2026-10-20), and back after. It's the same switch the death
     uses, which picks third person behind.
@@ -693,8 +703,7 @@ item (both Slash weapons are bread).
 - **Made at build time** (`weaponResources` task in `build.gradle`, into
   `build/generated/weapon-resources`, packed into the jar):
   - a texture per weapon (`myceliumcraft:item/weapon/<key>`). Your hand-made ones are in
-    `fabric/src/main/weapon-textures/<key>.png` (since 2026-10-22; 16 of 19 by 2026-10-24: all but
-    Femur Club, The Smacker and Carpal Sais). The rest are dummies drawn by the build: Slash a blade,
+    `fabric/src/main/weapon-textures/<key>.png` (since 2026-10-22; all 19 by 2026-10-25). The rest are dummies drawn by the build: Slash a blade,
     Smash a club, Stab a spear, each weapon its own colour (hue spread over the type's weapons).
     The build logs which are hand-made. To change one, put a 16x16 PNG with that name there;
   - an item model per weapon (`parent: minecraft:item/handheld`);

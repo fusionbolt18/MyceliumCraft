@@ -130,6 +130,12 @@ Single-player and offline only.
   person too, where only the shadow is drawn (third person tested by you). It
   isn't washed out by the fog any more (tested by you). Held items and blocks show in its hands (not tested in real Minecraft; no enchantment glint yet). `playerModel=0` keeps the spore.
   Tested with a fake Minecraft's test body: right size, right place, right facing.
+- **The respawn (emerge) animation always takes the same time,** whatever your Speed stat (tested
+  in Mycelium with a fake Minecraft).
+- **Every weapon has your own texture** (19 of 19).
+- **Mycelium's window can be resized** (in windowed mode; Alt+Enter switches from full screen).
+  Checked from the log: the window has Windows' resizable border and maximize button. Not tried
+  by hand.
 - **Overlay: tested by you** (you saw it working in real play). Minecraft's hand, hotbar, hearts and screens
   (inventory, chat) are drawn on top of Mycelium, and Minecraft stops drawing its own world
   (`overlay=0` in `MyceliumCraft.cfg` turns it off). Tested with a fake Minecraft's test picture,
