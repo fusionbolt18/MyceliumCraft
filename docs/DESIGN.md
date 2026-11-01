@@ -718,6 +718,85 @@ item (both Slash weapons are bread).
 - **Checked** with the fake Mycelium (`gradlew linkTest`): the keys "Stick" and "Bert's Club"
   arrive and become `stick` and `bert_s_club`. The 19 textures are 16x16 and all different.
 
+### 5.0.7 Skills fire where you look (since 2026-10-25)
+
+The spore faces where Minecraft's **body** faces. Minecraft's body only turns once the head is far
+enough to the side, or toward the walk when strafing, so projectile skills sometimes went off to
+the side (your report: Spineshot).
+- **How Mycelium aims them:** Spineshot, Undergrowth and Unstable Puffball give their projectile
+  the skill object's own rotation. Death Blossom appears in front of it, Mycotoxins behind it.
+  The skill objects are children of the spore's `SkillLoadout`.
+- **So** (`SkillAim.cs`): while Minecraft drives, `SkillLoadout` is turned to Minecraft's look
+  (head) yaw, in Update and again in LateUpdate (after the body turns). The body and its
+  animations keep Minecraft's body yaw. When Minecraft doesn't drive, it's turned back.
+- Only the yaw: looking up or down doesn't tilt them (Mycelium's projectiles fly flat).
+- Blitz still dashes the way the body faces (`rb.transform.forward`): a dash, not a projectile.
+
+**Dashes: Blitz and the dodge roll move you** (since 2026-10-25, protocol v32). Both set
+`PlayerController.activeDodge` and write the spore's velocity from a coroutine every frame (Blitz
+40 units/s for 0.3 s, the roll `rollSpeed` 20). The driver sets the spore's velocity every physics
+step to follow Minecraft, which cancelled them.
+- **Seen** (`DashWatch.cs`): coroutines run after every Update and before LateUpdate. So the
+  velocity is noted in Update, and a change by LateUpdate while `activeDodge` is on is Mycelium
+  writing its dash.
+- **Sent** in MycState (0x6C/0x70, Minecraft blocks/s), until 0.1 s after the last write.
+- **Minecraft** (`MycDash.java`, from `MinecraftMixin`'s tick start): sets the player's
+  horizontal movement to it each tick (blocks per tick), keeping the vertical. Its collisions
+  apply, and the spore follows Minecraft as always.
+- **Checked** with `-mcDashTest`, which starts Mycelium's own `Dodging` coroutine: the fake
+  Minecraft got (14.3, 0) blocks/s for 0.36 s (20 units/s ÷ 1.4, facing east).
+- **Checked** with the fake Minecraft strafing (`LINKTEST_STRAFE=1`: look 0°, body 45° off):
+  "skills face 180 deg (your look), the body 135 deg: 45 deg apart".
+
+### 5.0.8 Trophic Cascade: you vanish too (since 2026-10-26, protocol v33)
+
+Trophic Cascade's vanish switches off every renderer on the spore while it jumps between enemies
+(0.4 to 1.4 s), then back on (`TrophicCascade.Vanish`). Your Minecraft body in Mycelium is drawn
+separately, so it stayed visible.
+- **Seen** (`VanishWatch.cs`): all the spore's body renderers (not a held weapon's) have
+  `enabled` off. Nothing else in Mycelium does that to the spore, and our own hiding of it uses
+  `forceRenderingOff`.
+- **Your body** (`McPlayerModel.SetVanished`): not drawn, shadow included, as the spore.
+- **Minecraft** (MycState flag bit 3, `VANISHED`): from first person, the view goes to third
+  person behind for as long as it lasts, then back (`updateViewOverride`, as for death and the
+  emerge). Already in a third-person view: it stays.
+- **Checked** with `-mcVanishTest` (every spore renderer off for 1 s, as Trophic Cascade does):
+  vanished and back after 1.00 s, and the fake Minecraft saw the flag for 1.0 s.
+
+**Living Cyclone: the same view change** (since 2026-11-01, protocol v34). It sets the held weapon's
+`WeaponCollision.isCycloning` from the start of the skill until its third spin ends. While that's
+on, MycState flag bit 4 (`CYCLONE`) is set, and Minecraft treats it as the vanish: from first
+person, third person behind until it's over. The body isn't hidden. `-mcCycloneTest` sets
+`isCycloning` for 2 s: the fake Minecraft saw the flag from 4.0 to 6.0 s.
+- **Its animation** (since 2026-11-01, `MycSkillAnimation.java`): Better Combat's
+  `two_handed_spin`, looped on your Minecraft player while the flag is on. It's played through
+  Player Animation Library's public API, by reflection, so neither mod is changed and nothing
+  happens without them:
+  - At start, our own layer `myceliumcraft:skill` is registered (priority 2000, above Better
+    Combat's). Its controller plays nothing by itself (its handler answers `PlayState.STOP`).
+  - When the flag comes on, `RawAnimation.begin().thenLoop(two_handed_spin)` is triggered there;
+    when it goes off, `stopTriggeredAnimation`.
+  - Mycelium's picture of your body is posed by the same renderer, so it shows the spin too.
+  - **Our own animation** (since 2026-11-01): `myceliumcraft:living_cyclone`, in the mod's
+    built-in resource pack (`assets/myceliumcraft/player_animations/living_cyclone.json`,
+    Emotecraft format, which the library reads).
+    - It's written from scratch, not copied from Better Combat (its jar says "All Rights
+      Reserved").
+    - A 3-tick wind-up into a two-handed grip (Better Combat's: 10), then a full turn of the
+      torso every 5 ticks (Better Combat's: about 6; 4 at first, slowed a little at your request).
+    - Arms straight out at shoulder height, forward and angled to the right, and the held item
+      tilted to point along them, out away from the body (your request, 2026-11-01).
+    - **Grip:** tilting the held item turns it about a point about 2.5 px from the grip, so on its
+      own it floated above the hand (your report). It's also shifted (y −3.15, z −0.3 px), the
+      correction Better Combat's `dual_handed_stab` uses at the same tilt (−1.4).
+    - It loops from the grip. `isLoop` with `returnTick` 4: the library restarts a loop one tick
+      before `returnTick`, so this is tick 3.
+    - Played with `thenPlay`, which keeps the file's own loop. Better Combat's `two_handed_spin`,
+      looped, is only the fallback if ours isn't found.
+    - **Checked** with the library's own loader (`UniversalAnimLoader.loadAnimations`, run outside
+      the game): 8 ticks long, plays again, restarts from tick 3.0, with body, arms, legs and the
+      held item.
+
 ### 5.1 Body size: Minecraft's player is shrunk to the spore's height
 
 **The problem:** Minecraft's player is always 1.8 blocks tall. At scale 1.4 that's 2.52 units. The
@@ -1205,6 +1284,16 @@ While Mycelium shows a level (and `overlay=1`), Mycelium sets `OVERLAY` in its s
     during play.
 - **Size:** the picture is Minecraft's window size, stretched to Mycelium's window. It looks right
   when both windows have the same shape; the log warns if they don't.
+  - **Minecraft's window follows Mycelium's** (since 2026-10-25, `MycWindowSize.java`; protocol
+    v31). Mycelium sends its window size in pixels (MycState 0x64/0x68, `Screen.width/height`).
+  - Once that size has stayed the same for 0.3 s, so it doesn't chase a drag, Minecraft's window is
+    resized with `Window.setWindowed`. That takes window units, which differ from pixels on a
+    scaled display, so the request is divided by Minecraft's current pixels per unit.
+  - Capped at the overlay's 3840x2160, keeping the shape.
+  - Not while Minecraft is full screen (its option): its size is left alone, and the log says so.
+  - After asking, the log says what size Minecraft got. If Windows gave a different size (a
+    window larger than the screen, say), it isn't asked again until Mycelium's size changes. If
+    Minecraft got it, a later difference (you resize Minecraft's window yourself) is put back.
 - **Better Combat in first person** (since 2026-10-21; `MycFirstPersonArms.java`):
   - **How Better Combat draws it:** its attack animations run through Player Animation Library
     (PAL). In first person, while an animation plays, PAL hides Minecraft's normal hand and puts

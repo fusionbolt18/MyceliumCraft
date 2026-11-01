@@ -77,7 +77,7 @@ namespace MyceliumCraft.Link
 
         public const int MappingBytes = OffThrown + ThrownBytes;
         public const uint Magic = 0x4343594D; // "MYCC"
-        public const uint Version = 30;
+        public const uint Version = 34;
         public const ulong HeartbeatTimeoutMs = 3000;
 
         // Header @0x000
@@ -109,9 +109,15 @@ namespace MyceliumCraft.Link
         public const int MyNutrients = 0x58;   // Mycelium's nutrients (i32); -1 = not known; since v19
         public const int MyEmerge = 0x5C;      // how far through Mycelium's sprout (0..1); -1 = no sprout; since v22
         public const int MySpeed = 0x60;       // the spore's walking speed / its base speed (Speed stat, speed effects); 0 = not known; since v26
+        public const int MyWindowW = 0x64;     // u32: Mycelium's window size in pixels (Minecraft's follows it); 0 = not known; since v31
+        public const int MyWindowH = 0x68;
+        public const int MyDashX = 0x6C;       // f32: Mycelium's dash (Blitz, the roll), Minecraft blocks/s along x; 0 and 0 = none; since v32
+        public const int MyDashZ = 0x70;       // f32: the same along z
         public const uint MycInLevel = 1u << 0;
         public const uint MycPaused = 1u << 1;
         public const uint MycOverlay = 1u << 2; // Mycelium shows Minecraft's overlay: Minecraft skips drawing its world
+        public const uint MycVanished = 1u << 3; // the spore has vanished (Trophic Cascade): third person behind from first person; since v33
+        public const uint MycCyclone = 1u << 4;  // Living Cyclone is spinning: third person behind from first person; since v34
 
         // McState @0x200 (Minecraft -> Mycelium, seqlock)
         public const int OffMcState = 0x200;

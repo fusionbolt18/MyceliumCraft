@@ -44,6 +44,8 @@ public final class LinkTestMain {
 	private static final boolean FOVEYE = "1".equals(System.getenv("LINKTEST_FOVEYE"));
 	/** "1": log Mycelium's enemy table once a second, and hit the nearest enemy for 2 points (10 Mycelium damage) every 2 s. */
 	private static final boolean HIT = "1".equals(System.getenv("LINKTEST_HIT"));
+	private static int dashFrames;
+	private static boolean vanishedSeen, cycloneSeen;
 	// LINKTEST_FUNGAL=1: a swing at 5 s that hits nothing, then a swing at 7 s that hits the nearest
 	// enemy once (from 7.1 s), for Fungal Might ending only with a swing that hits (-mcFungalTest).
 	private static final boolean FUNGAL = "1".equals(System.getenv("LINKTEST_FUNGAL"));
@@ -361,10 +363,28 @@ public final class LinkTestMain {
 				}
 				MycLink.writeBindings(kinds, codes, parts.length);
 			}
+			boolean cycloneNow = MycLink.readMycState(myc) && (myc.flags & Proto.MYC_CYCLONE) != 0;
+			if (cycloneNow != cycloneSeen) {
+				cycloneSeen = cycloneNow;
+				System.out.printf("t=%.1f Mycelium's Living Cyclone %s%n", t, cycloneNow ? "spinning (third person behind)" : "over");
+			}
+			boolean vanishedNow = MycLink.readMycState(myc) && (myc.flags & Proto.MYC_VANISHED) != 0;
+			if (vanishedNow != vanishedSeen) {
+				vanishedSeen = vanishedNow;
+				System.out.printf("t=%.1f Mycelium's spore %s%n", t, vanishedNow ? "vanished (third person behind, body hidden)" : "is back");
+			}
+			if (MycLink.readMycState(myc) && (myc.dashX != 0f || myc.dashZ != 0f)) {
+				if (dashFrames++ == 0) {
+					System.out.printf("t=%.1f Mycelium's dash: (%.1f, %.1f) blocks/s%n", t, myc.dashX, myc.dashZ);
+				}
+			} else if (dashFrames > 0) {
+				System.out.printf("t=%.1f Mycelium's dash over after %d frames%n", t, dashFrames);
+				dashFrames = 0;
+			}
 			if (frames % 60 == 0) {
 				boolean read = MycLink.readMycState(myc);
-				System.out.printf("t=%.1f pitch=%.0f mc=(%.2f, %.2f, %.2f) | mycelium alive=%b read=%b flags=%d spore=(%.2f, %.2f, %.2f)%n",
-					t, pitch, px, y, pz, MycLink.myceliumAlive(), read, myc.flags, myc.x, myc.y, myc.z);
+				System.out.printf("t=%.1f pitch=%.0f mc=(%.2f, %.2f, %.2f) | mycelium alive=%b read=%b flags=%d spore=(%.2f, %.2f, %.2f) window %dx%d%n",
+					t, pitch, px, y, pz, MycLink.myceliumAlive(), read, myc.flags, myc.x, myc.y, myc.z, myc.windowW, myc.windowH);
 			}
 			Thread.sleep(FRAME_MS);
 		}

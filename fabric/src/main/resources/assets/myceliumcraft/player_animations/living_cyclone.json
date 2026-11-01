@@ -1,0 +1,112 @@
+{
+  "name": "living_cyclone",
+  "author": "MyceliumCraft",
+  "description": "Living Cyclone: a quick two-handed wind-up (3 ticks), arms and weapon held out away from the body, then a full turn of the torso every 5 ticks, looping from the grip at tick 3 (returnTick 4: the library restarts one tick before it). The held item is shifted (y -3.15, z -0.3 px) so its grip stays in the hand when tilted. Made for MyceliumCraft, 2026-11-01.",
+  "emote": {
+    "isLoop": "true",
+    "returnTick": 4,
+    "beginTick": 0,
+    "endTick": 8,
+    "stopTick": 11,
+    "degrees": false,
+    "moves": [
+      {
+        "tick": 3,
+        "easing": "EASEOUTQUAD",
+        "turn": 0,
+        "rightArm": {
+          "pitch": -1.55,
+          "yaw": 0.55,
+          "roll": 0.0
+        }
+      },
+      {
+        "tick": 3,
+        "easing": "EASEOUTQUAD",
+        "turn": 0,
+        "leftArm": {
+          "pitch": -1.55,
+          "yaw": 0.95,
+          "roll": 0.0
+        }
+      },
+      {
+        "tick": 3,
+        "easing": "EASEOUTQUAD",
+        "turn": 0,
+        "rightItem": {
+          "pitch": -1.4,
+          "x": 0.0,
+          "y": -3.15,
+          "z": -0.3
+        }
+      },
+      {
+        "tick": 3,
+        "easing": "EASEOUTQUAD",
+        "turn": 0,
+        "rightLeg": {
+          "pitch": -0.15,
+          "roll": 0.12
+        }
+      },
+      {
+        "tick": 3,
+        "easing": "EASEOUTQUAD",
+        "turn": 0,
+        "leftLeg": {
+          "pitch": 0.15,
+          "roll": -0.12
+        }
+      },
+      {
+        "tick": 3,
+        "easing": "EASEOUTQUAD",
+        "turn": 0,
+        "torso": {
+          "yaw": 0.9
+        }
+      },
+      {
+        "tick": 4,
+        "easing": "LINEAR",
+        "turn": 0,
+        "torso": {
+          "yaw": -0.3566
+        }
+      },
+      {
+        "tick": 5,
+        "easing": "LINEAR",
+        "turn": 0,
+        "torso": {
+          "yaw": -1.6133
+        }
+      },
+      {
+        "tick": 6,
+        "easing": "LINEAR",
+        "turn": 0,
+        "torso": {
+          "yaw": -2.8699
+        }
+      },
+      {
+        "tick": 7,
+        "easing": "LINEAR",
+        "turn": 0,
+        "torso": {
+          "yaw": -4.1265
+        }
+      },
+      {
+        "tick": 8,
+        "easing": "LINEAR",
+        "turn": 0,
+        "torso": {
+          "yaw": -5.3832
+        }
+      }
+    ]
+  }
+}

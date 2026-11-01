@@ -36,13 +36,22 @@ namespace MyceliumCraft
         public bool ShadowOnly => shadowOnly;
         bool shadowOnly;
         bool castsShadow = true; // test aid can switch the shadow off
+        bool vanished; // Trophic Cascade: nothing drawn, not even the shadow (as Mycelium does to the spore)
+
+        /// <summary>The spore has vanished (VanishWatch): the body and its shadow go too, until it's back.</summary>
+        public void SetVanished(bool on)
+        {
+            if (on == vanished) return;
+            vanished = on;
+            ApplyRenderMode();
+        }
 
         /// <summary>Third person: body and shadow. First person: only the shadow (the camera is inside the body).</summary>
         void ApplyRenderMode()
         {
             if (meshRenderer == null) return;
             // (Test aid, no shadow in first person: draw nothing. "Off" alone would show the body.)
-            meshRenderer.enabled = castsShadow || !shadowOnly;
+            meshRenderer.enabled = !vanished && (castsShadow || !shadowOnly);
             meshRenderer.shadowCastingMode = !castsShadow ? UnityEngine.Rendering.ShadowCastingMode.Off
                 : shadowOnly ? UnityEngine.Rendering.ShadowCastingMode.ShadowsOnly
                 : UnityEngine.Rendering.ShadowCastingMode.On;

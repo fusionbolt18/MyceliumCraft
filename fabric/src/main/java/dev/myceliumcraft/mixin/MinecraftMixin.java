@@ -46,6 +46,7 @@ public abstract class MinecraftMixin {
 	@Inject(method = "tick", at = @At("HEAD"))
 	private void myceliumcraft$beforeTick(CallbackInfo ci) {
 		dev.myceliumcraft.combat.EnemyProxies.clientSnap(((Minecraft) (Object) this).level);
+		MyceliumCraftClient.beforeTick((Minecraft) (Object) this);
 	}
 
 	@Inject(method = "renderFrame", at = @At("TAIL"))

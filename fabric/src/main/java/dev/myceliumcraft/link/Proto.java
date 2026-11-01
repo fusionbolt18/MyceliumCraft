@@ -70,7 +70,7 @@ public final class Proto {
 
 	public static final long MAPPING_BYTES = OFF_THROWN + THROWN_BYTES;
 	public static final int MAGIC = 0x4343594D; // "MYCC"
-	public static final int VERSION = 30;
+	public static final int VERSION = 34;
 	/** A side is alive if its heartbeat is younger than this. */
 	public static final long HEARTBEAT_TIMEOUT_MS = 3000;
 
@@ -103,9 +103,13 @@ public final class Proto {
 	public static final long MY_NUTRIENTS = 0x58;  // Mycelium's nutrients (i32); -1 = not known; since v19
 	public static final long MY_EMERGE = 0x5C; // how far through Mycelium's sprout (0..1); -1 = no sprout; since v22
 	public static final long MY_SPEED = 0x60; // the spore's walking speed / its base speed (Speed stat, speed effects); 0 = not known; since v26
+	public static final long MY_WINDOW_W = 0x64, MY_WINDOW_H = 0x68; // i32: Mycelium's window size in pixels; 0 = not known; since v31
+	public static final long MY_DASH_X = 0x6C, MY_DASH_Z = 0x70; // f32: Mycelium's dash (Blitz, the roll), blocks/s; 0 and 0 = none; since v32
 	public static final int MYC_IN_LEVEL = 1 << 0;
 	public static final int MYC_PAUSED = 1 << 1;
 	public static final int MYC_OVERLAY = 1 << 2; // Mycelium shows Minecraft's overlay: Minecraft skips drawing its world
+	public static final int MYC_VANISHED = 1 << 3; // the spore has vanished (Trophic Cascade); since v33
+	public static final int MYC_CYCLONE = 1 << 4; // Living Cyclone is spinning; since v34
 
 	// McState @0x200 (Minecraft -> Mycelium, seqlock)
 	public static final long OFF_MC_STATE = 0x200;

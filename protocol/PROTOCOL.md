@@ -47,7 +47,7 @@ a block without locks.
 | Off | Type | Field |
 |---|---|---|
 | 0x00 | u32 | seq |
-| 0x04 | u32 | flags: bit0 `IN_LEVEL` (a spore player exists), bit1 `PAUSED`, bit2 `OVERLAY` (Mycelium shows Minecraft's overlay, so Minecraft skips drawing its world; since version 10) |
+| 0x04 | u32 | flags: bit0 `IN_LEVEL` (a spore player exists), bit1 `PAUSED`, bit2 `OVERLAY` (Mycelium shows Minecraft's overlay, so Minecraft skips drawing its world; since version 10), bit3 `VANISHED` (the spore has vanished in Trophic Cascade: your Minecraft body isn't drawn, and Minecraft goes from first person to third person behind until it's back; since version 33), bit4 `CYCLONE` (Living Cyclone is spinning: Minecraft goes from first person to third person behind until it's over; since version 34) |
 | 0x08 | f64 | spore X (**Mycelium** coords) |
 | 0x10 | f64 | spore Y |
 | 0x18 | f64 | spore Z |
@@ -64,6 +64,10 @@ a block without locks.
 | 0x58 | i32 | Mycelium's nutrients; −1 = not known (Minecraft's experience level follows it); since version 19 |
 | 0x5C | f32 | how far through Mycelium's sprout in The Carcass: 0 while waiting for it, then the Sprout animation's progress up to 1 (Minecraft plays the Warden's emerge over it); −1 = no sprout; since version 22 |
 | 0x60 | f32 | the spore's walking speed ÷ its base speed (`PlayerController.moveSpeed` ÷ `SporeAttributeRanges.moveSpeedBase`): the Speed stat and speed effects. Minecraft's movement speed is multiplied by it. 0 = not known. Since version 26 |
+| 0x64 | i32 | Mycelium's window width in pixels (`Screen.width`); Minecraft resizes its window to match. 0 = not known. Since version 31 |
+| 0x68 | i32 | Mycelium's window height in pixels (`Screen.height`) |
+| 0x6C | f32 | Mycelium's dash (Blitz, the dodge roll) along Minecraft's x, blocks per second; Minecraft's player gets this horizontal speed while it's set. 0 and 0 = no dash. Since version 32 |
+| 0x70 | f32 | the dash along Minecraft's z |
 
 ### McState @ 0x200 (Minecraft → Mycelium, seqlock)
 

@@ -49,8 +49,16 @@ public final class MyceliumCraftClient implements ClientModInitializer {
 		ServerStallWatch.init();
 		MycWeapons.init(); // thrown weapons: no pickup, removed once landed
 		MycBetterCombat.init(); // Better Combat's attack starts count as Mycelium swings
+		MycSkillAnimation.init(); // Living Cyclone: Better Combat's two_handed_spin, looped
 		net.fabricmc.fabric.api.client.rendering.v1.EntityRendererRegistry.register(dev.myceliumcraft.combat.EnemyProxies.TYPE, net.minecraft.client.renderer.entity.NoopRenderer::new);
 		MycLink.LOG.info("MyceliumCraft: rules: no fall damage for players, no natural health regeneration (always, while the mod is installed)");
+	}
+
+	/** Start of a client tick (MinecraftMixin): Mycelium's dash, if any, moves the player (MycDash). */
+	public static void beforeTick(Minecraft minecraft) {
+		boolean on = MycLink.myceliumAlive() && MYC.inLevel();
+		MycDash.tick(minecraft, on ? MYC.dashX : 0f, on ? MYC.dashZ : 0f);
+		MycSkillAnimation.tick(minecraft, on && (MYC.flags & Proto.MYC_CYCLONE) != 0);
 	}
 
 	/** Called by MinecraftMixin once per rendered frame. */
@@ -71,6 +79,9 @@ public final class MyceliumCraftClient implements ClientModInitializer {
 		}
 
 		boolean haveMyc = MycLink.readMycState(MYC);
+		if (haveMyc && MycLink.myceliumAlive()) {
+			MycWindowSize.follow(minecraft, MYC.windowW, MYC.windowH); // Minecraft's window the size of Mycelium's
+		}
 		LocalPlayer player = minecraft.player;
 		MycOverlay.setActive(haveMyc && MycLink.myceliumAlive() && MYC.inLevel() && (MYC.flags & Proto.MYC_OVERLAY) != 0
 			&& player != null && minecraft.level != null);
@@ -400,12 +411,20 @@ public final class MyceliumCraftClient implements ClientModInitializer {
 	 */
 	private static void updateViewOverride(Minecraft minecraft) {
 		boolean emerging = !Float.isNaN(emergeProgress());
+		// Trophic Cascade: the spore (and your body) vanish; from first person, watch it from behind
+		// (your request, 2026-10-26). Already in a third-person view: stay in it.
+		// Living Cyclone: the same while it spins (your request, 2026-11-01).
+		boolean vanished = MycLink.myceliumAlive() && MYC.inLevel() && (MYC.flags & Proto.MYC_VANISHED) != 0;
+		boolean cyclone = MycLink.myceliumAlive() && MYC.inLevel() && (MYC.flags & Proto.MYC_CYCLONE) != 0;
+		boolean vanishView = (vanished || cyclone) && (viewBeforeOverride != null || minecraft.options.getCameraType().isFirstPerson());
 		if (deathView || emerging) {
 			if (deathView) {
 				viewOverride(minecraft, net.minecraft.client.CameraType.THIRD_PERSON_BACK, "Minecraft's death animation");
 			} else {
 				viewOverride(minecraft, net.minecraft.client.CameraType.THIRD_PERSON_FRONT, "the emerge");
 			}
+		} else if (vanishView) {
+			viewOverride(minecraft, net.minecraft.client.CameraType.THIRD_PERSON_BACK, vanished ? "Trophic Cascade's vanish" : "Living Cyclone");
 		} else if (viewBeforeOverride != null) {
 			minecraft.options.setCameraType(viewBeforeOverride);
 			MycLink.LOG.info("MyceliumCraft: view back to {} (after {})", viewBeforeOverride, overrideWhy);

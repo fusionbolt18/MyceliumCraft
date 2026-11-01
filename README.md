@@ -130,9 +130,24 @@ Single-player and offline only.
   person too, where only the shadow is drawn (third person tested by you). It
   isn't washed out by the fog any more (tested by you). Held items and blocks show in its hands (not tested in real Minecraft; no enchantment glint yet). `playerModel=0` keeps the spore.
   Tested with a fake Minecraft's test body: right size, right place, right facing.
+- **Living Cyclone:** from first person the view goes to third person behind while it spins, and
+  your body loops our own Living Cyclone animation (a quicker wind-up and faster spins than Better
+  Combat's two_handed_spin) (not tested in Minecraft; the view flag tested in
+  Mycelium with a fake spin).
+- **Trophic Cascade:** your Minecraft body vanishes and reappears with the spore, and from first
+  person the view goes to third person behind meanwhile (not tested in Minecraft; tested in
+  Mycelium with a fake vanish).
+- **Blitz and the dodge roll move your Minecraft player** (not tested in Minecraft; the dash reaches
+  a fake Minecraft).
+- **Projectile skills fire where you look** (Spineshot, Undergrowth, Unstable Puffball, Death
+  Blossom), not where Minecraft's body faces. Tested in Mycelium with a fake Minecraft (aim only;
+  no skill fired).
 - **The respawn (emerge) animation always takes the same time,** whatever your Speed stat (tested
   in Mycelium with a fake Minecraft).
 - **Every weapon has your own texture** (19 of 19).
+- **Minecraft's window takes the size of Mycelium's** (so the overlay isn't stretched), unless
+  Minecraft is full screen. Not tested in Minecraft: tested only that the size arrives (1280x720
+  with a fake Minecraft).
 - **Mycelium's window can be resized** (in windowed mode; Alt+Enter switches from full screen).
   Checked from the log: the window has Windows' resizable border and maximize button. Not tried
   by hand.

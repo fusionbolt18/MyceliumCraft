@@ -1,5 +1,237 @@
 # MODLOG
 
+## 2026-11-01 Living Cyclone animation: the weapon stays in the hand
+
+**Your report:** the weapon floated a little above the hand.
+
+**Cause:** tilting the held item (`rightItem` pitch −1.4) turns it about a point that isn't the
+grip, so it moved off the hand.
+
+**How the fix was found:** Better Combat's own animations shift the held item when they tilt it.
+Its `dual_handed_stab` tilts it by the same angle (−1.32 to −1.40, no other turn) and shifts it
+y −3.15, z −0.3 px. Fitting a pivot to that puts it about 2.5 px from the grip, which matches the
+drift.
+
+**Changed (`living_cyclone.json`):** the held item keeps its tilt and gets that shift (x 0, y
+−3.15, z −0.3). Nothing else changed.
+
+**Tested how:** the library's loader still reads it (8 ticks, loops from tick 3, with the held
+item). The jar is rebuilt. **Not seen in Minecraft.**
+
+## 2026-11-01 Living Cyclone animation: a little slower spin, arms and weapon held out
+
+**Your request:** keep the wind-up; slow the main spin down a little; hold the arms and the weapon
+out and away from the body.
+
+**Changed (`living_cyclone.json`):**
+- **Spin:** a full turn every 5 ticks (0.25 s), was 4. One keyframe a tick, a fifth of a turn
+  each, so the speed is steady.
+- **Arms:** straight out at shoulder height, forward and angled to the right. They were pulled in
+  close in front. The left arm reaches across toward the right one.
+- **Weapon (`rightItem`):** tilted to point along the arms, out from the body.
+- **Wind-up:** still 3 ticks, and the loop still restarts at the grip (`returnTick` 4).
+- DESIGN §5.0.8.
+
+**Tested how:** the library's own loader read it as 8 ticks long, playing again from tick 3.0,
+with body, arms, legs and the held item. The jar is rebuilt. **Not seen in Minecraft.**
+
+**Still broken / not tested:**
+- The angles are my guess at "held out"; the weapon tilt especially may need a turn the other
+  way.
+
+## 2026-11-01 Our own Living Cyclone animation: quicker wind-up, faster spins
+
+**Your request:** a custom animation like two_handed_spin, with a faster wind-up and faster spins,
+in the mod's built-in resource pack.
+
+**Changed:**
+- **New `assets/myceliumcraft/player_animations/living_cyclone.json`** (Emotecraft format, which
+  Player Animation Library reads):
+  - **Written from scratch.** Better Combat's jar says "All Rights Reserved", so its keyframes
+    aren't copied.
+  - **Wind-up:** 3 ticks into a two-handed grip, arms out in front and angled to one side, a
+    slightly wide stance, the torso turned back a little. Better Combat's takes 10 ticks.
+  - **Spins:** a full turn of the torso every 4 ticks, at a steady speed. Better Combat's takes
+    about 6.
+  - **Loop:** from the grip on (`returnTick` 4, because the library restarts one tick early).
+- **`MycSkillAnimation.java`:** plays ours with its own loop (`thenPlay`). Better Combat's
+  two_handed_spin, looped, is the fallback if ours isn't found.
+- DESIGN §5.0.8, README.
+
+**Tested how:**
+- **Loader check:** the library's own loader (`UniversalAnimLoader`, run outside Minecraft on
+  the file) read it as "length 7.0 ticks, plays again true, restarts from tick 3.0", with body,
+  arms and legs. Better Combat's spin read as 30 ticks, play once, as a comparison.
+- **The first try** restarted from tick 2 (a hitch each loop): fixed with `returnTick` 4.
+- The jar holds the file.
+
+**Still broken / not tested:**
+- **Not seen in Minecraft.** The pose is my guess at a two-handed grip; it may need adjusting by
+  eye.
+- 4 ticks a turn is much faster than Mycelium's own spin (about 1 s a turn at Speed 1).
+
+## 2026-11-01 Living Cyclone loops Better Combat's two_handed_spin
+
+**Your request:** loop the `two_handed_spin` animation during Living Cyclone.
+
+**Changed:**
+- **New `MycSkillAnimation.java`:** plays it through Player Animation Library, the library Better
+  Combat animates with, using only its public API by reflection. Neither mod is changed (rule 7),
+  and nothing happens if they're missing.
+  - At start it registers our own animation layer above Better Combat's. Its controller plays
+    nothing by itself.
+  - While Mycelium's Living Cyclone flag (bit 4) is on, `bettercombat:two_handed_spin` is looped
+    there (`RawAnimation.begin().thenLoop`); when it goes off, it's stopped.
+  - The log says when it starts and how long it ran.
+- **`MyceliumCraftClient.java`:** calls it at client start and every client tick.
+- DESIGN §5.0.8, README.
+
+**Tested how:** built only. Every library function, constructor and type it uses was checked
+against the library's own class files with `javap`. **Not tested**: the fake Minecraft has no player
+animations.
+
+**Still broken / not tested:**
+- **Not tested in Minecraft.** Not sure the animation shows in first person, but Living Cyclone
+  goes to third person from there anyway.
+
+## 2026-11-01 Living Cyclone: third person while it spins (protocol v34)
+
+**Your request:** give Living Cyclone the same camera change as Trophic Cascade.
+
+**How Mycelium marks it:** Living Cyclone sets the held weapon's `WeaponCollision.isCycloning`
+from the start of the skill until its third spin ends.
+
+**Changed:**
+- **`MinecraftDriver.cs`:** while that's on, MycState flag bit 4 (`CYCLONE`) is set. The log says
+  when it starts and how long it lasted.
+- **Minecraft (`updateViewOverride`):** the same as the vanish. From first person, third person
+  behind until it's over, then your view back. A third-person view stays as it is.
+- **Test aid `-mcCycloneTest`:** `isCycloning` on for 2 s.
+- **The fake Minecraft** prints the flag.
+- PROTOCOL, DESIGN §5.0.8, README.
+
+**Tested how:** the real Mycelium build with the fake Minecraft holding the Stick
+(`LINKTEST_HOLD=1`, `-mcCycloneTest`). Mycelium: "Living Cyclone started", then "over after 2.00
+s". The fake Minecraft: "spinning (third person behind)" at 4.0 s, "over" at 6.0 s.
+
+**Still broken / not tested:**
+- **Not tested in Minecraft**, and Living Cyclone itself wasn't used (this spore doesn't have it).
+- It needs a weapon in hand: Mycelium only sets `isCycloning` on one.
+- Living Cyclone spins the spore, but you see your Minecraft body, which faces where Minecraft's
+  body faces. In third person your body probably doesn't spin with it. Not changed.
+
+## 2026-10-26 Trophic Cascade: your body vanishes, third person meanwhile (protocol v33)
+
+**Your request:** when using Trophic Cascade from first person, go to third person behind, make the
+Minecraft player model disappear and reappear as the spore does, then go back to first person.
+
+**How Mycelium does it:** `TrophicCascade.Vanish` switches off every renderer on the spore,
+waits while it jumps between enemies (0.4 to 1.4 s), then switches them back on.
+
+**Changed:**
+- **New `VanishWatch.cs`:** the spore's body renderers all off means it has vanished (only Trophic
+  Cascade does that). Logs how long it lasted.
+- **`McPlayerModel.cs`:** `SetVanished` hides your Minecraft body and its shadow meanwhile.
+- **`MinecraftDriver.cs`:** sets MycState flag bit 3 (`VANISHED`, protocol v33).
+- **Minecraft (`MyceliumCraftClient.updateViewOverride`):** while it's set, first person becomes
+  third person behind, and your view comes back after. A third-person view stays as it is.
+- **Test aid `-mcVanishTest`:** every spore renderer off for 1 s.
+- **The fake Minecraft** prints the flag.
+- PROTOCOL, DESIGN §5.0.8, README.
+
+**Tested how:** the real Mycelium build with the fake Minecraft in Daybreak Arboretum
+(`-mcVanishTest`). Mycelium: "the spore vanished", then "back after 1.00 s". The fake Minecraft:
+"vanished" at 4.0 s, "is back" at 5.0 s.
+
+**Still broken / not tested:**
+- **Not tested in Minecraft:** the view change, and the body actually disappearing (only the code
+  path; the test's body was a fake one).
+- Trophic Cascade itself wasn't used (this spore doesn't have it).
+- While vanished, Mycelium freezes the spore (its rigidbody kinematic), but Minecraft's player can
+  still walk. Not changed; not sure how that plays.
+
+## 2026-10-25 Blitz (and the dodge roll) move you (protocol v32)
+
+**Your report:** Blitz isn't sending you forwards.
+
+**Cause:** Blitz sets the spore's velocity (40 units/s ahead, every frame for 0.3 s) from a
+coroutine. The dodge roll does the same at 20. But Minecraft is in charge of where you are, and the
+driver sets the spore's velocity every physics step to follow Minecraft, cancelling the dash.
+
+**Changed:**
+- **New `DashWatch.cs` (Mycelium):** while `PlayerController.activeDodge` is on, a velocity change
+  between our Update and LateUpdate is Mycelium's dash (coroutines run in between). It's sent to
+  Minecraft in blocks/s, until 0.1 s after the last write. The log says how long and how far.
+- **New `MycDash.java` (Minecraft):** at the start of each client tick, the player's horizontal
+  movement is set to the dash. The spore follows Minecraft as usual.
+- MycState 0x6C/0x70 (protocol v32).
+- **Test aid `-mcDashTest`:** Mycelium's own dodge roll 4 s into driving.
+- **The fake Minecraft** prints any dash it receives.
+- PROTOCOL, DESIGN §5.0.7, README.
+
+**Tested how:** the real Mycelium build with the fake Minecraft in Daybreak Arboretum
+(`-mcDashTest`). The fake Minecraft got "dash: (14.3, 0.0) blocks/s" (20 units/s ÷ 1.4, facing
+east), over after 12 of its frames. Mycelium: "dash (20.0 units/s) sent to Minecraft for 0.36 s".
+
+**Still broken / not tested:**
+- **Not tested in Minecraft:** the player actually moving.
+- Blitz itself wasn't fired (this spore has no Blitz). It works the same way as the roll.
+- The dash goes the way the body faces, as in Mycelium (not where you look).
+
+## 2026-10-25 Projectile skills fire where you look
+
+**Your report:** abilities that shoot something (Spineshot) should go where the camera/head looks;
+they sometimes went off to the side.
+
+**Cause:** the spore faces where Minecraft's body faces. Minecraft's body lags behind the head (it
+turns only past a certain angle, and toward the walk when strafing). Spineshot, Undergrowth and
+Unstable Puffball give their projectile the skill object's rotation, which follows the spore.
+
+**Changed:**
+- **New `SkillAim.cs`:** while Minecraft drives, the spore's `SkillLoadout` (the skills' parent)
+  faces Minecraft's look yaw, every frame (Update and LateUpdate). It's turned back when Minecraft
+  doesn't drive. The body keeps facing Minecraft's body.
+- **`MinecraftDriver.cs`:** calls it.
+- DESIGN §5.0.7, README.
+
+**Tested how:** the real Mycelium build with the fake Minecraft strafing (`LINKTEST_STRAFE=1`,
+body 45° from the look): "skills face 180 deg (your look), the body 135 deg: 45 deg apart". It was
+turned back when the fake Minecraft stopped.
+
+**Still broken / not tested:**
+- **No skill was fired in the test** (this spore has none to fire); only the aim was checked.
+  Not tested in Minecraft.
+- Only the yaw: looking up or down doesn't tilt them.
+- Mycotoxins' cloud now lands behind where you look rather than behind the body. Blitz still
+  dashes the body's way.
+
+## 2026-10-25 Minecraft's window takes the size of Mycelium's (protocol v31)
+
+**Your request:** make the Minecraft window copy the size of the Mycelium window.
+
+**Why it matters:** the overlay is Minecraft's picture stretched over Mycelium's window. Different
+sizes or shapes stretched the hand, HUD and screens.
+
+**Changed:**
+- **Mycelium (`MinecraftDriver.cs`, `Link/MyceliumLink.cs`, `Link/Proto.cs`):** MycState carries
+  Mycelium's window size in pixels (0x64, 0x68).
+- **Minecraft, new `MycWindowSize.java`:** once Mycelium's size has stayed the same for 0.3 s,
+  Minecraft's window is resized so its picture has that many pixels (corrected for display
+  scaling).
+  - Not while Minecraft is full screen.
+  - It logs what it asked for and what it got. A size Windows won't give isn't asked for again
+    until Mycelium's changes.
+- **`LinkTestMain`** prints the size it reads. PROTOCOL, DESIGN §5.4, README.
+
+**Tested how:** the real Mycelium build in a 1280x720 window (Unity's `-screen-width 1280
+-screen-height 720 -screen-fullscreen 0`) with the fake Minecraft. It read "window 1280x720" every
+second. Both builds succeed.
+
+**Still broken / not tested:**
+- **Not tested in Minecraft:** the resize itself (`Window.setWindowed`), the display-scaling
+  correction, and how it behaves with a maximized Minecraft window.
+- Minecraft full screen is left as it is.
+
 ## 2026-10-25 The respawn animation isn't sped up by the Speed stat
 
 **Your report:** the Speed stat changes the speed of the respawn animation; it shouldn't.

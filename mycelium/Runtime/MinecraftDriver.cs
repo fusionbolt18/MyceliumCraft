@@ -58,6 +58,12 @@ namespace MyceliumCraft
         readonly HurtTilt hurtTilt = new HurtTilt();
         readonly SproutWatch sprout = new SproutWatch();
         readonly WeaponBag weapons = new WeaponBag();
+        readonly SkillAim skillAim = new SkillAim();
+        readonly DashWatch dash = new DashWatch();
+        readonly VanishWatch vanish = new VanishWatch();
+        bool vanished;
+        bool aimDriving;
+        float aimYaw;
         readonly InputBridge input = new InputBridge();
         readonly KeyOwnership keys = new KeyOwnership();
         readonly McOverlay overlay = new McOverlay();
@@ -211,6 +217,15 @@ namespace MyceliumCraft
             // Test aid: "-mcFungalTest" switches Fungal Might on (x2, PlayerAttack.ActivateFungalMight)
             // 0.5 s into driving and logs each change of it for 15 s (with LINKTEST_FUNGAL=1).
             if (Array.IndexOf(args, "-mcFungalTest") >= 0) StartCoroutine(FungalTest());
+            // Test aid: "-mcDashTest" starts Mycelium's own dodge roll (PlayerController.Dodging) 4 s
+            // into driving, as the Dodge key would; DashWatch sends it to Minecraft.
+            if (Array.IndexOf(args, "-mcDashTest") >= 0) StartCoroutine(DashTest());
+            // Test aid: "-mcVanishTest" does what Trophic Cascade's vanish does to the spore (every
+            // renderer off for 1 s, then on again, not particles) 4 s into driving.
+            if (Array.IndexOf(args, "-mcVanishTest") >= 0) StartCoroutine(VanishTest());
+            // Test aid: "-mcCycloneTest" sets the held weapon's isCycloning for 2 s, as Living Cyclone
+            // does while it spins, 4 s into driving.
+            if (Array.IndexOf(args, "-mcCycloneTest") >= 0) StartCoroutine(CycloneTest());
             // Test aid: "-mcSwapTest" swaps weapons the way picking one up does (WeaponInteraction: the
             // old one is let go into the world, a new one goes in the hand) 4 s into driving, and logs
             // which of the two Mycelium draws.
@@ -322,11 +337,19 @@ namespace MyceliumCraft
             }
             if (IsPaused()) flags |= Proto.MycPaused;
             if (McConfig.Overlay && rb != null) flags |= Proto.MycOverlay;
+            // Trophic Cascade's vanish: your Minecraft body goes too, and Minecraft goes to third person.
+            vanished = rb != null && vanish.Update();
+            if (vanished) flags |= Proto.MycVanished;
+            // Living Cyclone: the same view change while it spins.
+            if (rb != null && Cycloning()) flags |= Proto.MycCyclone;
             // Mycelium's health, which Minecraft's follows (/ 5).
             float health = 0f, maxHealth = 0f;
             if (rb != null) ReadHealth(out health, out maxHealth);
+            dash.ForMinecraft(map, out float dashX, out float dashZ); // Blitz, the roll: Minecraft's player dashes (DashWatch)
             link.WriteMycState(flags, pos.x, pos.y, pos.z, yaw, frame, tp, rb != null ? playerHeightBlocks : 0f, health, maxHealth,
-                               rb != null ? ReadNutrients() : -1, sprout.Update(), rb != null ? SpeedFactor() : 0f);
+                               rb != null ? ReadNutrients() : -1, sprout.Update(), rb != null ? SpeedFactor() : 0f,
+                               Screen.width, Screen.height, // Minecraft's window follows this size (MycWindowSize.java)
+                               dashX, dashZ);
 
             bool alive = link.MinecraftAlive;
             if (alive != mcWasAlive)
@@ -409,6 +432,7 @@ namespace MyceliumCraft
             // Third person: your Minecraft body at the spore's feet, instead of the spore.
             bool bodyWanted = McConfig.Overlay && alive && phase != Phase.Idle && rb != null && cameraSync.Controlling;
             playerModel.Update(link, bodyWanted, rb != null ? rb.transform.position - Vector3.up * feetOffset : Vector3.zero, (float)map.Scale);
+            playerModel.SetVanished(vanished);
             cameraSync.ReplaceSpore = playerModel.Shown;
             // Which game owns which key, while Minecraft drives the spore.
             // (Re-sync teleports count as driving: giving Mycelium its keys back for those few frames
@@ -420,6 +444,11 @@ namespace MyceliumCraft
             combat.HeldKnockback = weapons.HeldKnockback;
             // Mycelium's attack events for Minecraft's swings (weapon attributes).
             if (rb != null) combat.FollowSwings(lastCamMc.Swings, camFresh2 && alive);
+            dash.BeforeCoroutines(rb); // Mycelium's dash coroutines write the velocity after this (DashWatch)
+            // Skills fire where Minecraft's head looks, not where its body faces.
+            aimDriving = rb != null && alive && phase == Phase.Driving && camFresh2;
+            aimYaw = lastCamMc.Yaw;
+            skillAim.Update(aimDriving, aimYaw);
             if (rb != null) combat.Update(link, rb.position, map);
             if (shakeTest && look && Time.realtimeSinceStartup >= nextShakeTime) FireTestShake();
             if (holdTest && controller != null && (phase == Phase.Driving || holdTestStep > 0)) RunHoldTest();
@@ -472,6 +501,9 @@ namespace MyceliumCraft
         void LateUpdate()
         {
             cameraSync.RefreshHidden();
+            skillAim.Update(aimDriving, aimYaw); // again, after the body's turn this frame
+            // Mycelium's dash coroutines (Blitz, the roll) have written the spore's velocity by now.
+            dash.LateUpdate(controller, rb, link != null && link.MinecraftAlive && phase == Phase.Driving);
         }
 
         void FixedUpdate()
@@ -1008,6 +1040,72 @@ namespace MyceliumCraft
                 if (Time.timeScale == 0f) Time.timeScale = timeScaleBefore;
                 McLog.Info($"pause: Minecraft's pause menu closed, Mycelium's time runs again (time scale {Time.timeScale:F2})");
             }
+        }
+
+        bool wasCycloning;
+        float cycloneSince;
+
+        /// <summary>
+        /// Living Cyclone is on: it sets the held weapon's WeaponCollision.isCycloning from the start
+        /// of the skill until its third spin ends (your request, 2026-11-01: third person meanwhile,
+        /// as for Trophic Cascade).
+        /// </summary>
+        bool Cycloning()
+        {
+            GameObject weapon = GameObject.FindWithTag("currentWeapon");
+            Type t = Type.GetType("WeaponCollision, Assembly-CSharp");
+            Component wc = weapon != null && t != null ? weapon.GetComponent(t) : null;
+            bool now = wc != null && t.GetField("isCycloning")?.GetValue(wc) is bool c && c;
+            if (now != wasCycloning)
+            {
+                wasCycloning = now;
+                if (now) cycloneSince = Time.time;
+                McLog.Info(now ? "cyclone: Living Cyclone started; Minecraft goes to third person from first person"
+                               : $"cyclone: Living Cyclone over after {Time.time - cycloneSince:F2} s");
+            }
+            return now;
+        }
+
+        /// <summary>Test aid: see "-mcCycloneTest" in Awake.</summary>
+        System.Collections.IEnumerator CycloneTest()
+        {
+            while (phase != Phase.Driving) yield return null;
+            yield return new WaitForSeconds(4f);
+            GameObject weapon = GameObject.FindWithTag("currentWeapon");
+            Type t = Type.GetType("WeaponCollision, Assembly-CSharp");
+            Component wc = weapon != null && t != null ? weapon.GetComponent(t) : null;
+            FieldInfo f = t?.GetField("isCycloning");
+            if (wc == null || f == null) { McLog.Info("cyclone test: no held weapon with WeaponCollision.isCycloning"); yield break; }
+            McLog.Info($"cyclone test: '{weapon.name}' cycloning for 2 s, as Living Cyclone does");
+            f.SetValue(wc, true);
+            yield return new WaitForSeconds(2f);
+            if (wc != null) f.SetValue(wc, false);
+        }
+
+        /// <summary>Test aid: see "-mcVanishTest" in Awake.</summary>
+        System.Collections.IEnumerator VanishTest()
+        {
+            while (phase != Phase.Driving) yield return null;
+            yield return new WaitForSeconds(4f);
+            GameObject player = GameObject.FindWithTag("currentPlayer");
+            if (player == null) { McLog.Info("vanish test: no spore"); yield break; }
+            Renderer[] all = player.GetComponentsInChildren<Renderer>();
+            McLog.Info($"vanish test: {all.Length} spore renderers off for 1 s, as Trophic Cascade does");
+            foreach (Renderer r in all) r.enabled = false;
+            yield return new WaitForSeconds(1f);
+            foreach (Renderer r in all) if (r != null && !(r is ParticleSystemRenderer)) r.enabled = true;
+            McLog.Info($"vanish test: renderers on again; body drawn: {playerModel.Shown}");
+        }
+
+        /// <summary>Test aid: see "-mcDashTest" in Awake.</summary>
+        System.Collections.IEnumerator DashTest()
+        {
+            while (phase != Phase.Driving) yield return null;
+            yield return new WaitForSeconds(4f);
+            MethodInfo dodging = controller?.GetType().GetMethod("Dodging", BindingFlags.NonPublic | BindingFlags.Instance);
+            if (dodging == null || !(controller is MonoBehaviour mb)) { McLog.Info("dash test: no PlayerController.Dodging"); yield break; }
+            McLog.Info($"dash test: Mycelium's dodge roll, facing {rb.rotation.eulerAngles.y:F0} deg");
+            mb.StartCoroutine((System.Collections.IEnumerator)dodging.Invoke(controller, null));
         }
 
         /// <summary>Test aid: see "-mcFungalTest" in Awake.</summary>

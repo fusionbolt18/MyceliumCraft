@@ -483,6 +483,10 @@ public final class MycLink {
 		public float emerge = -1f;
 		/** The spore's walking speed / its base speed (0 = not known). */
 		public float speed;
+		/** Mycelium's window size in pixels (0 = not known). */
+		public int windowW, windowH;
+		/** Mycelium's dash (Blitz, the roll), Minecraft blocks per second; 0 and 0 = none. */
+		public float dashX, dashZ;
 
 		public boolean inLevel() {
 			return (this.flags & MYC_IN_LEVEL) != 0;
@@ -519,6 +523,10 @@ public final class MycLink {
 			out.nutrients = s.get(JAVA_INT, b + MY_NUTRIENTS);
 			out.emerge = s.get(JAVA_FLOAT, b + MY_EMERGE);
 			out.speed = s.get(JAVA_FLOAT, b + MY_SPEED);
+			out.windowW = s.get(JAVA_INT, b + MY_WINDOW_W);
+			out.windowH = s.get(JAVA_INT, b + MY_WINDOW_H);
+			out.dashX = s.get(JAVA_FLOAT, b + MY_DASH_X);
+			out.dashZ = s.get(JAVA_FLOAT, b + MY_DASH_Z);
 			VarHandle.loadLoadFence();
 			int seq2 = (int) INT.getVolatile(s, b + MY_SEQ);
 			if (seq1 == seq2) {
