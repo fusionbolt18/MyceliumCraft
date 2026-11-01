@@ -117,6 +117,7 @@ namespace MyceliumCraft
         /// <summary>Every frame: watch the held weapon, follow Minecraft's selection, send the table.</summary>
         public void Update(MonoBehaviour host, MyceliumLink link, bool minecraftDriving, uint minecraftHand, WorldMapping map)
         {
+            this.host = host;
             Component swap = FindSwap();
             if (swap == null) { link.WriteWeapons(version, 0, null, selectSeq, selectId, 0, McConfig.DamageScale); return; }
             GameObject cur = Get(swap, "O_curWeapon") as GameObject;
@@ -158,6 +159,7 @@ namespace MyceliumCraft
             bool pickup = lastCur != null && lastCur.CompareTag("Weapon") && lastCur.transform.parent == null;
             foreach (uint key in new List<uint>(flying.Keys))
                 if (ReferenceEquals(flying[key], cur)) flying.Remove(key); // caught in flight: yours again
+            if (pickup) HideStatsAfterPickup(lastCur, cur);
             if (pickup && emptyHand && heldId == 0)
             {
                 // Picked up with an empty hand: the stand-in was let go; it's not a weapon of yours.
@@ -214,6 +216,50 @@ namespace MyceliumCraft
             heldId = w2.Id;
             AskSelect(w2.Id);
             version++;
+        }
+
+        MonoBehaviour host;
+
+        /// <summary>
+        /// The stat panel slides away after picking up a weapon that changes stats (your report,
+        /// 2026-11-01: it never did). Mycelium slides it in when you near such a weapon
+        /// (WeaponInteraction.CreateTooltip: HUDStats.ShowStats) and away when a weapon's pop-up
+        /// closes, but not when it closes because you picked the weapon up. In Mycelium the weapon you
+        /// let go of then lies there, becomes the next pop-up, and hides it when you walk away. Here
+        /// it goes into the bag instead, so nothing did. So 1 s after such a pickup (the stats'
+        /// flash shows meanwhile) HUDStats.HideStats, Mycelium's own, unless another weapon's pop-up
+        /// is open: that one hides it when it closes, as in Mycelium.
+        /// </summary>
+        void HideStatsAfterPickup(GameObject from, GameObject to)
+        {
+            if (host == null || !(ChangesStats(from) || ChangesStats(to))) return;
+            host.StartCoroutine(HideStatsSoon());
+        }
+
+        IEnumerator HideStatsSoon()
+        {
+            yield return new WaitForSeconds(1f);
+            Type tm = Type.GetType("TooltipManager, Assembly-CSharp");
+            object manager = tm?.GetField("Instance", BindingFlags.Public | BindingFlags.Static)?.GetValue(null);
+            var open = manager != null ? tm.GetField("currentParent", BindingFlags.NonPublic | BindingFlags.Instance)?.GetValue(manager) as GameObject : null;
+            if (open != null && open.CompareTag("Weapon"))
+            {
+                McLog.Info($"weapons: stat panel left up: '{open.name}''s pop-up is open and hides it when it closes");
+                yield break;
+            }
+            Component stats = FindComp("HUD", "HUDStats");
+            if (stats == null) yield break;
+            Call(stats, "HideStats", 0f);
+            McLog.Info("weapons: stat panel slid away after the pickup (Mycelium leaves it up when the dropped weapon isn't there to walk away from)");
+        }
+
+        /// <summary>Has this weapon an attribute that changes the spore's stats (AttributeBase.statChange)?</summary>
+        static bool ChangesStats(GameObject o)
+        {
+            if (o == null) return false;
+            foreach (Component c in o.GetComponents<Component>())
+                if (c != null && IsA(c.GetType(), "AttributeBase") && Get(c, "statChange") is bool b && b) return true;
+            return false;
         }
 
         Weapon NewWeapon(GameObject o, string why)

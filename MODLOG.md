@@ -1,5 +1,35 @@
 # MODLOG
 
+## 2026-11-01 The stat panel slides away after picking up a stat weapon
+
+**Your report:** picking up a weapon that changes your stats, the stat panel never slides away.
+
+**Cause, from Mycelium's code:**
+- Near such a weapon, its pop-up slides the stat panel in (`HUDStats.ShowStats`).
+- The panel slides away when a weapon's pop-up closes, except when it closes because you picked
+  the weapon up (`DestroyTooltip(…, isFromInteracting: true)`).
+- In Mycelium the weapon you let go of then lies there. It becomes the next pop-up, and walking
+  away from it hides the panel. Our mod puts that weapon in the bag instead, so nothing hid it.
+
+**Changed:**
+- **`WeaponBag.cs` (`HideStatsAfterPickup`):** 1 s after a pickup where the old or the new weapon
+  has a stat-changing attribute, `HUDStats.HideStats` (Mycelium's own). This also covers
+  picking up with an empty hand. If another weapon's pop-up is open then, it's left to that one.
+  The log says which.
+- **Test aid:** `-mcPickupTest <Type/Prefab>` picks up a chosen weapon (default
+  Smash/CactusMace) and logs where the stat panel is.
+- DESIGN §5.0.4.
+
+**Tested how:** the real Mycelium build with the fake Minecraft holding the Stick, picking up
+Bert's Club, Razorvine and Perfect Partisan (each has a stat-changing attribute). Each time:
+"stat panel slid away after the pickup", 1 s after it.
+
+**Still broken / not tested:**
+- **The stuck panel didn't happen in the test.** Mycelium's own pop-up brought the panel in and
+  out again within 0.6 s, before the pickup, for the weapon lying in front of a spore that isn't
+  moving. So the test shows the hide firing, not the panel coming unstuck.
+- Holding Show Stats right then: the panel slides away anyway.
+
 ## 2026-11-01 Skill bar icons filled again after the skills are loaded (slot 2's icon)
 
 **Your report:** loading into the game the first time, the icon of the skill in slot 2 doesn't

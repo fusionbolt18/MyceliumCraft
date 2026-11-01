@@ -1657,8 +1657,12 @@ namespace MyceliumCraft
         {
             while (phase != Phase.Driving) yield return null;
             yield return new WaitForSeconds(4f);
-            UnityEngine.Object prefab = Resources.Load("Smash/CactusMace");
-            if (prefab == null || rb == null) { McLog.Info("pickup test: no Smash/CactusMace prefab"); yield break; }
+            // "-mcPickupTest <Type/Prefab>" picks that one up instead (default Smash/CactusMace).
+            string[] args = Environment.GetCommandLineArgs();
+            int at = Array.IndexOf(args, "-mcPickupTest");
+            string path = at >= 0 && at + 1 < args.Length && !args[at + 1].StartsWith("-") ? args[at + 1] : "Smash/CactusMace";
+            UnityEngine.Object prefab = Resources.Load(path);
+            if (prefab == null || rb == null) { McLog.Info($"pickup test: no {path} prefab"); yield break; }
             var mace = Instantiate(prefab, rb.position + rb.transform.forward * 1.5f, Quaternion.identity) as GameObject;
             mace.tag = "Weapon";
             yield return new WaitForSeconds(0.5f); // its Start: stats, a random attribute
@@ -1666,9 +1670,34 @@ namespace MyceliumCraft
             Component interact = t != null ? mace.GetComponent(t) : null;
             MethodInfo m = t?.GetMethod("Interact", BindingFlags.Public | BindingFlags.Instance);
             if (interact == null || m == null) { McLog.Info("pickup test: no WeaponInteraction.Interact"); yield break; }
-            McLog.Info($"pickup test: picking up '{mace.name}' through WeaponInteraction.Interact");
+            Type hs = Type.GetType("HUDStats, Assembly-CSharp");
+            GameObject hud = GameObject.Find("HUD");
+            Component stats = hud != null && hs != null ? hud.GetComponent(hs) : null;
+            bool statWeapon = false;
+            foreach (Component c in mace.GetComponents<Component>())
+                for (Type ct = c != null ? c.GetType() : null; ct != null; ct = ct.BaseType)
+                    if (ct.Name == "AttributeBase" && ct.GetField("statChange")?.GetValue(c) is bool sc && sc) statWeapon = true;
+            // Mycelium's own pop-up for it (SporeInteractableFinder) decides whether the stat panel comes in.
+            for (int i = 0; i < 4; i++)
+            {
+                yield return new WaitForSeconds(0.3f);
+                McLog.Info($"pickup test: lying in front for {0.3f * (i + 1):F1} s: stat panel at {PanelX(stats)}");
+            }
+            McLog.Info($"pickup test: picking up '{mace.name}' through WeaponInteraction.Interact (changes stats: {statWeapon}; stat panel at {PanelX(stats)})");
             try { m.Invoke(interact, new object[] { mace }); }
             catch (Exception e) { McLog.Info("pickup test: Interact failed: " + (e.InnerException ?? e).Message); }
+            yield return new WaitForSeconds(2.5f);
+            McLog.Info($"pickup test: 2.5 s after the pickup, the stat panel is at {PanelX(stats)}");
+        }
+
+        /// <summary>Where the stat panel is, and where its in / out spots are (test aid).</summary>
+        static string PanelX(Component stats)
+        {
+            if (stats == null) return "(no HUDStats)";
+            RectTransform R(string n) => stats.GetType().GetField(n, BindingFlags.NonPublic | BindingFlags.Public | BindingFlags.Instance)?.GetValue(stats) as RectTransform;
+            RectTransform holder = R("statsHolder"), inside = R("statsInsideTarget"), outside = R("statsOutsideTarget");
+            if (holder == null) return "(no statsHolder)";
+            return $"x {holder.localPosition.x:F0} (in {(inside != null ? inside.localPosition.x.ToString("F0") : "?")}, out {(outside != null ? outside.localPosition.x.ToString("F0") : "?")})";
         }
 
         static bool Drawn(GameObject o)

@@ -653,6 +653,15 @@ in three ways:
     attributes, 2 of them the prefab's own.
 - **The Minecraft side isn't tested in Minecraft.**
 
+**The stat panel after a pickup** (since 2026-11-01). Near a weapon whose attributes change stats,
+Mycelium's pop-up slides the stat panel in (`HUDStats.ShowStats`). It slides it away when a weapon
+pop-up closes, but not when the pop-up closes because you picked the weapon up
+(`DestroyTooltip(..., isFromInteracting)`). In Mycelium the weapon you let go of then lies there and
+hides it when you walk away. Here it goes into the bag, so the panel stayed (your report).
+`WeaponBag.HideStatsAfterPickup`: 1 s after a pickup where the old or new weapon changes stats,
+`HUDStats.HideStats` (Mycelium's), unless another weapon's pop-up is open (that one hides it when it
+closes). `-mcPickupTest <Type/Prefab>` picks up a chosen weapon and logs where the panel is.
+
 ### 5.0.5 Better Combat animations, timing and reach for weapons (since 2026-10-21)
 
 **Presets:** our mod carries three Better Combat weapon presets as data
