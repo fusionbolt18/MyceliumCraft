@@ -35,8 +35,9 @@ public final class MyceliumKeys {
 		key("reset_camera", InputConstants.Type.KEYBOARD, NONE),
 	};
 
-	private static final int[] KINDS = new int[KEYS.length];
-	private static final int[] CODES = new int[KEYS.length];
+	// One more after them: Minecraft's own Attack key, for Mycelium's hints (since v35; KeyHints.cs).
+	private static final int[] KINDS = new int[KEYS.length + 1];
+	private static final int[] CODES = new int[KEYS.length + 1];
 	private static String lastLogged = "";
 
 	private MyceliumKeys() {
@@ -66,7 +67,18 @@ public final class MyceliumKeys {
 			log.append(i == 0 ? "" : ", ").append(KEYS[i].getName().substring("key.myceliumcraft.".length())).append('=')
 				.append(KINDS[i] == Proto.BIND_NONE ? "unbound" : (KINDS[i] == Proto.BIND_MOUSE ? "mouse " : "key ") + CODES[i]);
 		}
-		MycLink.writeBindings(KINDS, CODES, KEYS.length);
+		KeyMapping attack = net.minecraft.client.Minecraft.getInstance().options.keyAttack;
+		InputConstants.Key attackKey = KeyMappingHelper.getBoundKeyOf(attack);
+		int a = KEYS.length;
+		if (attack.isUnbound() || attackKey.getValue() == NONE) {
+			KINDS[a] = Proto.BIND_NONE;
+			CODES[a] = 0;
+		} else {
+			KINDS[a] = attackKey.getType() == InputConstants.Type.MOUSE ? Proto.BIND_MOUSE : Proto.BIND_KEY;
+			CODES[a] = attackKey.getValue();
+		}
+		log.append(", minecraft_attack=").append(KINDS[a] == Proto.BIND_NONE ? "unbound" : (KINDS[a] == Proto.BIND_MOUSE ? "mouse " : "key ") + CODES[a]);
+		MycLink.writeBindings(KINDS, CODES, KEYS.length + 1);
 		String now = log.toString();
 		if (!now.equals(lastLogged)) {
 			lastLogged = now;

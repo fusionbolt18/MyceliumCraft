@@ -61,6 +61,8 @@ namespace MyceliumCraft
         readonly SkillAim skillAim = new SkillAim();
         readonly DashWatch dash = new DashWatch();
         readonly VanishWatch vanish = new VanishWatch();
+        readonly KeyHints keyHints = new KeyHints();
+        readonly SkillIconWatch skillIcons = new SkillIconWatch();
         bool vanished;
         bool aimDriving;
         float aimYaw;
@@ -292,6 +294,7 @@ namespace MyceliumCraft
 
             SceneManager.sceneLoaded += (scene, mode) =>
             {
+                StartCoroutine(skillIcons.Watch(scene.name)); // the skill bar's icons after loading
                 if (testFps > 0)
                 {
                     QualitySettings.vSyncCount = 0;
@@ -400,13 +403,17 @@ namespace MyceliumCraft
                 McLog.Info($"input bridge (test run, off): with focus it would be {(playReason == Proto.ReasonActive ? "ON" : InputBridge.ReasonText(playReason))}{(mcScreenOpen ? ", a Minecraft screen is open" : "")}");
             }
             // Mycelium's key binds, as set in Minecraft's Controls menu (kept if Minecraft goes away).
+            int hintCount = 0;
             if (alive)
             {
                 int bindCount = link.TryReadBindings(bindKinds, bindCodes);
                 if (bindCount >= 0) keys.SetBindings(bindCount, bindKinds, bindCodes);
+                hintCount = bindCount;
             }
             else if (!keys.HasBindings) keys.SetBindings(0, null, null); // defaults until Minecraft sends some
             input.Update(link, reason == Proto.ReasonActive, reason, keys.OwnedScancodes, keys.OwnedButtons, mcScreenOpen);
+            // Mycelium's hints ("Press [R] to Open", the skill bar) show those keys while Minecraft drives.
+            keyHints.Update(keys.Active, hintCount, bindKinds, bindCodes);
             // Minecraft's hand, HUD and screens on top, during play (not over Mycelium's own menus).
             // ...and not over Mycelium's loading, fade, startup or death screens (it's drawn above all its UI).
             bool covered = ScreenCover.Showing(out string coverWhy);

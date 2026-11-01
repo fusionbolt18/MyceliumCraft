@@ -1176,6 +1176,45 @@ logging which Mycelium actions register as pressed:
 - `keyOwnership=0`: `[Dodge, HideStats, NavigateCamera, ResetCamera, ShowStats, Stat_Skill_1, Stat_Skill_2]`
 - `keyOwnership=1`: `[HideStats, Interact, ShowStats]`, i.e. only R and Tab.
 
+**Mycelium's hints show these keys** (since 2026-11-01, `KeyHints.cs`; protocol v35).
+- **Where hints come from:** every hint Mycelium shows ("Press [R] to Open" on pop-ups, the skill
+  bar, curios) is built from the current controller's `ColoredHint` in `InputManager`
+  (`interactHint`, `statSkill1Hint`…), whose text is fixed in Mycelium's settings. So it said
+  [RMB] with interact on R (your report).
+- **While Minecraft drives,** the Keyboard controller's hints get the bound keys' names: letters
+  as "R", keys by Unity's display name ("Tab", "Shift"), mouse buttons as LMB/MMB/RMB, the others as MB4, MB5… (your choice),
+  "Unbound" for an unbound action. The skill bar is redrawn (`HUDControls.ChangeHUDControls`),
+  and Mycelium's own texts are put back when Minecraft stops driving.
+- **Re-applied** when the bindings change, or when Mycelium makes a new `InputManager` (scene
+  changes).
+- **Hints:** interact, show stats, subspecies skill, salvage, attack, dodge, skill 1, skill 2,
+  navigate camera (`goalCameraHint`), reset camera (`orientationCameraHint`).
+- **Attack:** while Mycelium's Attack is unbound, its hint shows Minecraft's own Attack key, which
+  is what attacks. Minecraft sends that key as Bindings id 11.
+- **Gamepad controllers' hints** aren't changed.
+- **The skill bar's icons after a load** (since 2026-11-01, `SkillIconWatch.cs`). Mycelium fills
+  the bar once, 0.2 s after its HUD starts (`HUDSkills.UpdateHUDIcons`), from the names of the
+  SkillLoadout's children, by position.
+  - The saved skills are put in one by one, 0.6 to 1.0 s into the scene. Each is added before the
+    "NoSkill" it replaces is removed, so for a moment the loadout has 4 entries with the new
+    slot-2 skill 4th.
+  - A fill at that moment gives slot 2 "no skill", the likely cause of your missing slot-2 icon
+    on the first load.
+  - For 8 s after each scene load, a change of the loadout's names asks Mycelium to fill the bar
+    again (its own `UpdateHUDIcons`). Both the loadout and the bar are logged ("skill icons: …").
+  - `-mcNoIconRefresh` only logs.
+- **The skill menu's assign keys** (since 2026-11-01): it puts a skill in slot 1 or 2 with its own
+  keyboard actions, "Assign Y KB" and "Assign B KB" (UISub map, Q and E;
+  `SkillMenuManagerUpdated`). Its hints already show Skill 1 / Skill 2, but the keys stayed Q and
+  E (your report). `KeyOwnership` overrides them with the Skill 1 and Skill 2 keys, as it does the
+  Player actions. An unbound skill key leaves Q or E, so a skill can still be assigned. The
+  gamepad's assign buttons stay. Checked: with Skill 1 = F and Skill 2 = G, every input asset's
+  log line said "skill menu: Assign Y KB=<Keyboard>/f, Assign B KB=<Keyboard>/g".
+- **Checked** with the fake Minecraft's binds (R, Tab, V, middle, -, -, Left Shift, F, G, -, -,
+  left as Minecraft's attack): "interactHint=[R] … attackHint=[LMB], dodgeHint=[Shift],
+  statSkill1Hint=[F], statSkill2Hint=[G] …", and the keyboard's loot cache text "Press [R] to
+  Open".
+
 **Consequence:** Mycelium's own attack is unbound, so until combat (Phase 3) **nothing damages
 Mycelium's enemies**. Minecraft's attack has no Mycelium target yet.
 

@@ -56,6 +56,11 @@ namespace MyceliumCraft
 
         static readonly string[] MouseNames = { null, "leftButton", "middleButton", "rightButton", "backButton", "forwardButton" };
 
+        // The skill menu assigns a skill to slot 1 or 2 with its own keyboard actions (UISub map,
+        // SkillMenuManagerUpdated; Q and E): those follow Skill 1 and Skill 2 too (your report,
+        // 2026-11-01). An unbound skill key leaves Mycelium's Q or E, so you can still assign.
+        static readonly (string action, int id)[] MenuActions = { ("Assign Y KB", 7), ("Assign B KB", 8) };
+
         readonly HashSet<InputActionAsset> done = new HashSet<InputActionAsset>();
         readonly List<(InputAction action, int index)> applied = new List<(InputAction, int)>();
         readonly string[] paths = new string[Actions.Length];   // Unity binding path per action id; "" = unbound
@@ -242,6 +247,23 @@ namespace MyceliumCraft
                         }
                     }
                 }
+                InputActionMap sub = asset.FindActionMap("UISub");
+                foreach (var (name, id) in MenuActions)
+                {
+                    InputAction action = sub?.FindAction(name);
+                    if (action == null || paths[id] == "") continue;
+                    bool first = true;
+                    for (int i = 0; i < action.bindings.Count; i++)
+                    {
+                        string from = action.bindings[i].path ?? "";
+                        if (action.bindings[i].isComposite || action.bindings[i].isPartOfComposite) continue;
+                        if (!from.StartsWith("<Keyboard>") && !from.StartsWith("<Mouse>")) continue;
+                        action.ApplyBindingOverride(i, first ? paths[id] : "");
+                        first = false;
+                        applied.Add((action, i));
+                        changed++;
+                    }
+                }
                 // Escape is Minecraft's pause menu now; P stays Mycelium's pause and menu.
                 InputAction pause = map.FindAction("Pause");
                 if (pause != null)
@@ -252,7 +274,8 @@ namespace MyceliumCraft
                         applied.Add((pause, i));
                         changed++;
                     }
-                McLog.Info($"keys: Mycelium input asset #{done.Count} ({asset.name}): {changed} bindings set. Now: {Describe(map)}");
+                McLog.Info($"keys: Mycelium input asset #{done.Count} ({asset.name}): {changed} bindings set. Now: {Describe(map)}" +
+                           $"; skill menu: {string.Join(", ", MenuActions.Select(m => $"{m.action}={(sub?.FindAction(m.action)?.bindings.Select(b => b.effectivePath).FirstOrDefault(p => p.StartsWith("<Keyboard>") || p.StartsWith("<Mouse>")) ?? "?")}"))}");
             }
         }
 

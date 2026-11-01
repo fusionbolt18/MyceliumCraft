@@ -145,7 +145,9 @@ section "Mycelium". Written every frame.
 
 Action ids: 0 interact, 1 show stats (Mycelium's ShowStats and HideStats), 2 subspecies skill,
 3 salvage, 4 attack, 5 curio, 6 dodge, 7 skill 1, 8 skill 2, 9 navigate camera, 10 reset camera.
-The order is fixed in `MyceliumKeys.java` and `KeyOwnership.cs`.
+The order is fixed in `MyceliumKeys.java` and `KeyOwnership.cs`. Since version 35, id 11 is
+Minecraft's own Attack key (`options.keyAttack`, count 12): not a Mycelium action, only for
+Mycelium's hints (`KeyHints.cs`: the attack hint shows it while Mycelium's Attack is unbound).
 
 A key or button bound to a Mycelium action is left out of MycInput (Minecraft never sees it).
 

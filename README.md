@@ -124,6 +124,9 @@ Single-player and offline only.
   R interact, Tab show stats, V subspecies skill, middle click salvage, the rest unbound. Tested
   with a fake Minecraft: Mycelium followed the binds it sent, and a change during play was picked
   up within a frame. See DESIGN §5.3.
+- **Mycelium's key hints show your Minecraft binds** ("Press [R] to Open", the skill bar's keys,
+  the attack key for curios), and the skill menu assigns slots with your Skill 1 / Skill 2 keys.
+  Tested in Mycelium with a fake Minecraft's binds; not seen in play.
 - **Your Minecraft body in third person: not tested in real Minecraft.** In both F5 third-person
   views, your Minecraft player (skin, armour, cape, its own walking and swinging) stands where the
   spore is, and the spore is hidden. The body casts its own shadow (the spore's is gone), in first

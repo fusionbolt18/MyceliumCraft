@@ -1,5 +1,103 @@
 # MODLOG
 
+## 2026-11-01 Skill bar icons filled again after the skills are loaded (slot 2's icon)
+
+**Your report:** loading into the game the first time, the icon of the skill in slot 2 doesn't
+show.
+
+**What the log shows (new `SkillIconWatch.cs`, in The Carcass and Daybreak Arboretum):**
+- Mycelium fills the skill bar from the SkillLoadout's children by position, 0.2 s after its HUD
+  starts. The bar was still [NoSkill, NoSkill, NoSkill] then.
+- The saved skills arrive one by one 0.6 to 1.0 s into the scene. Each new one is added before the
+  NoSkill it replaces is removed, e.g. [FungalMight, Blitz, LivingCyclone, NoSkill] for a frame,
+  with slot 2's skill 4th.
+- A fill at such a moment gives slot 2 "no skill". That's the likely cause.
+
+**Changed:**
+- **New `SkillIconWatch.cs`:** for 8 s after each scene load it watches the loadout's names. On
+  each change it asks Mycelium to fill the bar again (`HUDSkills.UpdateHUDIcons`, its own method,
+  which waits 0.2 s). The last fill comes after the last change. It logs the loadout and the bar
+  at 0.1, 0.3, 0.6, 1, 2, 4 and 8 s.
+- **Test aid `-mcNoIconRefresh`:** log only.
+- **`MinecraftDriver.cs`:** starts it on each scene load.
+- DESIGN §5.3.
+
+**Tested how:** the real Mycelium build, `-mcScene` straight into The Carcass and into Daybreak
+Arboretum:
+- With the watch: the bar ended "[FungalMight, Blitz, LivingCyclone]" from 1 s on.
+- With `-mcNoIconRefresh`: Mycelium got it right on its own too, in this run.
+
+**Still broken / not tested:**
+- **Not reproduced.** The missing icon didn't happen in my direct loads. Your first load goes
+  through the main menu and the save, whose timing differs. If it still happens, the "skill
+  icons:" lines in `work/build/MyceliumCraft.log` will show what the bar read and when.
+
+## 2026-11-01 The skill menu assigns slots with your Skill 1 / Skill 2 keys
+
+**Your report:** the buttons used in the shop to equip skills don't follow the assigned keys.
+
+**Cause:** the skill menu (`SkillMenuManagerUpdated`) assigns a skill to slot 1 or 2 with its own
+keyboard actions, "Assign Y KB" (Q) and "Assign B KB" (E), in Mycelium's UISub map. Our overrides
+only covered the Player map.
+
+**Changed:**
+- **`KeyOwnership.cs`:** those two actions get the Skill 1 and Skill 2 keys too, on every copy of
+  Mycelium's input asset. They're taken off with the rest when Minecraft stops driving.
+  - An unbound skill key leaves Mycelium's Q or E.
+  - Gamepad buttons stay.
+  - The asset log line now shows them.
+- DESIGN §5.3, README.
+
+**Tested how:** the real Mycelium build with the fake Minecraft's binds (Skill 1 F, Skill 2 G). On
+all 7 input assets: "skill menu: Assign Y KB=<Keyboard>/f, Assign B KB=<Keyboard>/g". The scans
+before Minecraft's binds arrived still showed Q and E, as expected.
+
+**Still broken / not tested:**
+- **Not tried in the menu itself.**
+
+## 2026-11-01 Key hints: extra mouse buttons as MB4, MB5…
+
+**Your request:** anything like "Mouse Button <x>" should be MB<x>.
+
+**Changed:** `KeyHints.cs`: mouse buttons other than left, middle and right are named MB4, MB5
+and so on (they were "Mouse 4", "Mouse 5"). LMB, MMB, RMB stay. DESIGN §5.3.
+
+**Tested how:** the real Mycelium build with the fake Minecraft binding Skill 1 to button 4 and
+Skill 2 to button 5: "statSkill1Hint=[MB4], statSkill2Hint=[MB5]".
+
+## 2026-11-01 Mycelium's key hints show your Minecraft key binds (protocol v35)
+
+**Your request:** the UI's controls should match what they're bound to: a loot cache said [RMB]
+with interact on R; the skills said Q and E.
+
+**Cause:** every hint is built from the current controller's `ColoredHint` text in Mycelium's
+`InputManager`, fixed in its settings.
+
+**Changed:**
+- **New `KeyHints.cs` (Mycelium):** while Minecraft drives, the Keyboard controller's hints
+  (interact, show stats, subspecies skill, salvage, attack, dodge, skill 1, skill 2, navigate and
+  reset camera) get the names of the keys bound in Minecraft's Controls menu.
+  - The skill bar is redrawn, and Mycelium's texts come back when Minecraft stops driving.
+  - Re-applied on a binding change or a new `InputManager`.
+  - The log shows the labels, and the keyboard's loot cache text.
+- **`MyceliumKeys.java`:** also sends Minecraft's own Attack key (Bindings id 11, protocol v35).
+  The attack hint shows it while Mycelium's Attack is unbound.
+- **`MinecraftDriver.cs`:** calls it.
+- PROTOCOL, DESIGN §5.3, README.
+
+**Tested how:** the real Mycelium build with the fake Minecraft sending binds (`LINKTEST_BINDS`),
+in Daybreak Arboretum: "interactHint=[R], showStatsHint=[Tab], subspeciesSkillHint=[V],
+salvageHint=[MMB], attackHint=[LMB], dodgeHint=[Shift], statSkill1Hint=[F], statSkill2Hint=[G],
+goalCameraHint=[Unbound], orientationCameraHint=[Unbound]". The keyboard's loot cache would say
+"Press [R] to Open".
+
+**Still broken / not tested:**
+- **Not seen in play.** In the test Mycelium's current controller was still the Xbox one: it
+  starts that way and switches to the keyboard when a key is pressed, then redraws the skill bar
+  from these hints.
+- Gamepad hints aren't changed.
+- Hints only change while Minecraft drives the spore.
+
 ## 2026-11-01 Living Cyclone animation: the weapon stays in the hand
 
 **Your report:** the weapon floated a little above the hand.
