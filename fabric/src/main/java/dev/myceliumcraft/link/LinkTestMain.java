@@ -47,7 +47,7 @@ public final class LinkTestMain {
 	/** "1": log Mycelium's enemy table once a second, and hit the nearest enemy for 2 points (10 Mycelium damage) every 2 s. */
 	private static final boolean HIT = "1".equals(System.getenv("LINKTEST_HIT"));
 	private static int dashFrames;
-	private static boolean vanishedSeen, cycloneSeen;
+	private static boolean vanishedSeen, cycloneSeen, rollSeen;
 	// LINKTEST_FUNGAL=1: a swing at 5 s that hits nothing, then a swing at 7 s that hits the nearest
 	// enemy once (from 7.1 s), for Fungal Might ending only with a swing that hits (-mcFungalTest).
 	private static final boolean FUNGAL = "1".equals(System.getenv("LINKTEST_FUNGAL"));
@@ -371,6 +371,11 @@ public final class LinkTestMain {
 			if (cycloneNow != cycloneSeen) {
 				cycloneSeen = cycloneNow;
 				System.out.printf("t=%.1f Mycelium's Living Cyclone %s%n", t, cycloneNow ? "spinning (third person behind)" : "over");
+			}
+			boolean rollNow = MycLink.readMycState(myc) && (myc.flags & Proto.MYC_ROLL) != 0;
+			if (rollNow != rollSeen) {
+				rollSeen = rollNow;
+				System.out.printf("t=%.2f Mycelium's dodge roll %s (dash %.1f, %.1f blocks/s)%n", t, rollNow ? "on" : "over", myc.dashX, myc.dashZ);
 			}
 			boolean vanishedNow = MycLink.readMycState(myc) && (myc.flags & Proto.MYC_VANISHED) != 0;
 			if (vanishedNow != vanishedSeen) {

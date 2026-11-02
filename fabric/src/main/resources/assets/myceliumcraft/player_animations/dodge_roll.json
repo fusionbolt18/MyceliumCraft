@@ -1,0 +1,415 @@
+{
+  "name": "dodge_roll",
+  "author": "MyceliumCraft",
+  "description": "Mycelium's dodge roll, 12 ticks, inspired by a stand-to-roll: a step and dive with the arms reaching for the ground (ticks 1-3), a tight forward roll kept low (whole body, torso pitch to -2 pi, ticks 3-9), a crouched landing leaning forward, then up (ticks 9-12). Body positions are in blocks. Ends upright at tick 12; MyceliumCraft stops it there (the held last frame is a full turn, the same as standing). Made for MyceliumCraft, 2026-11-02.",
+  "emote": {
+    "isLoop": "false",
+    "returnTick": 0,
+    "beginTick": 0,
+    "endTick": 14,
+    "stopTick": 16,
+    "degrees": false,
+    "moves": [
+      {
+        "tick": 1,
+        "easing": "EASEOUTQUAD",
+        "turn": 0,
+        "torso": {
+          "pitch": -0.3,
+          "y": -0.1
+        }
+      },
+      {
+        "tick": 2,
+        "easing": "LINEAR",
+        "turn": 0,
+        "torso": {
+          "pitch": -0.85,
+          "y": -0.28
+        }
+      },
+      {
+        "tick": 3,
+        "easing": "LINEAR",
+        "turn": 0,
+        "torso": {
+          "pitch": -1.55,
+          "y": -0.4
+        }
+      },
+      {
+        "tick": 4,
+        "easing": "LINEAR",
+        "turn": 0,
+        "torso": {
+          "pitch": -2.35,
+          "y": -0.25
+        }
+      },
+      {
+        "tick": 5,
+        "easing": "LINEAR",
+        "turn": 0,
+        "torso": {
+          "pitch": -3.14,
+          "y": 0.05
+        }
+      },
+      {
+        "tick": 6,
+        "easing": "LINEAR",
+        "turn": 0,
+        "torso": {
+          "pitch": -3.95,
+          "y": -0.05
+        }
+      },
+      {
+        "tick": 7,
+        "easing": "LINEAR",
+        "turn": 0,
+        "torso": {
+          "pitch": -4.75,
+          "y": -0.3
+        }
+      },
+      {
+        "tick": 8,
+        "easing": "LINEAR",
+        "turn": 0,
+        "torso": {
+          "pitch": -5.55,
+          "y": -0.38
+        }
+      },
+      {
+        "tick": 9,
+        "easing": "LINEAR",
+        "turn": 0,
+        "torso": {
+          "pitch": -6.6332,
+          "y": -0.28
+        }
+      },
+      {
+        "tick": 10,
+        "easing": "LINEAR",
+        "turn": 0,
+        "torso": {
+          "pitch": -6.5332,
+          "y": -0.16
+        }
+      },
+      {
+        "tick": 11,
+        "easing": "LINEAR",
+        "turn": 0,
+        "torso": {
+          "pitch": -6.3632,
+          "y": -0.05
+        }
+      },
+      {
+        "tick": 12,
+        "easing": "EASEOUTQUAD",
+        "turn": 0,
+        "torso": {
+          "pitch": -6.2832,
+          "y": 0.0
+        }
+      },
+      {
+        "tick": 1,
+        "easing": "EASEOUTQUAD",
+        "turn": 0,
+        "head": {
+          "pitch": 0.25
+        }
+      },
+      {
+        "tick": 3,
+        "easing": "LINEAR",
+        "turn": 0,
+        "head": {
+          "pitch": 0.9
+        }
+      },
+      {
+        "tick": 8,
+        "easing": "LINEAR",
+        "turn": 0,
+        "head": {
+          "pitch": 0.9
+        }
+      },
+      {
+        "tick": 9,
+        "easing": "LINEAR",
+        "turn": 0,
+        "head": {
+          "pitch": 0.4
+        }
+      },
+      {
+        "tick": 12,
+        "easing": "EASEOUTQUAD",
+        "turn": 0,
+        "head": {
+          "pitch": 0.0
+        }
+      },
+      {
+        "tick": 1,
+        "easing": "EASEOUTQUAD",
+        "turn": 0,
+        "rightArm": {
+          "pitch": -1.0,
+          "yaw": 0.0,
+          "roll": 0.15
+        }
+      },
+      {
+        "tick": 2,
+        "easing": "LINEAR",
+        "turn": 0,
+        "rightArm": {
+          "pitch": -1.6,
+          "yaw": 0.0,
+          "roll": 0.2
+        }
+      },
+      {
+        "tick": 3,
+        "easing": "LINEAR",
+        "turn": 0,
+        "rightArm": {
+          "pitch": -2.3,
+          "yaw": 0.0,
+          "roll": 0.3
+        }
+      },
+      {
+        "tick": 8,
+        "easing": "LINEAR",
+        "turn": 0,
+        "rightArm": {
+          "pitch": -2.3,
+          "yaw": 0.0,
+          "roll": 0.3
+        }
+      },
+      {
+        "tick": 9,
+        "easing": "LINEAR",
+        "turn": 0,
+        "rightArm": {
+          "pitch": -1.0,
+          "yaw": 0.0,
+          "roll": 0.2
+        }
+      },
+      {
+        "tick": 10,
+        "easing": "LINEAR",
+        "turn": 0,
+        "rightArm": {
+          "pitch": -0.5,
+          "yaw": 0.0,
+          "roll": 0.1
+        }
+      },
+      {
+        "tick": 12,
+        "easing": "EASEOUTQUAD",
+        "turn": 0,
+        "rightArm": {
+          "pitch": 0.0,
+          "yaw": 0.0,
+          "roll": 0.0
+        }
+      },
+      {
+        "tick": 1,
+        "easing": "EASEOUTQUAD",
+        "turn": 0,
+        "leftArm": {
+          "pitch": -1.1,
+          "yaw": 0.0,
+          "roll": -0.15
+        }
+      },
+      {
+        "tick": 2,
+        "easing": "LINEAR",
+        "turn": 0,
+        "leftArm": {
+          "pitch": -1.7,
+          "yaw": 0.0,
+          "roll": -0.2
+        }
+      },
+      {
+        "tick": 3,
+        "easing": "LINEAR",
+        "turn": 0,
+        "leftArm": {
+          "pitch": -2.3,
+          "yaw": 0.0,
+          "roll": -0.3
+        }
+      },
+      {
+        "tick": 8,
+        "easing": "LINEAR",
+        "turn": 0,
+        "leftArm": {
+          "pitch": -2.3,
+          "yaw": 0.0,
+          "roll": -0.3
+        }
+      },
+      {
+        "tick": 9,
+        "easing": "LINEAR",
+        "turn": 0,
+        "leftArm": {
+          "pitch": -1.0,
+          "yaw": 0.0,
+          "roll": -0.2
+        }
+      },
+      {
+        "tick": 10,
+        "easing": "LINEAR",
+        "turn": 0,
+        "leftArm": {
+          "pitch": -0.5,
+          "yaw": 0.0,
+          "roll": -0.1
+        }
+      },
+      {
+        "tick": 12,
+        "easing": "EASEOUTQUAD",
+        "turn": 0,
+        "leftArm": {
+          "pitch": 0.0,
+          "yaw": 0.0,
+          "roll": 0.0
+        }
+      },
+      {
+        "tick": 1,
+        "easing": "EASEOUTQUAD",
+        "turn": 0,
+        "rightLeg": {
+          "pitch": -0.55
+        }
+      },
+      {
+        "tick": 2,
+        "easing": "LINEAR",
+        "turn": 0,
+        "rightLeg": {
+          "pitch": -0.8
+        }
+      },
+      {
+        "tick": 3,
+        "easing": "LINEAR",
+        "turn": 0,
+        "rightLeg": {
+          "pitch": -1.35
+        }
+      },
+      {
+        "tick": 8,
+        "easing": "LINEAR",
+        "turn": 0,
+        "rightLeg": {
+          "pitch": -1.35
+        }
+      },
+      {
+        "tick": 9,
+        "easing": "LINEAR",
+        "turn": 0,
+        "rightLeg": {
+          "pitch": -0.7
+        }
+      },
+      {
+        "tick": 10,
+        "easing": "LINEAR",
+        "turn": 0,
+        "rightLeg": {
+          "pitch": -0.35
+        }
+      },
+      {
+        "tick": 12,
+        "easing": "EASEOUTQUAD",
+        "turn": 0,
+        "rightLeg": {
+          "pitch": 0.0
+        }
+      },
+      {
+        "tick": 1,
+        "easing": "EASEOUTQUAD",
+        "turn": 0,
+        "leftLeg": {
+          "pitch": 0.35
+        }
+      },
+      {
+        "tick": 2,
+        "easing": "LINEAR",
+        "turn": 0,
+        "leftLeg": {
+          "pitch": 0.1
+        }
+      },
+      {
+        "tick": 3,
+        "easing": "LINEAR",
+        "turn": 0,
+        "leftLeg": {
+          "pitch": -1.2
+        }
+      },
+      {
+        "tick": 8,
+        "easing": "LINEAR",
+        "turn": 0,
+        "leftLeg": {
+          "pitch": -1.2
+        }
+      },
+      {
+        "tick": 9,
+        "easing": "LINEAR",
+        "turn": 0,
+        "leftLeg": {
+          "pitch": -0.2
+        }
+      },
+      {
+        "tick": 10,
+        "easing": "LINEAR",
+        "turn": 0,
+        "leftLeg": {
+          "pitch": -0.1
+        }
+      },
+      {
+        "tick": 12,
+        "easing": "EASEOUTQUAD",
+        "turn": 0,
+        "leftLeg": {
+          "pitch": 0.0
+        }
+      }
+    ]
+  }
+}

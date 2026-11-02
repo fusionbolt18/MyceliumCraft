@@ -1,5 +1,52 @@
 # MODLOG
 
+## 2026-11-02 The combat roll animation redone (it looked like teleporting)
+
+**Your report:** it looked bad; the character seemed to teleport around. You asked for something
+like Mixamo's "Stand to Roll", for inspiration.
+
+**Cause:** my mistake in units. The library's whole-body bone takes its position in **blocks**
+(Better Combat's slam lowers it 0.17), and I wrote pixel-sized numbers. "+5" and "−6" threw the
+body 5 blocks up and 6 down within a few ticks.
+
+**Changed:** `dodge_roll.json`, rewritten (made by a script, in blocks), now 12 ticks:
+- a step and a dive, arms reaching for the ground (ticks 1 to 3);
+- a tight forward roll, low, chin tucked (ticks 3 to 9);
+- a crouched landing leaning forward, then up (ticks 9 to 12).
+
+`MycSkillAnimation` stops it after 12 ticks (was 8). That's 0.6 s, inside the roll's 0.77 s.
+DESIGN §5.0.7.
+
+**Tested how:** the jar builds and contains the new file (45 keyframes). **Not seen in game.**
+
+## 2026-11-02 A combat roll animation for the dodge roll (protocol v37)
+
+**Your request:** an animation for the dodge roll, like a classic combat roll.
+
+**Changed:**
+- **New `player_animations/dodge_roll.json`** (our own, from scratch): an 8-tick forward
+  somersault around the hips, with arms hugged in, legs tucked, chin down, and a little lift while
+  upside down.
+- **`MycSkillAnimation.java`:** plays it when the roll starts and stops it after 8 ticks. Living
+  Cyclone's spin takes precedence.
+- **`MycDash.faceRoll`:** while the roll's dash moves you, your Minecraft body and head face the
+  roll's direction, so a sideways or backwards roll is still a forward somersault. The camera is
+  unchanged.
+- **Mycelium (`MinecraftDriver.cs`):** MycState flag bit5 `ROLL` while the Animator's "Roll" is
+  on. Protocol v37.
+- **Stand-in:** logs the roll flag.
+- PROTOCOL, DESIGN §5.0.7, README.
+
+**Tested how:** `-mcDashTest` with the stand-in: "Mycelium's dodge roll on (dash 14.3, 0.0
+blocks/s)" with the dash, "over" 0.77 s later. The jar contains the animation.
+
+**Not tested:** everything visible.
+- The animation is my best guess at the library's whole-body pivot and directions: forward is
+  negative pitch, as Better Combat's slam leans forward. It could roll backwards, sink into the
+  ground or float.
+- The body facing the roll.
+- First person.
+
 ## 2026-11-02 The dodge roll's sound plays as you press the key
 
 **Your request:** play the roll sound as soon as the key is pressed.

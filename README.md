@@ -151,6 +151,8 @@ Single-player and offline only.
     not where your body faces (direction choice tested with a fake Minecraft; not tested in play).
   - **Its sound plays as you press the key,** not at the roll's end (tested in Mycelium; not heard
     in play).
+  - **A combat roll animation** (a forward somersault, the body facing the roll): not tested in
+    play; the roll's signal reaches a fake Minecraft.
 - **Projectile skills fire where you look** (Spineshot, Undergrowth, Unstable Puffball, Death
   Blossom), not where Minecraft's body faces. Tested in Mycelium with a fake Minecraft (aim only;
   no skill fired).

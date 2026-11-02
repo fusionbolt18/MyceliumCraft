@@ -831,6 +831,33 @@ step to follow Minecraft, which cancelled them.
   - The fake Minecraft doesn't move its player for a dash, so where the roll took you, and the
     spore's turn, weren't seen.
 
+**The dodge roll has a combat roll animation** (since 2026-11-02, your request; protocol v37).
+- **Mycelium** sets MycState flag bit5 `ROLL` while the spore's Animator "Roll" is on (about 0.77 s
+  a roll).
+- **Minecraft** (`MycSkillAnimation.java`, the same Player Animation Library layer as Living
+  Cyclone) plays our `myceliumcraft:dodge_roll` when the flag goes on, and stops it after its 12
+  ticks.
+- **The animation** (`player_animations/dodge_roll.json`, written from scratch, in the older
+  Emotecraft format whose "torso" is the library's whole-body bone; it turns around the hips,
+  0.75 blocks up):
+  - inspired by Mixamo's "Stand to Roll" (your pick), not copied: a step and dive with the arms
+    reaching for the ground (ticks 1 to 3), a tight forward roll kept low with the chin tucked
+    (ticks 3 to 9), a crouched landing leaning forward, then up (ticks 9 to 12);
+  - **the whole-body bone's position is in blocks**, not pixels. Better Combat's slam lowers it
+    0.17. The first version used pixel-sized numbers (+5, −6), which threw the body 5 blocks up
+    and 6 down within a few ticks: it looked like teleporting (your report). Now the body dips at
+    most 0.4 blocks while level and rises 0.05 while upside down;
+  - its last frame is a full turn, the same as standing, so stopping it there doesn't jump.
+- **Facing** (`MycDash.faceRoll`): the roll goes the way you move, which can be sideways or
+  backwards from your look, and the animation is a forward somersault. So while the flag is on
+  and the dash moves you, the body and head face the dash, at each tick's start and before each
+  frame. Your look (the camera) isn't changed. Mycelium shows the body's triangles as Minecraft
+  poses them, so it rolls there too.
+- **Checked** with `-mcDashTest` and the fake Minecraft: "dodge roll on (dash 14.3, 0.0 blocks/s)"
+  at the dash's start, "over" 0.77 s later.
+- **Not seen:** the animation itself, the facing, how it looks in first person (only your arms
+  show: they hug in for the roll).
+
 ### 5.0.8 Trophic Cascade: you vanish too (since 2026-10-26, protocol v33)
 
 Trophic Cascade's vanish switches off every renderer on the spore while it jumps between enemies

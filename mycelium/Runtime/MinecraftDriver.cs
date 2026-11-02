@@ -365,6 +365,8 @@ namespace MyceliumCraft
             bool cycloning = rb != null && Cycloning();
             if (cycloning) flags |= Proto.MycCyclone;
             BlockSkillsWhileCycloning(cycloning);
+            // The dodge roll: Minecraft plays its combat roll animation on your body (MycSkillAnimation.java).
+            if (rb != null && animator != null && animator.isActiveAndEnabled && animator.GetBool("Roll")) flags |= Proto.MycRoll;
             // Mycelium's health, which Minecraft's follows (/ 5).
             float health = 0f, maxHealth = 0f;
             if (rb != null) ReadHealth(out health, out maxHealth);

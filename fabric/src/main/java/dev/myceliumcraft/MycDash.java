@@ -20,6 +20,33 @@ public final class MycDash {
 	private MycDash() {
 	}
 
+	private static boolean facing;
+
+	/**
+	 * The dodge roll's body faces where the roll goes (your request, 2026-11-02: a combat roll
+	 * animation). The roll goes the way you move, which can be sideways or backwards from where you
+	 * look; the roll animation is a forward somersault, so the body (and head, so the neck isn't
+	 * twisted) is turned to the roll's direction while it's on, at each tick's start and before each
+	 * frame. Where you look (the camera) isn't changed. roll: Mycelium's roll flag; x, z: its dash.
+	 */
+	public static void faceRoll(LocalPlayer player, boolean roll, float x, float z) {
+		boolean now = player != null && roll && (x != 0f || z != 0f);
+		if (now) {
+			float yaw = (float) Math.toDegrees(Math.atan2(-x, z));
+			if (!facing) {
+				MycLink.LOG.info("MyceliumCraft: dodge roll: the body faces the roll ({} deg; you look {} deg)", String.format("%.0f", yaw),
+					String.format("%.0f", net.minecraft.util.Mth.wrapDegrees(player.getYRot())));
+			}
+			player.yBodyRot = yaw;
+			player.yBodyRotO = yaw;
+			player.yHeadRot = yaw;
+			player.yHeadRotO = yaw;
+		} else if (facing) {
+			MycLink.LOG.info("MyceliumCraft: dodge roll over: the body turns with you again");
+		}
+		facing = now;
+	}
+
 	/** Start of a client tick (MinecraftMixin). x, z: blocks per second; both 0 = no dash. */
 	public static void tick(Minecraft minecraft, float x, float z) {
 		LocalPlayer player = minecraft.player;

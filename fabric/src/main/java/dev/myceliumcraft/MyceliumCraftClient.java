@@ -58,7 +58,8 @@ public final class MyceliumCraftClient implements ClientModInitializer {
 	public static void beforeTick(Minecraft minecraft) {
 		boolean on = MycLink.myceliumAlive() && MYC.inLevel();
 		MycDash.tick(minecraft, on ? MYC.dashX : 0f, on ? MYC.dashZ : 0f);
-		MycSkillAnimation.tick(minecraft, on && (MYC.flags & Proto.MYC_CYCLONE) != 0);
+		MycDash.faceRoll(minecraft.player, on && (MYC.flags & Proto.MYC_ROLL) != 0, MYC.dashX, MYC.dashZ);
+		MycSkillAnimation.tick(minecraft, on && (MYC.flags & Proto.MYC_CYCLONE) != 0, on && (MYC.flags & Proto.MYC_ROLL) != 0);
 		blockAttackWhileCycloning(minecraft);
 	}
 
@@ -100,6 +101,9 @@ public final class MyceliumCraftClient implements ClientModInitializer {
 			return;
 		}
 		blockAttackWhileCycloning(minecraft);
+		// The roll's body faces where it goes, for the frame about to be drawn (MycDash).
+		boolean rollOn = MycLink.myceliumAlive() && MYC.inLevel() && (MYC.flags & Proto.MYC_ROLL) != 0;
+		MycDash.faceRoll(minecraft.player, rollOn, MYC.dashX, MYC.dashZ);
 		frame++;
 		MyceliumKeys.publish();
 

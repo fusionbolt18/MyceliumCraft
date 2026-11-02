@@ -28,6 +28,8 @@ public final class MycSkillAnimation {
 	private static final Identifier LAYER = Identifier.fromNamespaceAndPath("myceliumcraft", "skill");
 	private static final Identifier CYCLONE = Identifier.fromNamespaceAndPath("myceliumcraft", "living_cyclone");
 	private static final Identifier SPIN = Identifier.fromNamespaceAndPath("bettercombat", "two_handed_spin"); // if ours is missing
+	private static final Identifier ROLL = Identifier.fromNamespaceAndPath("myceliumcraft", "dodge_roll");
+	private static final int ROLL_TICKS = 12; // the roll ends upright at tick 12 (its file); stopped there
 	private static final int PRIORITY = 2000; // above Better Combat's own layers
 
 	private static boolean ready, failed;
@@ -35,6 +37,8 @@ public final class MycSkillAnimation {
 	private static long startedMs;
 	private static Method getLayer, getAnimation, begin, thenPlay, thenLoop, trigger, stop;
 	private static Identifier played;
+	private static boolean rollWas, rolling, rollMissing;
+	private static int rollTicks;
 
 	private MycSkillAnimation() {
 	}
@@ -83,14 +87,24 @@ public final class MycSkillAnimation {
 		}
 	}
 
-	/** Every client tick: loop the spin while Living Cyclone is on. */
-	public static void tick(Minecraft minecraft, boolean cyclone) {
+	/**
+	 * Every client tick: loop the spin while Living Cyclone is on; play the combat roll
+	 * (myceliumcraft:dodge_roll, your request 2026-11-02) when Mycelium's dodge roll starts, and stop
+	 * it once it's upright again (its last frame is a full turn, the same as standing).
+	 */
+	public static void tick(Minecraft minecraft, boolean cyclone, boolean roll) {
 		if (!ready || failed || minecraft.player == null) {
 			return;
+		}
+		boolean rollStarts = roll && !rollWas;
+		rollWas = roll;
+		if (!cyclone && !playing) {
+			tickRoll(minecraft, rollStarts);
 		}
 		if (cyclone == playing) {
 			return;
 		}
+		rolling = false; // the spin replaces a roll
 		try {
 			Object controller = getLayer.invoke(null, minecraft.player, LAYER);
 			if (controller == null) {
@@ -116,6 +130,36 @@ public final class MycSkillAnimation {
 		} catch (ReflectiveOperationException | RuntimeException e) {
 			failed = true;
 			MycLink.LOG.warn("MyceliumCraft: couldn't play the Living Cyclone animation", e);
+		}
+	}
+
+	private static void tickRoll(Minecraft minecraft, boolean starts) {
+		try {
+			Object controller = getLayer.invoke(null, minecraft.player, LAYER);
+			if (controller == null) {
+				return;
+			}
+			if (starts && !rollMissing) {
+				Object anim = getAnimation.invoke(null, ROLL);
+				if (anim == null) {
+					rollMissing = true;
+					MycLink.LOG.info("MyceliumCraft: {} not found; the dodge roll isn't animated", ROLL);
+					return;
+				}
+				trigger.invoke(controller, thenPlay.invoke(begin.invoke(null), anim));
+				rolling = true;
+				rollTicks = 0;
+				startedMs = System.currentTimeMillis();
+				MycLink.LOG.info("MyceliumCraft: dodge roll: playing {} on the player", ROLL);
+			} else if (rolling && ++rollTicks >= ROLL_TICKS) {
+				stop.invoke(controller);
+				rolling = false;
+				MycLink.LOG.info("MyceliumCraft: dodge roll: {} done and stopped after {} ticks ({} s)", ROLL, rollTicks,
+					String.format("%.2f", (System.currentTimeMillis() - startedMs) / 1000.0));
+			}
+		} catch (ReflectiveOperationException | RuntimeException e) {
+			rollMissing = true;
+			MycLink.LOG.warn("MyceliumCraft: couldn't play the dodge roll animation", e);
 		}
 	}
 }
