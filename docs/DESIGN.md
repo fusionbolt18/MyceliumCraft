@@ -488,6 +488,38 @@ can't start until Minecraft's attack indicator is full.
 - The rule before it (for a few hours) made hits under 90 % charge do 5 % damage. It worked, but
   you changed your mind and it was removed.
 
+**Your swings smack the levels' mushrooms** (since 2026-11-02, `ShroomSmack.cs`, your request).
+- **In Mycelium** the mushrooms (`SmackableShroomController`; `SmackableGlowShroomController` also
+  glows and lets out nutrients the first time) bounce with a sound from their own
+  `OnTriggerEnter`, when the "currentWeapon" collider touches them. That collider only sweeps
+  through them in Mycelium's own swing animation, which doesn't play while Minecraft attacks.
+- **Now:** at each Minecraft swing (the McState swing count, as for the attack events), at its
+  hit moment (half the attack's duration, our presets' upswing 0.5; at most 0.6 s), the
+  mushrooms inside the swing are found the way Better Combat finds targets:
+  - reach: the held weapon's measured reach × 1.25 (3 blocks × 1.25 before it's measured), to the
+    nearest point of the mushroom's **attack hitbox**;
+  - Slash: the half circle ahead of where you look (180°);
+  - Stab and Smash: a box ahead, 0.75 blocks either side of your look.
+- **Each one's own `OnTriggerEnter`** is called with the held weapon's collider. Its cooldown
+  (1 s), sound, bounce animation and nutrients are Mycelium's own. Bouncing when you dodge-roll
+  into one already worked (the spore itself touches it).
+- **Which collider** (your note): a mushroom has several. Only the trigger on its own object is
+  its attack hitbox, the one whose touch reaches its `OnTriggerEnter`. In the prefabs it's a
+  capsule (radius 1, height 1, 1.62 up), 1.37 units wide in Daybreak Arboretum. The others aren't
+  used:
+  - the glow sensor, a trigger on a child of its model (`MushroomPlayerSensorController`, lights
+    up as you walk near), 13.5 units wide;
+  - solid mesh colliders (`pCone…`).
+  Logged once per level.
+- **The list** of mushrooms is refreshed every 3 s (the levels are generated).
+- **Checked** in Daybreak Arboretum (105 to 169 mushrooms):
+  - `-mcShroomTest`: a slash facing a mushroom smacked it, and again at once didn't (its
+    cooldown). After the cooldown a stab facing away didn't smack it, and facing it did.
+  - Measuring to the attack hitbox only, the test's swing smacked from 1.16 units away.
+  - The fake Minecraft's two swings (`LINKTEST_FUNGAL`) smack nothing from where it stands.
+    Before the fix they "reached" a mushroom 4.45 units away, through its glow sensor. One close
+    behind (133°) was also smacked, and the arc is now strictly the front half.
+
 ### 5.0.4 Weapons: one carrot each in Minecraft's inventory (since 2026-10-20)
 
 Your choices: carrots for now, with the true numbers rewritten when the spore changes; the spore

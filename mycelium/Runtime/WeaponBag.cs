@@ -98,6 +98,16 @@ namespace MyceliumCraft
             }
         }
 
+        /// <summary>The held weapon's swing: type (0 Slash, 1 Smash, 2 Stab), reach (blocks, 0 = not measured), attacks per second.</summary>
+        public bool HeldSwing(out int type, out float reachBlocks, out float perSecond)
+        {
+            Weapon w = Find(heldId);
+            type = w != null ? w.Type : 0;
+            reachBlocks = w != null ? w.Reach : 0f;
+            perSecond = w != null ? w.PerSecond : 0f;
+            return w != null;
+        }
+
         public void SceneLoaded(Scene scene)
         {
             lastCur = null;

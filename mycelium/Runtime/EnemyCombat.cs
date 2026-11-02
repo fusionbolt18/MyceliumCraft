@@ -261,9 +261,13 @@ namespace MyceliumCraft
             }
         }
 
+        /// <summary>A Minecraft swing started (ShroomSmack listens).</summary>
+        public event Action Swung;
+
         void StartSwing()
         {
             if (swingEnds >= 0f) FinishSwing();
+            Swung?.Invoke();
             RaiseAttack("StartedAttack");
             swingEnds = Time.time + SwingSeconds;
             swingsRaised++;

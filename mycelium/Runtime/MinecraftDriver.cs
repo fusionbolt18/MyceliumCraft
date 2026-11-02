@@ -71,6 +71,7 @@ namespace MyceliumCraft
         readonly McOverlay overlay = new McOverlay();
         readonly McPlayerModel playerModel = new McPlayerModel();
         readonly EnemyCombat combat = new EnemyCombat();
+        readonly ShroomSmack shrooms = new ShroomSmack();
         readonly uint[] bindKinds = new uint[Proto.BMax];
         readonly uint[] bindCodes = new uint[Proto.BMax];
         bool heldByMycelium;   // Mycelium has the controls (menu, pause, cutscene): don't drive the spore
@@ -232,6 +233,14 @@ namespace MyceliumCraft
             // (LevelEnd's own trigger), then, 1.5 s later, switches its controls back on as a hit's
             // knockback ending does.
             if (Array.IndexOf(args, "-mcLevelEndTest") >= 0) StartCoroutine(LevelEndTest());
+            // Test aid: "-mcShroomTest" swings at the nearest mushroom from just in front of it 4 s
+            // into driving, again at once (its cooldown), then facing away after the cooldown.
+            if (Array.IndexOf(args, "-mcShroomTest") >= 0) StartCoroutine(ShroomTest());
+            combat.Swung += () =>
+            {
+                weapons.HeldSwing(out int type, out float reach, out float perSecond);
+                shrooms.Swung(type, reach, perSecond);
+            };
             // Test aid: "-mcSwapTest" swaps weapons the way picking one up does (WeaponInteraction: the
             // old one is let go into the world, a new one goes in the hand) 4 s into driving, and logs
             // which of the two Mycelium draws.
@@ -318,6 +327,7 @@ namespace MyceliumCraft
                 cameraSync.Reset();
                 sprout.SceneLoaded(scene);
                 weapons.SceneLoaded(scene);
+                shrooms.SceneLoaded();
                 SetPhase(Phase.Idle, "new scene");
             };
         }
@@ -457,6 +467,8 @@ namespace MyceliumCraft
             combat.HeldKnockback = weapons.HeldKnockback;
             // Mycelium's attack events for Minecraft's swings (weapon attributes).
             if (rb != null) combat.FollowSwings(lastCamMc.Swings, camFresh2 && alive);
+            // ...and the levels' mushrooms bounce when a swing reaches them (ShroomSmack).
+            if (rb != null) shrooms.Update(rb.position, WorldMapping.MycYaw(lastCamMc.Yaw), map.Scale);
             dash.BeforeCoroutines(rb); // Mycelium's dash coroutines write the velocity after this (DashWatch)
             // Skills fire where Minecraft's head looks, not where its body faces.
             aimDriving = rb != null && alive && phase == Phase.Driving && camFresh2;
@@ -1181,6 +1193,35 @@ namespace MyceliumCraft
             controller?.GetType().GetMethod("EnableController", Type.EmptyTypes)?.Invoke(controller, null);
             yield return null;
             McLog.Info($"cyclone test: ended as the skill does; canUseSkill now {controller?.GetType().GetField("canUseSkill")?.GetValue(controller)}");
+        }
+
+        /// <summary>Test aid: see "-mcShroomTest" in Awake.</summary>
+        System.Collections.IEnumerator ShroomTest()
+        {
+            while (phase != Phase.Driving) yield return null;
+            yield return new WaitForSeconds(4f);
+            Component s = rb != null ? shrooms.NearestShroom(rb.position) : null;
+            if (s == null) { McLog.Info("shroom test: no smackable mushroom in this level"); yield break; }
+            Vector3 c = s.transform.position;
+            Vector3 dir = rb.position - c; dir.y = 0f;
+            if (dir.sqrMagnitude < 0.0001f) dir = Vector3.forward;
+            dir.Normalize();
+            float radius = 0.5f; // outside its attack hitbox
+            foreach (Collider col in ShroomSmack.Hitbox(s))
+                radius = Mathf.Max(radius, Vector3.Distance(new Vector3(col.bounds.center.x, 0f, col.bounds.center.z), new Vector3(c.x, 0f, c.z)) + Mathf.Max(col.bounds.extents.x, col.bounds.extents.z));
+            Vector3 from = c + dir * (radius + 1f);
+            float toward = Quaternion.LookRotation(-dir).eulerAngles.y;
+            float reach = (float)(3.0 * 1.25 * map.Scale);
+            McLog.Info($"shroom test: '{s.gameObject.name}' ({s.GetType().Name}) at {c:F2}, {(rb.position - c).magnitude:F1} units from the spore; swinging from {from:F2} facing it (reach {reach:F2} units)");
+            int a = shrooms.Smack(from, toward, reach, 0, 0.75f * (float)map.Scale, "test swing");
+            McLog.Info($"shroom test: facing it: {a} smacked; Attackable now {ShroomSmack.Attackable(s)}");
+            int b = shrooms.Smack(from, toward, reach, 0, 0.75f * (float)map.Scale, "test swing");
+            McLog.Info($"shroom test: again at once: {b} smacked (its own 1 s cooldown)");
+            yield return new WaitForSeconds(2.5f);
+            int d = shrooms.Smack(from, toward + 180f, reach, 2, 0.75f * (float)map.Scale, "test swing");
+            McLog.Info($"shroom test: after the cooldown, facing away with a stab: {d} smacked; Attackable {ShroomSmack.Attackable(s)}");
+            int e = shrooms.Smack(from, toward, reach, 2, 0.75f * (float)map.Scale, "test swing");
+            McLog.Info($"shroom test: facing it with a stab: {e} smacked");
         }
 
         /// <summary>Test aid: see "-mcLevelEndTest" in Awake.</summary>

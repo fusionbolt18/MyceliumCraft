@@ -56,6 +56,8 @@ Single-player and offline only.
   - **Better Combat animations: not tested.** Slash weapons swing right then left, Stab weapons stab,
     Smash weapons slam two-handed. Each weapon's attack range is its real reach in Mycelium
     plus 25% (measured; a weapon gets it the first time you hold it).
+  - **Your swings smack the levels' mushrooms** (bounce and sound, as in Mycelium): tested in
+    Mycelium with the fake Minecraft's swings; not tested in play.
   - **Poisoned enemies flash green** instead of red (tested in Mycelium).
   - **Crabs (and other enemies whose model has several parts) flash fully** now (tested in Mycelium:
     the tinted copies switch on and off; not looked at).

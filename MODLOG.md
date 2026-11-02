@@ -1,5 +1,41 @@
 # MODLOG
 
+## 2026-11-02 Your swings smack the levels' mushrooms
+
+**Your request:** weapon attacks should hit the mushrooms in the levels, which bounce with a sound
+in Mycelium.
+
+**Cause:** Mycelium's mushrooms react when its weapon's hitbox touches them during Mycelium's own
+swing animation, which doesn't play while Minecraft attacks.
+
+**Changed:**
+- **New `ShroomSmack.cs` (Mycelium):** at each Minecraft swing's hit moment, the mushrooms whose
+  attack hitbox is inside the swing are found. That's the weapon's reach × 1.25; Slash 180° ahead of your look; Stab and
+  Smash a box ahead. Each one's own `OnTriggerEnter` is called with the held weapon's collider,
+  so the cooldown, sound, bounce and nutrients are Mycelium's own.
+- **`EnemyCombat.cs`:** a `Swung` event.
+- **`WeaponBag.cs`:** `HeldSwing` (type, reach, attacks per second).
+- **`MinecraftDriver.cs`:** wiring, and the test aid `-mcShroomTest`.
+- DESIGN §5.0.3, README.
+
+**Tested how:** the real Mycelium build in Daybreak Arboretum with the fake Minecraft.
+- `-mcShroomTest`: facing a mushroom: 1 smacked, Attackable now False. Again at once: 0 (its
+  cooldown). After the cooldown, facing away with a stab: 0; facing it: 1.
+- The log lists one mushroom's colliders: "ATTACK HITBOX, 1.37 wide x 1.37 tall; 'DA_Glow
+  Shrooms' CapsuleCollider glow sensor, 13.51 wide x 13.51 tall; 'pCone1' MeshCollider solid…".
+  Only the attack hitbox is measured to (your note: mushrooms have a separate glow trigger).
+- `LINKTEST_FUNGAL`'s two swings smack nothing from where the fake Minecraft stands.
+
+**Failures on the way:**
+- At first the reach was measured to all the mushroom's colliders, the glow sensor included, which
+  is ten times wider. The fake Minecraft's swings "smacked" a mushroom 4.45 units away through it.
+  Fixed after your note.
+- A mushroom 0.67 units behind you (133°) was smacked too: the slash's half circle let a little
+  behind through. It's now strictly the front half.
+
+**Not tested:** in play (seeing and hearing the bounce). Only glow mushrooms were in the tested
+level, not the plain kind.
+
 ## 2026-11-02 The Speed stat's boost comes back after dying
 
 **Your report:** after dying and going back to the Carcass, the speed boost from the Speed stat
