@@ -46,6 +46,7 @@ namespace MyceliumCraft
         static FieldInfo moveSpeedField;
         static FieldInfo canActField;
         static FieldInfo invincibleField; // PlayerController.isInvincible: set for exactly a hit's knockback
+        static FieldInfo activeDodgeField; // PlayerController.activeDodge: a dash (the roll, Blitz) is on
         static FieldInfo lookingField;
         bool lookingOff; // we switched PlayerController.looking off
         static FieldInfo actionsField;
@@ -72,6 +73,7 @@ namespace MyceliumCraft
         readonly McPlayerModel playerModel = new McPlayerModel();
         readonly EnemyCombat combat = new EnemyCombat();
         readonly ShroomSmack shrooms = new ShroomSmack();
+        readonly RollSound rollSound = new RollSound();
         readonly uint[] bindKinds = new uint[Proto.BMax];
         readonly uint[] bindCodes = new uint[Proto.BMax];
         bool heldByMycelium;   // Mycelium has the controls (menu, pause, cutscene): don't drive the spore
@@ -96,6 +98,7 @@ namespace MyceliumCraft
         bool haveLastMc;
         double lastMcX, lastMcY, lastMcZ;
         Vector3 mcVel; // Minecraft velocity mapped to Mycelium units/s, smoothed
+        Vector3 lastMoveDir; // the way you last walked in Minecraft (Mycelium frame, horizontal unit; zero until you do), for the dodge roll
         float mcSpeed; // Minecraft horizontal speed, blocks/s, smoothed
         Vector3 lastTarget;
         float lastError;
@@ -160,6 +163,7 @@ namespace MyceliumCraft
                 moveSpeedField = playerControllerType.GetField("moveSpeed", BindingFlags.Public | BindingFlags.Instance);
                 canActField = playerControllerType.GetField("canAct", BindingFlags.Public | BindingFlags.Instance);
                 invincibleField = playerControllerType.GetField("isInvincible", BindingFlags.Public | BindingFlags.Instance);
+                activeDodgeField = playerControllerType.GetField("activeDodge", BindingFlags.Public | BindingFlags.Instance);
                 lookingField = playerControllerType.GetField("looking", BindingFlags.Public | BindingFlags.Instance);
                 actionsField = playerControllerType.GetField("playerActionsAsset", BindingFlags.Public | BindingFlags.Instance);
             }
@@ -505,6 +509,23 @@ namespace MyceliumCraft
             }
         }
 
+        /// <summary>
+        /// Where a dodge roll starting now goes (Mycelium frame, horizontal unit; zero: as Mycelium
+        /// aims it). Movement keys you hold come first (your rule, 2026-11-02: they take priority),
+        /// then the way you last walked.
+        /// </summary>
+        Vector3 RollToward(out string from)
+        {
+            if (map != null && (lastCamMc.MoveX != 0f || lastCamMc.MoveZ != 0f))
+            {
+                map.ToMyc(lastCamMc.MoveX, 0, lastCamMc.MoveZ, out double kx, out _, out double kz);
+                var keys = new Vector3((float)kx, 0f, (float)kz);
+                if (keys.sqrMagnitude > 1e-8f) { from = "the movement keys you hold"; return keys.normalized; }
+            }
+            from = "the way you last moved";
+            return lastMoveDir;
+        }
+
         /// <summary>Switch Mycelium's own "face where I walk" (PlayerController.looking) off while Minecraft drives, and back on afterwards.</summary>
         void SetMyceliumTurning(bool on)
         {
@@ -528,7 +549,10 @@ namespace MyceliumCraft
             cameraSync.RefreshHidden();
             skillAim.Update(aimDriving, aimYaw); // again, after the body's turn this frame
             // Mycelium's dash coroutines (Blitz, the roll) have written the spore's velocity by now.
-            dash.LateUpdate(controller, rb, link != null && link.MinecraftAlive && phase == Phase.Driving);
+            dash.LateUpdate(controller, rb, link != null && link.MinecraftAlive && phase == Phase.Driving,
+                            animator != null && animator.isActiveAndEnabled && animator.GetBool("Roll"), RollToward(out string rollFrom), rollFrom);
+            // The roll's sound as you press the key, not at its end (RollSound).
+            rollSound.Update(link != null && link.MinecraftAlive && phase == Phase.Driving, animator != null && animator.isActiveAndEnabled && animator.GetBool("Roll"));
         }
 
         void FixedUpdate()
@@ -635,6 +659,11 @@ namespace MyceliumCraft
                 mcSpeed = Mathf.Lerp(mcSpeed, (float)Math.Sqrt(dx * dx + dz * dz) / Time.fixedDeltaTime, 0.2f);
                 var vNow = new Vector3((float)dx, (float)dy, (float)-dz) * (float)(map.Scale / Time.fixedDeltaTime);
                 mcVel = Vector3.Lerp(mcVel, vNow, 0.3f);
+                // Your walk's direction, for the dodge roll: not while a dash moves you (that's not you walking).
+                Vector3 flatVel = new Vector3(mcVel.x, 0f, mcVel.z);
+                if (dash.RollDirection == Vector3.zero && !(activeDodgeField != null && controller != null && activeDodgeField.GetValue(controller) is bool dodging && dodging)
+                    && flatVel.magnitude > (float)(1.0 * map.Scale))
+                    lastMoveDir = flatVel.normalized;
             }
             haveLastMc = true;
             lastMcX = mc.X;
@@ -709,7 +738,9 @@ namespace MyceliumCraft
             // bridge it gets WASD too, and the two fought (the spore flickered when not walking
             // forward), so its turning is switched off while Minecraft drives.
             SetMyceliumTurning(false);
-            rb.MoveRotation(Quaternion.Euler(0f, WorldMapping.MycYaw(bodyYaw), 0f));
+            // ...except while the dodge roll goes along your movement: it faces the roll (DashWatch).
+            Vector3 rollDir = dash.RollDirection;
+            rb.MoveRotation(rollDir != Vector3.zero ? Quaternion.LookRotation(rollDir) : Quaternion.Euler(0f, WorldMapping.MycYaw(bodyYaw), 0f));
             if (animator != null) animator.SetBool("Walk", mcSpeed > 0.5f);
             driving = true;
         }

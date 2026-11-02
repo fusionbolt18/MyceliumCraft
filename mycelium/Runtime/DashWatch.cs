@@ -34,6 +34,11 @@ namespace MyceliumCraft
         Vector3 startPos;
 
         Vector3 inUpdate;
+        bool rolling;      // this dash is the dodge roll (not Blitz)
+        Vector3 rollDir;   // where the roll goes (horizontal, unit), when redirected
+
+        /// <summary>The roll's direction while it's redirected along your movement; zero otherwise.</summary>
+        public Vector3 RollDirection => dashing && rolling ? rollDir : Vector3.zero;
 
         /// <summary>Update (before coroutines run): the velocity as it is now.</summary>
         public void BeforeCoroutines(Rigidbody rb)
@@ -41,8 +46,20 @@ namespace MyceliumCraft
             if (rb != null) inUpdate = rb.velocity;
         }
 
-        /// <summary>LateUpdate: has Mycelium written a dash velocity this frame?</summary>
-        public void LateUpdate(Component controller, Rigidbody rb, bool driving)
+        /// <summary>
+        /// LateUpdate: has Mycelium written a dash velocity this frame? roll: the spore's Animator
+        /// has "Roll" on (Mycelium's Dodging; Blitz doesn't set it). moveDir: the movement keys you
+        /// hold in Minecraft, else the way you last moved (horizontal, unit; zero if neither);
+        /// moveFrom says which, for the log.
+        ///
+        /// The roll goes where you move (your request, 2026-11-02). Mycelium rolls along the
+        /// spore's facing at the roll's start (Dodging: rb.transform.forward x rollSpeed). In
+        /// Mycelium itself that is the way you walk, since the spore turns toward its WASD. Here
+        /// it faces Minecraft's body, which can point well away from the walk (strafing, walking
+        /// back), so the roll went sideways. So a roll's dash keeps its speed but goes along
+        /// moveDir, and the spore faces that way while it rolls (MinecraftDriver).
+        /// </summary>
+        public void LateUpdate(Component controller, Rigidbody rb, bool driving, bool roll, Vector3 moveDir, string moveFrom)
         {
             if (!looked && controller != null)
             {
@@ -64,8 +81,14 @@ namespace MyceliumCraft
                         frames = 0;
                         start = Time.time;
                         startPos = rb.position;
+                        rolling = roll;
+                        rollDir = roll && moveDir.sqrMagnitude > 0.5f ? moveDir.normalized : Vector3.zero;
+                        if (roll)
+                            McLog.Info(rollDir != Vector3.zero
+                                ? $"dash: dodge roll along {moveFrom} ({Yaw(rollDir):F0} deg) instead of the spore's facing ({Yaw(rb.transform.forward):F0} deg; Mycelium's roll heads {Yaw(v):F0} deg)"
+                                : $"dash: dodge roll along the spore's facing ({Yaw(v):F0} deg): you haven't moved yet");
                     }
-                    dash = v;
+                    dash = rolling && rollDir != Vector3.zero ? rollDir * v.magnitude : v;
                     until = Time.time + HoldSeconds;
                     frames++;
                 }
@@ -75,9 +98,11 @@ namespace MyceliumCraft
                 dashing = false;
                 Vector3 moved = rb != null ? rb.position - startPos : Vector3.zero;
                 moved.y = 0f;
-                McLog.Info($"dash: Mycelium's dash ({dash.magnitude:F1} units/s) sent to Minecraft for {Time.time - start:F2} s ({frames} frames); the spore went {moved.magnitude:F1} units");
+                McLog.Info($"dash: Mycelium's dash ({dash.magnitude:F1} units/s) sent to Minecraft for {Time.time - start:F2} s ({frames} frames); the spore went {moved.magnitude:F1} units, heading {Yaw(moved):F0} deg");
             }
         }
+
+        static float Yaw(Vector3 v) => Mathf.Repeat(Mathf.Atan2(v.x, v.z) * Mathf.Rad2Deg, 360f);
 
         /// <summary>The dash for MycState, in Minecraft blocks per second (x, z); zero when none.</summary>
         public void ForMinecraft(WorldMapping map, out float x, out float z)

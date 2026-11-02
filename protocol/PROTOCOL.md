@@ -98,6 +98,7 @@ Positions are in **Minecraft coordinates**: blocks, Y up, +Z is south.
 | 0x8C | f32 | Minecraft's "Damage Tilt" accessibility setting, 0 (off) to 1 (full): how far Mycelium's camera tilts toward a hit. Since version 20 |
 | 0x90 | u32 | the weapon (Weapons table id) whose carrot is in the main hand; 0 = none. The spore holds that weapon. Since version 24 |
 | 0x94 | u32 | melee attacks Minecraft has started (counts up): Mycelium raises its own attack-started/finished events for each, so weapon attributes work. Since version 25 |
+| 0x98 | f32 ×2 | the held movement keys' direction in the world (x, z; unit length), as Minecraft would walk you with them (forward along the look yaw, left to its left); 0, 0 = none held, or they cancel out. Mycelium's dodge roll goes this way. Since version 36 |
 
 Like SkyCraft: with the raw ticks and their time, Mycelium can work out where Minecraft's player is at
 *any* moment on its own clock, as Minecraft's renderer does with partial ticks:

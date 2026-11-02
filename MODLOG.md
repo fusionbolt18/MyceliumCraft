@@ -1,5 +1,83 @@
 # MODLOG
 
+## 2026-11-02 The dodge roll's sound plays as you press the key
+
+**Your request:** play the roll sound as soon as the key is pressed.
+
+**Cause:** Mycelium itself plays it at the roll's end (`PlayerController.Dodging`: "Stab" with
+the landing dust, about 0.4 s in).
+
+**Changed:**
+- **New `RollSound.cs` (Mycelium):** in the frame the roll starts, plays the same sound through
+  Mycelium's `SoundEffectManager`. Mycelium's late copy is stopped as it starts (a new sound on the
+  spore playing one of "Stab"'s clips during that roll). Only while Minecraft drives.
+- **`MinecraftDriver.cs`:** calls it in LateUpdate.
+- DESIGN §5.0.7, README.
+
+**Tested how:** `-mcDashTest` with the stand-in: "'Stab' played as the roll starts (1 sound)", the
+same frame as the roll. Then "Mycelium's own roll sound stopped as it started, 0.39 s into the
+roll".
+
+**Not tested:** heard in play.
+
+**Mistake on the way (again):** one test run linked to your open Minecraft and teleported your
+player (yaw 180), because my check for Minecraft only printed a warning. The check now stops the
+test.
+
+## 2026-11-02 Held movement keys aim the dodge roll first (protocol v36)
+
+**Your rule:** if you're holding movement keys, they decide the roll's direction.
+
+**Why it mattered:** the roll followed your smoothed walking velocity. Press a new direction and
+roll at once, and the velocity still points the old way.
+
+**Changed:**
+- **Minecraft (`MyceliumCraftClient.java`, `MycLink.moveDirection`):** sends the way the held
+  movement keys walk you. That's `player.input.keyPresses` turned by your look yaw, as Minecraft's
+  own movement does. McState 0x98/0x9C, protocol v36.
+- **Mycelium (`MinecraftDriver.RollToward`):** held keys first, else the way you last moved. The
+  roll's log line says which it used.
+- **Stand-in:** `LINKTEST_KEYS=forward,left,...` holds keys.
+- PROTOCOL, DESIGN §5.0.7, README.
+
+**Tested how:** `-mcDashTest` with the stand-in strafing east (90°):
+- holding right (looking 0°, so west): "dodge roll along the movement keys you hold (270 deg)";
+- no keys: "along the way you last moved (90 deg)".
+- The stand-in against FakeMycelium: "ground checks PASS". FakeMycelium's own summary wasn't
+  waited for.
+
+**Not tested:** in play, and whether Minecraft's `keyPresses` shows keys arriving through the input
+bridge. It should: the bridge presses Minecraft's own key binds. Both sides need updating: the new
+jar and the new Mycelium together.
+
+## 2026-11-02 The dodge roll goes the way you move
+
+**Your request:** the dodge roll should go in the direction of your last or current movement.
+
+**Cause:** Mycelium rolls where the spore faces when the roll starts. While Minecraft drives, the
+spore faces Minecraft's body, which strafing or walking backwards turns away from the walk.
+
+**Changed:**
+- **`MinecraftDriver.cs`:** keeps the direction you last walked in Minecraft (over 1 block/s, not
+  during a dash), and turns the spore to face the roll while it lasts.
+- **`DashWatch.cs`:** a dash with the Animator's "Roll" on (the dodge roll, not Blitz) keeps its
+  speed but goes along that direction. It's logged at the roll's start, and the end line now gives
+  the heading.
+- DESIGN §5.0.7, README.
+
+**Tested how:** `-mcDashTest` with the fake Minecraft.
+- Strafing (looking 180°, walking toward 90°, body at 135°): "dodge roll along your movement (90
+  deg) instead of the spore's facing (135 deg)".
+- Standing still from the start: "along the spore's facing (90 deg): you haven't moved yet".
+
+**Not tested:** in play. The fake Minecraft doesn't move for a dash, so where the roll took you,
+and the spore turning to face it, weren't seen.
+
+**Mistake on the way:** my first two test runs linked to your open Minecraft instead of the fake
+one. They teleported your player to the test spore's spot, and your pause menu froze the test. I
+stopped and asked you to close Minecraft. Before a stand-in test, check that no `javaw.exe`
+(Minecraft) is running.
+
 ## 2026-11-02 Your swings smack the levels' mushrooms
 
 **Your request:** weapon attacks should hit the mushrooms in the levels, which bounce with a sound

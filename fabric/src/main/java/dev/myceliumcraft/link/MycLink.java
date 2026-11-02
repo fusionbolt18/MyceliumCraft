@@ -133,6 +133,23 @@ public final class MycLink {
 		return tickCount() - beat < HEARTBEAT_TIMEOUT_MS;
 	}
 
+	/**
+	 * The way held movement keys walk you, in the world (x, z; unit), as Minecraft moves the player
+	 * (Entity.moveRelative): forward along the look yaw, left 90 degrees to its left. {0, 0} when
+	 * none are held, or they cancel out.
+	 */
+	public static float[] moveDirection(boolean forward, boolean backward, boolean left, boolean right, float yaw) {
+		float f = (forward ? 1f : 0f) - (backward ? 1f : 0f);
+		float s = (left ? 1f : 0f) - (right ? 1f : 0f);
+		if (f == 0f && s == 0f) {
+			return new float[] { 0f, 0f };
+		}
+		double r = Math.toRadians(yaw), sin = Math.sin(r), cos = Math.cos(r);
+		double dx = s * cos - f * sin, dz = f * cos + s * sin;
+		double len = Math.sqrt(dx * dx + dz * dz);
+		return new float[] { (float) (dx / len), (float) (dz / len) };
+	}
+
 	/** Seqlock write of McState. */
 	public static void writeMcState(int flags, double x, double y, double z, float yaw, float pitch, long frame, int epoch, int teleportAck, int cameraMode, float bodyYaw, Tick tick) {
 		writeMcState(flags, x, y, z, yaw, pitch, frame, epoch, teleportAck, cameraMode, bodyYaw, tick, 1f, 1f);
@@ -159,6 +176,12 @@ public final class MycLink {
 	/** Seqlock write of McState, with the count of melee attacks started (for Mycelium's attack events). */
 	public static void writeMcState(int flags, double x, double y, double z, float yaw, float pitch, long frame, int epoch, int teleportAck, int cameraMode, float bodyYaw, Tick tick,
 		float fovScale, float eyeScale, float damageTilt, int handWeapon, int swings) {
+		writeMcState(flags, x, y, z, yaw, pitch, frame, epoch, teleportAck, cameraMode, bodyYaw, tick, fovScale, eyeScale, damageTilt, handWeapon, swings, 0f, 0f);
+	}
+
+	/** Seqlock write of McState, with the held movement keys' direction (world x, z; unit, or 0, 0 for none). */
+	public static void writeMcState(int flags, double x, double y, double z, float yaw, float pitch, long frame, int epoch, int teleportAck, int cameraMode, float bodyYaw, Tick tick,
+		float fovScale, float eyeScale, float damageTilt, int handWeapon, int swings, float moveX, float moveZ) {
 		MemorySegment s = shm;
 		if (s == null) {
 			return;
@@ -193,6 +216,8 @@ public final class MycLink {
 		s.set(JAVA_FLOAT, b + MC_DAMAGE_TILT, damageTilt);
 		s.set(JAVA_INT, b + MC_HAND_WEAPON, handWeapon);
 		s.set(JAVA_INT, b + MC_SWINGS, swings);
+		s.set(JAVA_FLOAT, b + MC_MOVE_X, moveX);
+		s.set(JAVA_FLOAT, b + MC_MOVE_Z, moveZ);
 		INT.setRelease(s, b + MC_SEQ, seq + 2); // even: done
 	}
 

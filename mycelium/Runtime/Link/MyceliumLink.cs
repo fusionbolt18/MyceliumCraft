@@ -23,6 +23,7 @@ namespace MyceliumCraft.Link
         public float DamageTilt;         // Minecraft's "Damage Tilt" setting, 0 (off) .. 1
         public uint HandWeapon;          // the weapon whose carrot is in Minecraft's main hand (0 = none)
         public uint Swings;              // melee attacks Minecraft has started (counts up)
+        public float MoveX, MoveZ;       // the held movement keys' direction (Minecraft world, unit; 0, 0 = none)
 
         public bool HasTicks => TickMs > 0f && TickQpc != 0;
 
@@ -258,6 +259,8 @@ namespace MyceliumCraft.Link
                 s.DamageTilt = ReadF32(view, b + Proto.McDamageTilt);
                 s.HandWeapon = ReadU32(view, b + Proto.McHandWeapon);
                 s.Swings = ReadU32(view, b + Proto.McSwings);
+                s.MoveX = ReadF32(view, b + Proto.McMoveX);
+                s.MoveZ = ReadF32(view, b + Proto.McMoveZ);
                 Thread.MemoryBarrier();
                 if (ReadU32(view, b + Proto.McSeq) == seq1) return true;
             }

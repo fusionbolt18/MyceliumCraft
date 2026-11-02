@@ -70,7 +70,7 @@ public final class Proto {
 
 	public static final long MAPPING_BYTES = OFF_THROWN + THROWN_BYTES;
 	public static final int MAGIC = 0x4343594D; // "MYCC"
-	public static final int VERSION = 35;
+	public static final int VERSION = 36;
 	/** A side is alive if its heartbeat is younger than this. */
 	public static final long HEARTBEAT_TIMEOUT_MS = 3000;
 
@@ -135,6 +135,7 @@ public final class Proto {
 	public static final long MC_DAMAGE_TILT = 0x8C; // Minecraft's "Damage Tilt" setting, 0 (off) .. 1; since v20
 	public static final long MC_HAND_WEAPON = 0x90; // u32: the weapon whose carrot is in the main hand (Weapons id); 0 = none; since v24
 	public static final long MC_SWINGS = 0x94; // u32: melee attacks Minecraft has started (counts up); since v25
+	public static final long MC_MOVE_X = 0x98, MC_MOVE_Z = 0x9C; // f32 x2: the held movement keys' direction (world, unit; 0, 0 = none); since v36
 	public static final int MC_IN_WORLD = 1 << 0;
 	public static final int MC_SCREEN_OPEN = 1 << 1;
 	public static final int MC_ON_GROUND = 1 << 2;

@@ -77,7 +77,7 @@ namespace MyceliumCraft.Link
 
         public const int MappingBytes = OffThrown + ThrownBytes;
         public const uint Magic = 0x4343594D; // "MYCC"
-        public const uint Version = 35;
+        public const uint Version = 36;
         public const ulong HeartbeatTimeoutMs = 3000;
 
         // Header @0x000
@@ -143,6 +143,7 @@ namespace MyceliumCraft.Link
         public const int McDamageTilt = 0x8C; // Minecraft's "Damage Tilt" setting, 0 (off) .. 1; since v20
         public const int McHandWeapon = 0x90; // u32: the weapon (Weapons table id) whose carrot is in Minecraft's main hand; 0 = none; since v24
         public const int McSwings = 0x94;     // u32: melee attacks Minecraft has started (counts up); since v25
+        public const int McMoveX = 0x98, McMoveZ = 0x9C; // f32 x2: the held movement keys' direction (Minecraft world, unit; 0, 0 = none); since v36
         public const uint McInWorld = 1u << 0;
         public const uint McScreenOpen = 1u << 1;
         public const uint McOnGround = 1u << 2;

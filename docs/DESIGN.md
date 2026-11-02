@@ -794,6 +794,43 @@ step to follow Minecraft, which cancelled them.
 - **Checked** with the fake Minecraft strafing (`LINKTEST_STRAFE=1`: look 0°, body 45° off):
   "skills face 180 deg (your look), the body 135 deg: 45 deg apart".
 
+**The dodge roll goes where you move** (since 2026-11-02, your request).
+- **Why:** Mycelium rolls along the spore's facing at the roll's start (`Dodging`:
+  `rb.transform.forward × rollSpeed`). In Mycelium itself that's the way you walk, because the spore
+  turns toward its WASD. Here the spore faces Minecraft's body, which can point well away from the
+  walk (strafing, walking backwards), so the roll went sideways.
+- **Your direction:** movement keys you hold come first (your rule): Minecraft sends the way they
+  walk you (`player.input.keyPresses` turned by the look yaw, as `Entity.moveRelative` does;
+  McState 0x98, protocol v36). With none held, the driver uses the direction you last walked in
+  Minecraft (its smoothed velocity, over 1 block/s, not while a dash moves you). Standing still
+  keeps the last one. So pressing a new direction and rolling at once goes the new way, while
+  the velocity still points the old one.
+- **The roll:** `DashWatch` tells a roll from Blitz by the spore's Animator "Roll" (only
+  `Dodging` sets it). The roll's dash keeps its speed but goes along your direction, and the
+  spore faces that way while it rolls, instead of Minecraft's body. If you haven't moved yet in
+  the level, it rolls as Mycelium aims it. Blitz is unchanged.
+- **Checked** with `-mcDashTest`:
+  - with the fake Minecraft strafing: "dodge roll along your movement (90 deg) instead of the
+    spore's facing (135 deg…)";
+  - standing still from the start: "along the spore's facing (90 deg): you haven't moved yet".
+  - strafing east (90°) while "holding" right (`LINKTEST_KEYS=right`, looking 0°: west): "dodge
+    roll along the movement keys you hold (270 deg)"; without keys, "along the way you last
+    moved (90 deg)".
+
+**The roll's sound plays as you press the key** (since 2026-11-02, your request; `RollSound.cs`).
+- **Mycelium** plays it at the roll's end: `Dodging` moves the spore, waits out the animation, then
+  plays `SoundEffectManager`'s "Stab" on the spore with the landing dust (about 0.4 s in).
+- **Now,** in the frame the Animator's "Roll" goes on (the key press's frame), the same sound is
+  played with Mycelium's own `SoundEffectManager.PlaySound("Stab", spore)`. Its "One shot audio"
+  object is renamed, so it isn't taken for Mycelium's.
+- **Mycelium's late one** is stopped as it starts: a new "One shot audio" on the spore playing one
+  of "Stab"'s clips (read from the manager's list) while that roll is on.
+- Only while Minecraft drives. The dust still comes at the end.
+- **Checked** with `-mcDashTest`: "'Stab' played as the roll starts (1 sound)", then "Mycelium's own
+  roll sound stopped as it started, 0.39 s into the roll".
+  - The fake Minecraft doesn't move its player for a dash, so where the roll took you, and the
+    spore's turn, weren't seen.
+
 ### 5.0.8 Trophic Cascade: you vanish too (since 2026-10-26, protocol v33)
 
 Trophic Cascade's vanish switches off every renderer on the spore while it jumps between enemies

@@ -27,6 +27,8 @@ public final class LinkTestMain {
 	private static final boolean HICCUP = "1".equals(System.getenv("LINKTEST_HICCUP"));
 	/** LINKTEST_STILL=1: stand still at the teleport spot. */
 	private static final boolean STILL = "1".equals(System.getenv("LINKTEST_STILL"));
+	/** LINKTEST_KEYS=forward,left...: these movement keys held the whole time (sent as McState's move direction, since v36). */
+	private static final String KEYS = System.getenv("LINKTEST_KEYS");
 	/** LINKTEST_PITCH_WAVE=1: look smoothly up and down between 30 and 80 degrees down (2.5 s period). */
 	private static final boolean PITCH_WAVE = "1".equals(System.getenv("LINKTEST_PITCH_WAVE"));
 	/** LINKTEST_PITCH=p: hold this pitch instead of sweeping. */
@@ -322,7 +324,9 @@ public final class LinkTestMain {
 			boolean feel = FOVEYE && t >= 4 && t < 7;
 			int hand = HOLD != 0 ? HOLD : !HAND || t < 7.5 ? 0 : t < 8.5 ? 1 : t < 9.5 ? 0 : 2;
 			int swings = FUNGAL ? (t >= 5 ? 1 : 0) + (t >= 7 ? 1 : 0) : 0;
-			MycLink.writeMcState(flags, px, y, pz, yaw, pitch, frames++, 1, ack, cameraMode, bodyYaw, tick, feel ? 1.15f : 1f, feel ? 0.78f : 1f, 1f, hand, swings);
+			String keys = KEYS == null ? "" : KEYS;
+			float[] move = MycLink.moveDirection(keys.contains("forward"), keys.contains("back"), keys.contains("left"), keys.contains("right"), yaw);
+			MycLink.writeMcState(flags, px, y, pz, yaw, pitch, frames++, 1, ack, cameraMode, bodyYaw, tick, feel ? 1.15f : 1f, feel ? 0.78f : 1f, 1f, hand, swings, move[0], move[1]);
 			if (FUNGAL && t >= 7.1 && t < 8) {
 				hitNearest(px, y, pz); // once: the next would be 2 s later
 			}

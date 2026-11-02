@@ -200,10 +200,14 @@ public final class MyceliumCraftClient implements ClientModInitializer {
 		float eye = Mth.lerp(partial, camera.myceliumcraft$eyeHeightOld(), camera.myceliumcraft$eyeHeight());
 		// (Dead: no eye-height change, so the dying pose can't move Mycelium's camera.)
 		float eyeScale = player.isDeadOrDying() ? 1f : standingEye > 0.01f ? eye / standingEye : 1f;
+		// The way your held movement keys walk you (world x, z), for Mycelium's dodge roll.
+		var keys = player.input.keyPresses;
+		float[] move = MycLink.moveDirection(keys.forward(), keys.backward(), keys.left(), keys.right(), player.getYRot());
 		MycLink.writeMcState(flags, feet.x, feet.y, feet.z, player.getYRot(), player.getXRot(), frame, epoch, teleportAck, minecraft.options.getCameraType().ordinal(), bodyYaw, TICK, fovScale, eyeScale,
 			minecraft.options.damageTiltStrength().get().floatValue(), // Mycelium's camera tilts on hits by this much
 			MycWeapons.handWeapon(player), // the spore holds this weapon
-			swings); // Mycelium raises its attack events for each
+			swings, // Mycelium raises its attack events for each
+			move[0], move[1]); // your held movement keys: Mycelium's dodge roll goes that way
 		// Your Mycelium weapons as carrots in the inventory.
 		MycWeapons.frame(minecraft, player, haveMyc && MycLink.myceliumAlive() && MYC.inLevel());
 		MycWeapons.thrownFrame(minecraft, partial); // thrown weapons, for Mycelium to show
