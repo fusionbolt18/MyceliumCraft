@@ -1,5 +1,118 @@
 # MODLOG
 
+## 2026-11-02 The Speed stat's boost comes back after dying
+
+**Your report:** after dying and going back to the Carcass, the speed boost from the Speed stat
+was gone.
+
+**Cause:** in your logs, Mycelium kept sending ×1.63 after the death. Minecraft put ×1.63 on the
+player in the same second (10:04:25) it respawned it. A respawn makes a new player, without the
+modifier. Our mod only sets it when the factor changes, and it hadn't changed, so it was never put
+back.
+
+**Changed:** `MyceliumCraftClient.syncSpeed`: as well as on a change, once a second the
+integrated server checks that the player's "myceliumcraft:speed" modifier is there at the right
+amount, and puts it back if not. That's logged as "speed: the player had lost the x1.63 (a respawn
+makes a new player); put back". DESIGN §5.0.2.2, README.
+
+**Tested how:** the jar builds. **Not tested:** a death and respawn in real Minecraft. The stand-in
+Minecraft doesn't respawn.
+
+## 2026-11-02 Living Cyclone: the flat weapon flipped over
+
+**Your request:** flip the weapon 180 degrees.
+
+**Changed:** `living_cyclone.json`: the held item's roll goes from −1.5708 to +1.5708 (the other
+flat face on top), and its sideways grip shift from x −1.1 to x +1.1, mirrored as Better Combat's
+`one_handed_stab` / `two_handed_slash_horizontal_left` do for that roll. DESIGN §5.0.8.
+
+**Tested how:** the jar builds. Not tested in game.
+
+## 2026-11-02 The menu between levels hides the overlay and holds the spore
+
+**Your report:** during the menu between levels, the overlay stayed and you could still move.
+
+**Cause:** `LevelEnd` switches the spore's controls off (`DisableController`) for the menu, and our
+mod took that as "Mycelium has the controls". But something under the menu switched them on
+again: in your log at 127.22 s, a knockback's end (`StartKnockback` → `EnableController`). Attacks
+ending do the same. From then on it looked like play: the overlay came back, and Minecraft drove
+the spore.
+
+**Changed:** `MinecraftDriver.cs`: `MyceliumHasControls` also says yes while
+`EndOfLevelCanvasStuff`'s black or menu canvas is showing ("end-of-level menu"). New test aid
+`-mcLevelEndTest`. DESIGN §5.2, README.
+
+**Tested how:** `-mcLevelEndTest` in Daybreak Arboretum with the fake Minecraft (overlay on): the
+spore entered the level end ('BackToHub'). "end-of-level menu: showing", the hold took the spore,
+and the overlay was hidden. Then the controls were switched back on as a knockback's end does.
+For the next 5 s it still read "Mycelium has the controls True (end-of-level menu) … hold True,
+overlay False", through Mycelium's freeze (timeScale 0).
+
+**Not tested:** in play with real Minecraft. Choosing CONTINUE or RETURN loads a scene, which ends
+the hold as before. The checkpoint version ("This leads back to The Carcass") fades the menu away
+and should give the controls back. Not tried.
+
+## 2026-11-02 Living Cyclone: the weapon is held flat
+
+**Your request:** turn the weapon 90 degrees during the Living Cyclone animation, so its flat
+faces point up and down instead of side to side.
+
+**Changed:** `living_cyclone.json`: the held item gets `roll` −1.5708 (a quarter turn about the
+blade), and its grip shift changes from (0, −3.15, −0.3) to (−1.1, −2.0, −0.5) px so it stays in
+the hand. Both copied from how Better Combat's flat swings (`one_handed_stab`,
+`two_handed_slash_horizontal_right`) hold the item at the same tilt. DESIGN §5.0.8.
+
+**Tested how:** the jar builds and contains the new file. **Not tested in game:** whether the grip
+sits exactly in the hand. If the weapon floats off the hand, the x/y/z numbers need nudging. If
+you'd rather the other face on top, the roll becomes +1.5708 and x +1.1.
+
+## 2026-11-01 No other attacks or skills during Living Cyclone
+
+**Your rule:** no other attacks or skills while Living Cyclone spins.
+
+**What Mycelium does on its own:** it stops the dodge and interact (`canAct` off), but not the skill
+keys. Living Cyclone switches the controller on (`canUseSkill` true), and the skill keys only
+check that. Since the hotbar fix, Minecraft's attacks also went through.
+
+**Changed:**
+- **Mycelium (`MinecraftDriver.BlockSkillsWhileCycloning`):** `canUseSkill` is kept off while the
+  held weapon is cycloning. The skill's own `EndSkill` switches it back on.
+- **Minecraft (`MyceliumCraftClient.blockAttackWhileCycloning`):** while Mycelium's Living Cyclone
+  flag is on, the Attack key is held up and its clicks dropped, at each tick's start and after each
+  frame. `MinecraftMixin` also refuses `startAttack`. This covers Minecraft's attack and Better
+  Combat's own. The log says when and how many clicks were dropped.
+- **`-mcCycloneTest`** now ends as the skill does (cycloning off, then `EnableController`).
+- DESIGN §5.0.8.
+
+**Tested how:** the real Mycelium build with the fake Minecraft holding the Stick
+(`-mcCycloneTest`). "other skills off while Living Cyclone spins", "1 s in, canUseSkill False",
+then after the ending "canUseSkill now True". Both builds succeed.
+
+**Still broken / not tested:**
+- **The attack block isn't tested** (it needs real Minecraft and Better Combat).
+- An attack key held through the spin needs pressing again afterwards.
+
+## 2026-11-01 Living Cyclone no longer hides the hotbar
+
+**Your report:** during Living Cyclone, the Minecraft hotbar disappears.
+
+**Cause:** Living Cyclone switches the spore's `canAct` off while it spins. Our mod reads "canAct
+off" as Mycelium taking the controls (like a menu). After 0.3 s it hid the overlay (hotbar, hand,
+HUD), and it also switched the input bridge off, so your keys went quiet during the spin.
+
+**Changed:** `MinecraftDriver.MyceliumHasControls`: "canAct off" doesn't count while the held weapon
+is cycloning (`WeaponCollision.isCycloning`, as Living Cyclone sets it). `-mcCycloneTest` now also
+switches `canAct` off, as the skill does. DESIGN §5.0.8.
+
+**Tested how:** the real Mycelium build with the fake Minecraft holding the Stick and sending an
+overlay picture (`-mcCycloneTest`: cycloning with canAct off for 2 s). Throughout: the bridge
+stayed "ON", no "Mycelium has the controls" hold, and the overlay stayed shown. It was only
+hidden when the fake Minecraft stopped at the end.
+
+**Still broken / not tested:**
+- **Not seen with the real skill.** Attacks during the spin now reach Minecraft, which Mycelium
+  itself blocks while cycloning.
+
 ## 2026-11-01 The stat panel slides away after picking up a stat weapon
 
 **Your report:** picking up a weapon that changes your stats, the stat panel never slides away.

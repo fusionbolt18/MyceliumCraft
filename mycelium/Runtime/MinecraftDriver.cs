@@ -228,6 +228,10 @@ namespace MyceliumCraft
             // Test aid: "-mcCycloneTest" sets the held weapon's isCycloning for 2 s, as Living Cyclone
             // does while it spins, 4 s into driving.
             if (Array.IndexOf(args, "-mcCycloneTest") >= 0) StartCoroutine(CycloneTest());
+            // Test aid: "-mcLevelEndTest" walks the spore into the level's end 4 s into driving
+            // (LevelEnd's own trigger), then, 1.5 s later, switches its controls back on as a hit's
+            // knockback ending does.
+            if (Array.IndexOf(args, "-mcLevelEndTest") >= 0) StartCoroutine(LevelEndTest());
             // Test aid: "-mcSwapTest" swaps weapons the way picking one up does (WeaponInteraction: the
             // old one is let go into the world, a new one goes in the hand) 4 s into driving, and logs
             // which of the two Mycelium draws.
@@ -343,8 +347,10 @@ namespace MyceliumCraft
             // Trophic Cascade's vanish: your Minecraft body goes too, and Minecraft goes to third person.
             vanished = rb != null && vanish.Update();
             if (vanished) flags |= Proto.MycVanished;
-            // Living Cyclone: the same view change while it spins.
-            if (rb != null && Cycloning()) flags |= Proto.MycCyclone;
+            // Living Cyclone: the same view change while it spins, and no other skill meanwhile.
+            bool cycloning = rb != null && Cycloning();
+            if (cycloning) flags |= Proto.MycCyclone;
+            BlockSkillsWhileCycloning(cycloning);
             // Mycelium's health, which Minecraft's follows (/ 5).
             float health = 0f, maxHealth = 0f;
             if (rb != null) ReadHealth(out health, out maxHealth);
@@ -837,11 +843,16 @@ namespace MyceliumCraft
         {
             why = "";
             if (IsPaused()) { why = "paused"; return true; }
+            if (EndOfLevelMenu()) { why = "end-of-level menu"; return true; }
             if (controller == null) return false;
             try
             {
                 if (canActField != null && !(bool)canActField.GetValue(controller))
                 {
+                    // Living Cyclone switches canAct off while it spins (its controls stay on). That's
+                    // play, not Mycelium taking the controls: counting it hid the overlay (your hotbar)
+                    // and stopped the bridge (your report, 2026-11-01).
+                    if (Cycloning()) return false;
                     // A hit's knockback switches the controls off until the "Hurt" animation is half
                     // done, and marks the player invincible for exactly that time.
                     bool knockback = invincibleField != null && (bool)invincibleField.GetValue(controller);
@@ -860,6 +871,54 @@ namespace MyceliumCraft
                 why = "check failed: " + e.Message;
             }
             return false;
+        }
+
+        static FieldInfo endBlackField, endMenuField;
+        static PropertyInfo endInstanceProp;
+        static FieldInfo endInstanceField;
+        static bool endLooked;
+        bool wasEndMenu;
+
+        /// <summary>
+        /// Mycelium's menu between levels ("CONTINUE your adventure or RETURN home?") is up, or fading
+        /// in: EndOfLevelCanvasStuff's black or menu canvas is showing. LevelEnd switches the
+        /// controls off for it (DisableController), but they can come back on under the menu: a
+        /// hit's knockback ending, or an attack's, calls EnableController. That made it look like
+        /// play: the overlay came back and Minecraft moved the spore (your report, 2026-11-02; at
+        /// 127.22 s in that log). So the menu itself counts as Mycelium having the controls.
+        /// </summary>
+        bool EndOfLevelMenu()
+        {
+            if (!endLooked)
+            {
+                endLooked = true;
+                Type t = Type.GetType("EndOfLevelCanvasStuff, Assembly-CSharp");
+                endInstanceField = t?.GetField("Instance", BindingFlags.Public | BindingFlags.Static);
+                endBlackField = t?.GetField("blackCanvas", BindingFlags.NonPublic | BindingFlags.Instance);
+                endMenuField = t?.GetField("endOfLevelCanvas", BindingFlags.NonPublic | BindingFlags.Instance);
+                if (endInstanceField == null || endBlackField == null || endMenuField == null)
+                    McLog.Info("end-of-level menu: couldn't find EndOfLevelCanvasStuff's canvases; it won't hold the spore");
+            }
+            bool up = false;
+            try
+            {
+                object inst = endInstanceField?.GetValue(null);
+                if (inst as UnityEngine.Object != null)
+                {
+                    var black = endBlackField.GetValue(inst) as CanvasGroup;
+                    var menu = endMenuField.GetValue(inst) as CanvasGroup;
+                    up = (black != null && black.isActiveAndEnabled && black.alpha > 0.01f)
+                      || (menu != null && menu.isActiveAndEnabled && menu.alpha > 0.01f);
+                }
+            }
+            catch (Exception) { }
+            if (up != wasEndMenu)
+            {
+                wasEndMenu = up;
+                McLog.Info(up ? "end-of-level menu: showing; Mycelium has the controls (overlay off, Minecraft doesn't move the spore)"
+                              : "end-of-level menu: gone");
+            }
+            return up;
         }
 
         static bool IsPaused()
@@ -1051,6 +1110,33 @@ namespace MyceliumCraft
 
         bool wasCycloning;
         float cycloneSince;
+        static FieldInfo canUseSkillField;
+        bool skillsBlocked;
+
+        /// <summary>
+        /// No other skill while Living Cyclone spins (your rule, 2026-11-01). Mycelium itself allows
+        /// them: Living Cyclone switches the controller back on (EnableController, so canUseSkill
+        /// true) and only sets canAct off, which stops the dodge and interact but not the skill keys
+        /// (PlayerController checks canUseSkill for those). So canUseSkill is kept off while it
+        /// spins; its own EndSkill switches it on again.
+        /// </summary>
+        void BlockSkillsWhileCycloning(bool cycloning)
+        {
+            if (controller == null) return;
+            if (canUseSkillField == null) canUseSkillField = controller.GetType().GetField("canUseSkill", BindingFlags.Public | BindingFlags.Instance);
+            if (canUseSkillField == null) return;
+            if (cycloning)
+            {
+                if (canUseSkillField.GetValue(controller) is bool on && on) canUseSkillField.SetValue(controller, false);
+                if (!skillsBlocked) McLog.Info("cyclone: other skills off while Living Cyclone spins");
+                skillsBlocked = true;
+            }
+            else if (skillsBlocked)
+            {
+                skillsBlocked = false;
+                McLog.Info("cyclone: Living Cyclone over; skills no longer held off (its EndSkill switches them on)");
+            }
+        }
 
         /// <summary>
         /// Living Cyclone is on: it sets the held weapon's WeaponCollision.isCycloning from the start
@@ -1083,10 +1169,40 @@ namespace MyceliumCraft
             Component wc = weapon != null && t != null ? weapon.GetComponent(t) : null;
             FieldInfo f = t?.GetField("isCycloning");
             if (wc == null || f == null) { McLog.Info("cyclone test: no held weapon with WeaponCollision.isCycloning"); yield break; }
-            McLog.Info($"cyclone test: '{weapon.name}' cycloning for 2 s, as Living Cyclone does");
+            McLog.Info($"cyclone test: '{weapon.name}' cycloning for 2 s with canAct off, as Living Cyclone does");
             f.SetValue(wc, true);
-            yield return new WaitForSeconds(2f);
+            canActField?.SetValue(controller, false);
+            yield return new WaitForSeconds(1f);
+            McLog.Info($"cyclone test: 1 s in, canUseSkill {controller?.GetType().GetField("canUseSkill")?.GetValue(controller)}");
+            yield return new WaitForSeconds(1f);
             if (wc != null) f.SetValue(wc, false);
+            // As Living Cyclone ends: isCycloning off, then Skill.EndSkill's EnableController.
+            yield return null;
+            controller?.GetType().GetMethod("EnableController", Type.EmptyTypes)?.Invoke(controller, null);
+            yield return null;
+            McLog.Info($"cyclone test: ended as the skill does; canUseSkill now {controller?.GetType().GetField("canUseSkill")?.GetValue(controller)}");
+        }
+
+        /// <summary>Test aid: see "-mcLevelEndTest" in Awake.</summary>
+        System.Collections.IEnumerator LevelEndTest()
+        {
+            while (phase != Phase.Driving) yield return null;
+            yield return new WaitForSecondsRealtime(4f);
+            Type t = Type.GetType("LevelEnd, Assembly-CSharp");
+            var end = t != null ? UnityEngine.Object.FindObjectOfType(t) as Component : null;
+            GameObject player = GameObject.FindWithTag("currentPlayer");
+            Collider col = player != null ? player.GetComponentInChildren<Collider>() : null;
+            if (end == null || col == null) { McLog.Info($"level end test: no LevelEnd ({end != null}) or spore collider ({col != null})"); yield break; }
+            McLog.Info($"level end test: the spore enters '{end.gameObject.name}' (checkpoint {t.GetField("isCheckpoint")?.GetValue(end)})");
+            t.GetMethod("OnTriggerEnter", BindingFlags.NonPublic | BindingFlags.Instance)?.Invoke(end, new object[] { col });
+            yield return new WaitForSecondsRealtime(1.5f);
+            McLog.Info($"level end test: controls back on under the menu, as a knockback's end does (has controls before: {MyceliumHasControls(out string w1)} {w1})");
+            controller?.GetType().GetMethod("EnableController", Type.EmptyTypes)?.Invoke(controller, null);
+            for (int i = 0; i < 5; i++)
+            {
+                yield return new WaitForSecondsRealtime(1f);
+                McLog.Info($"level end test: +{2.5f + i:F1} s: Mycelium has the controls {MyceliumHasControls(out string w)} ({w}), timeScale {Time.timeScale}, hold {heldByMycelium}, overlay {overlay.Visible}");
+            }
         }
 
         /// <summary>Test aid: see "-mcVanishTest" in Awake.</summary>

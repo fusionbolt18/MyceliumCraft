@@ -361,6 +361,11 @@ prevented fall or heal is logged at most once a second.
   It's taken off outside Mycelium's levels. Sprinting and Minecraft's own effects multiply on top.
   Minecraft widens its FOV with movement speed, as with a Speed potion, and Mycelium's camera
   follows that.
+- **Respawns** (since 2026-11-02): a respawn makes a new player without the modifier. The factor
+  hadn't changed, so it was never put back: after a death and the trip to the Carcass, the boost
+  was gone (your report; Minecraft set ×1.63 in the same second it respawned the player). So once
+  a second the server also checks the modifier is there at the right amount, and puts it back if
+  not ("the player had lost the ×… ; put back").
 - **Checked:**
   - In Daybreak Arboretum the spore walks at 6.00 with base 6.00: ×1.00.
   - With `-mcAttribute Nimble` and the fake Minecraft's hits: ×1.30 after a hit, fading back to
@@ -775,7 +780,21 @@ separately, so it stayed visible.
 **Living Cyclone: the same view change** (since 2026-11-01, protocol v34). It sets the held weapon's
 `WeaponCollision.isCycloning` from the start of the skill until its third spin ends. While that's
 on, MycState flag bit 4 (`CYCLONE`) is set, and Minecraft treats it as the vanish: from first
-person, third person behind until it's over. The body isn't hidden. `-mcCycloneTest` sets
+person, third person behind until it's over. The body isn't hidden.
+- **Not a control takeover** (since 2026-11-01): Living Cyclone switches `canAct` off while it
+  spins, which counted as Mycelium having the controls. After 0.3 s that hid the overlay (your
+  hotbar, your report) and stopped the bridge. `MyceliumHasControls` now ignores "canAct off"
+  while `isCycloning` is on.
+- **No other attacks or skills while it spins** (since 2026-11-01, your rule):
+  - **Skills:** Mycelium itself allows them. Living Cyclone calls `EnableController`, so
+    `canUseSkill` is true, and the skill keys only check that (its `canAct` off stops only the
+    dodge and interact). `MinecraftDriver.BlockSkillsWhileCycloning` keeps `canUseSkill` off
+    while it spins; the skill's own `EndSkill` switches it back on.
+  - **Attacks** (`MyceliumCraftClient.blockAttackWhileCycloning`, at each client tick's start and
+    after each frame): Minecraft's Attack key is held up and its clicks dropped, so neither
+    Minecraft's attack nor Better Combat's (which reads the key) can start. `MinecraftMixin`
+    refuses `startAttack` meanwhile too. An attack key held through the spin needs pressing again
+    afterwards. `-mcCycloneTest` sets
 `isCycloning` for 2 s: the fake Minecraft saw the flag from 4.0 to 6.0 s.
 - **Its animation** (since 2026-11-01, `MycSkillAnimation.java`): Better Combat's
   `two_handed_spin`, looped on your Minecraft player while the flag is on. It's played through
@@ -798,6 +817,11 @@ person, third person behind until it's over. The body isn't hidden. `-mcCycloneT
     - **Grip:** tilting the held item turns it about a point about 2.5 px from the grip, so on its
       own it floated above the hand (your report). It's also shifted (y −3.15, z −0.3 px), the
       correction Better Combat's `dual_handed_stab` uses at the same tilt (−1.4).
+    - **Flat faces up and down** (your request, 2026-11-02): the held item is also rolled a
+      quarter turn (roll +1.5708; first −1.5708, flipped to the other face at your request), so
+      the blade lies flat like a horizontal cut. With the roll the grip correction becomes x +1.1, y −2.0, z −0.5 px, the values Better Combat's own flat
+      swings use at this tilt (`one_handed_stab`, `two_handed_slash_horizontal_*`: roll ±1.56,
+      x ±1.1, y −2.0, z about −0.5).
     - It loops from the grip. `isLoop` with `returnTick` 4: the library restarts a loop one tick
       before `returnTick`, so this is tick 3.
     - Played with `thenPlay`, which keeps the file's own loop. Better Combat's `two_handed_spin`,
@@ -1078,6 +1102,11 @@ Minecraft's window can sit in the background or minimised; later it can be hidde
 3. Minecraft is driving the spore (phase Driving), otherwise reason 3.
 4. **Mycelium doesn't have the controls**, otherwise reason 2. It has them when any of these is true:
    - `GlobalData.isGamePaused`
+   - **The menu between levels** ("CONTINUE your adventure or RETURN home?") is up or fading in:
+     `EndOfLevelCanvasStuff`'s black or menu canvas is showing (since 2026-11-02). `LevelEnd`
+     switches `canAct` off for it, but it can come back on under the menu: a hit's knockback
+     ending, or an attack ending, calls `EnableController()`. Then the overlay came back and
+     Minecraft moved the spore (your report). So the menu counts by itself.
    - `PlayerController.canAct` is off. `DisableController()` does this for the hub's
      Explore/Cancel prompt (`CharSelectManagerNew`), cutscenes, credits, level end, the run-start
      trigger, level-up, curio interactions and knockback.

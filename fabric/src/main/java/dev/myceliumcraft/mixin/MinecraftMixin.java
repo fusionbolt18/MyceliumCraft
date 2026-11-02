@@ -35,7 +35,7 @@ public abstract class MinecraftMixin {
 	 */
 	@Inject(method = "startAttack", at = @At("HEAD"), cancellable = true)
 	private void myceliumcraft$fullChargeOnly(CallbackInfoReturnable<Boolean> cir) {
-		if (MyceliumCraftClient.attackNotCharged((Minecraft) (Object) this)) {
+		if (MyceliumCraftClient.cycloning() || MyceliumCraftClient.attackNotCharged((Minecraft) (Object) this)) { // no attacks during Living Cyclone either
 			cir.setReturnValue(false);
 		} else if (!dev.myceliumcraft.MycBetterCombat.animatesMainHand((Minecraft) (Object) this)) {
 			MyceliumCraftClient.swingStarted(); // Mycelium's attack events (weapon attributes); Better Combat's own attacks: MycBetterCombat

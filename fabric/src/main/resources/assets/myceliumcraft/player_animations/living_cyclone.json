@@ -1,7 +1,7 @@
 {
   "name": "living_cyclone",
   "author": "MyceliumCraft",
-  "description": "Living Cyclone: a quick two-handed wind-up (3 ticks), arms and weapon held out away from the body, then a full turn of the torso every 5 ticks, looping from the grip at tick 3 (returnTick 4: the library restarts one tick before it). The held item is shifted (y -3.15, z -0.3 px) so its grip stays in the hand when tilted. Made for MyceliumCraft, 2026-11-01.",
+  "description": "Living Cyclone: a quick two-handed wind-up (3 ticks), arms and weapon held out away from the body, then a full turn of the torso every 5 ticks, looping from the grip at tick 3 (returnTick 4: the library restarts one tick before it). The held item is rolled a quarter turn (roll 1.5708, the face you asked for on 2026-11-02) so its flat faces point up and down, and shifted (x 1.1, y -2.0, z -0.5 px) so its grip stays in the hand, as Better Combat does for its flat horizontal swings. Made for MyceliumCraft, 2026-11-01.",
   "emote": {
     "isLoop": "true",
     "returnTick": 4,
@@ -36,9 +36,10 @@
         "turn": 0,
         "rightItem": {
           "pitch": -1.4,
-          "x": 0.0,
-          "y": -3.15,
-          "z": -0.3
+          "roll": 1.5708,
+          "x": 1.1,
+          "y": -2.0,
+          "z": -0.5
         }
       },
       {

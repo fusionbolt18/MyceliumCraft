@@ -78,7 +78,7 @@ Single-player and offline only.
   - When max health changes (Vitality, a weapon's attribute), current health keeps the same share of
     it (tested in Mycelium).
 - **Mycelium's Speed stat and speed effects change your walking speed in Minecraft:** tested in
-  Mycelium, not in Minecraft.
+  Mycelium, not in Minecraft. Since 2026-11-02 it's put back after a respawn (not tested).
   - Minecraft can't kill you while Mycelium's health is above 0.
   - Mycelium's death kills the Minecraft player (it drops its items, as Minecraft does), and it
     respawns when Mycelium has health again.
@@ -117,6 +117,9 @@ Single-player and offline only.
 - **Mycelium menus keep the controls** (e.g. the hub's Explore/Cancel): the spore is no longer driven
   while a Mycelium menu, pause or cutscene has the controls, and Minecraft gets no input. Tested with
   Mycelium's own `DisableController()`/`EnableController()`, not yet at the real prompt.
+- **The menu between levels hides the overlay and stops you moving**, even if the controls come
+  back on under it (a hit's knockback ending). Tested in Mycelium with the fake Minecraft
+  (`-mcLevelEndTest`); not tested in play.
 - **Mycelium's keys are set in Minecraft's menu: not tested in real Minecraft.** Options →
   Controls → Key Binds has a "Mycelium" section (Interact, Show Stats, Subspecies Skill, Salvage,
   Attack, Curio, Dodge Roll, Skill 1, Skill 2, Navigate Camera, Reset Camera). A key bound there

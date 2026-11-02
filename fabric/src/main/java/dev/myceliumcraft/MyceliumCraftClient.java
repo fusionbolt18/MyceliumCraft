@@ -59,6 +59,38 @@ public final class MyceliumCraftClient implements ClientModInitializer {
 		boolean on = MycLink.myceliumAlive() && MYC.inLevel();
 		MycDash.tick(minecraft, on ? MYC.dashX : 0f, on ? MYC.dashZ : 0f);
 		MycSkillAnimation.tick(minecraft, on && (MYC.flags & Proto.MYC_CYCLONE) != 0);
+		blockAttackWhileCycloning(minecraft);
+	}
+
+	private static boolean attackBlocked;
+	private static int clicksDropped;
+
+	/** Mycelium's Living Cyclone is spinning (MycState flag bit 4). */
+	public static boolean cycloning() {
+		return MycLink.myceliumAlive() && MYC.inLevel() && (MYC.flags & Proto.MYC_CYCLONE) != 0;
+	}
+
+	/**
+	 * No attacks while Living Cyclone spins (your rule, 2026-11-01). The attack key is held "up" and
+	 * its clicks dropped, at each tick's start and after each frame: Minecraft's attack, and Better
+	 * Combat's own (which also reads the key), can't start. A key held through the spin stays up
+	 * until it's pressed again. MinecraftMixin also refuses startAttack meanwhile.
+	 */
+	public static void blockAttackWhileCycloning(Minecraft minecraft) {
+		boolean now = cycloning();
+		if (now) {
+			net.minecraft.client.KeyMapping attack = minecraft.options.keyAttack;
+			while (attack.consumeClick()) {
+				clicksDropped++;
+			}
+			attack.setDown(false);
+		}
+		if (now != attackBlocked) {
+			attackBlocked = now;
+			MycLink.LOG.info(now ? "MyceliumCraft: Living Cyclone: attacks off while it spins"
+				: "MyceliumCraft: Living Cyclone over: attacks back ({} clicks dropped meanwhile)", clicksDropped);
+			clicksDropped = 0;
+		}
 	}
 
 	/** Called by MinecraftMixin once per rendered frame. */
@@ -67,6 +99,7 @@ public final class MyceliumCraftClient implements ClientModInitializer {
 		if (!MycLink.mapped()) {
 			return;
 		}
+		blockAttackWhileCycloning(minecraft);
 		frame++;
 		MyceliumKeys.publish();
 
@@ -253,20 +286,32 @@ public final class MyceliumCraftClient implements ClientModInitializer {
 
 	private static final net.minecraft.resources.Identifier SPEED_ID = net.minecraft.resources.Identifier.fromNamespaceAndPath("myceliumcraft", "speed");
 	private static float sentSpeed = Float.NaN;
+	private static long nextSpeedCheck;
 
 	/**
 	 * Mycelium's Speed stat (and its speed effects) on Minecraft's movement speed (your request,
 	 * 2026-10-21): a modifier on the player's movement speed, x(Mycelium's factor). Sprinting and
 	 * Minecraft's own effects multiply on top. Applied on the integrated server when the factor
 	 * changes by more than 1 %; taken off outside Mycelium's levels.
+	 *
+	 * Also checked once a second on the server: a respawn makes a new player without the modifier,
+	 * and the factor didn't change, so it was never put back (your report, 2026-11-02: after dying
+	 * and going back to the Carcass, the speed boost was gone).
 	 */
 	private static void syncSpeed(Minecraft minecraft, LocalPlayer player, boolean sync) {
 		var server = minecraft.getSingleplayerServer();
 		float want = sync ? MYC.speed : 1f;
-		if (server == null || (!Float.isNaN(sentSpeed) && Math.abs(want - sentSpeed) <= 0.01f)) {
+		if (server == null) {
 			return;
 		}
-		sentSpeed = want;
+		boolean changed = Float.isNaN(sentSpeed) || Math.abs(want - sentSpeed) > 0.01f;
+		long now = System.currentTimeMillis();
+		if (!changed && now < nextSpeedCheck) {
+			return;
+		}
+		nextSpeedCheck = now + 1000L;
+		float apply = changed ? want : sentSpeed;
+		sentSpeed = apply;
 		var uuid = player.getUUID();
 		server.execute(() -> {
 			ServerPlayer sp = server.getPlayerList().getPlayer(uuid);
@@ -274,13 +319,23 @@ public final class MyceliumCraftClient implements ClientModInitializer {
 			if (speed == null) {
 				return;
 			}
+			var had = speed.getModifier(SPEED_ID);
+			double hadAmount = had == null ? 0.0 : had.amount();
+			if (!changed && Math.abs(hadAmount - (apply - 1.0)) <= 0.001) {
+				return; // still right
+			}
 			speed.removeModifier(SPEED_ID);
-			if (Math.abs(want - 1f) > 0.001f) {
-				speed.addTransientModifier(new net.minecraft.world.entity.ai.attributes.AttributeModifier(SPEED_ID, want - 1.0,
+			if (Math.abs(apply - 1f) > 0.001f) {
+				speed.addTransientModifier(new net.minecraft.world.entity.ai.attributes.AttributeModifier(SPEED_ID, apply - 1.0,
 					net.minecraft.world.entity.ai.attributes.AttributeModifier.Operation.ADD_MULTIPLIED_TOTAL));
 			}
+			if (!changed) {
+				MycLink.LOG.info("MyceliumCraft: speed: the player had lost the x{} (a respawn makes a new player); put back", String.format("%.2f", apply));
+			}
 		});
-		MycLink.LOG.info("MyceliumCraft: speed: Minecraft's movement speed x{} (Mycelium's Speed stat and speed effects)", String.format("%.2f", want));
+		if (changed) {
+			MycLink.LOG.info("MyceliumCraft: speed: Minecraft's movement speed x{} (Mycelium's Speed stat and speed effects)", String.format("%.2f", want));
+		}
 	}
 
 	private static int sentLevel = -1;
