@@ -59,6 +59,11 @@ Single-player and offline only.
   - **Your swings smack the levels' mushrooms** (bounce and sound, as in Mycelium): tested in
     Mycelium with the fake Minecraft's swings; not tested in play.
   - **Poisoned enemies flash green** instead of red (tested in Mycelium).
+- **Resources are items in Minecraft's inventory, one slot each, several at once:** Rotten Log as a
+  poisonous potato, Fresh Exoskeleton as a nautilus shell, Calcite Deposit as tube coral, Flesh as
+  rotten flesh, named as in Mycelium. All you carry are stored at the Carcass at a level's end.
+  They can be thrown like the weapons, and land in Mycelium as pickups. Mycelium's resource panel
+  is kept hidden. The Mycelium side was tested with a fake Minecraft; not tested in Minecraft.
   - **Crabs (and other enemies whose model has several parts) flash fully** now (tested in Mycelium:
     the tinted copies switch on and off; not looked at).
   - **Attributes work:** every weapon attribute, including on-hit ones (Critical, Repulsive,

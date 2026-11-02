@@ -244,7 +244,7 @@ public final class MycWeapons {
 	private static final double[] THROWN_XYZ = new double[Proto.THR_MAX * 3];
 	private static int lastThrownCount;
 
-	/** Every frame (render thread): your weapon items in the world, for Mycelium (Thrown block). */
+	/** Every frame (render thread): your weapon and resource items in the world, for Mycelium (Thrown block). */
 	public static void thrownFrame(Minecraft minecraft, float partial) {
 		int n = 0;
 		if (minecraft.level != null) {
@@ -252,13 +252,17 @@ public final class MycWeapons {
 				if (n >= Proto.THR_MAX || !(entity instanceof ItemEntity item) || item.isRemoved()) {
 					continue;
 				}
-				int id = weaponId(item.getItem());
+				int id = weaponId(item.getItem()), kind = 0;
+				if (id == 0) {
+					id = MycResources.resourceId(item.getItem()); // a thrown resource (MycResources)
+					kind = Proto.THR_RESOURCE;
+				}
 				if (id == 0) {
 					continue;
 				}
 				var pos = item.getPosition(partial);
 				THROWN_IDS[n] = id;
-				THROWN_FLAGS[n] = item.onGround() && item.getDeltaMovement().lengthSqr() < 1e-4 ? Proto.THR_LANDED : 0;
+				THROWN_FLAGS[n] = kind | (item.onGround() && item.getDeltaMovement().lengthSqr() < 1e-4 ? Proto.THR_LANDED : 0);
 				THROWN_XYZ[n * 3] = pos.x;
 				THROWN_XYZ[n * 3 + 1] = pos.y;
 				THROWN_XYZ[n * 3 + 2] = pos.z;
@@ -266,7 +270,7 @@ public final class MycWeapons {
 			}
 		}
 		if (n != lastThrownCount) {
-			MycLink.LOG.info("MyceliumCraft: weapons: {} thrown weapon(s) in the world", n);
+			MycLink.LOG.info("MyceliumCraft: weapons: {} thrown weapon(s) and resource(s) in the world", n);
 			lastThrownCount = n;
 		}
 		MycLink.writeThrown(n, THROWN_IDS, THROWN_FLAGS, THROWN_XYZ);

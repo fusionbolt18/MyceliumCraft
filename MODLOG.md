@@ -1,5 +1,139 @@
 # MODLOG
 
+## 2026-11-02 Level-end pictures centred
+
+**Your request:** centre the pictures.
+
+**Changed:** `ResourceBag.LevelEndNotice` centres the row on where Mycelium's own picture sits,
+instead of starting there and going away from the text.
+
+**Tested how:** `-mcResourceTest` with the stand-in: Calcite Deposit x2 at (-30, 0) and Flesh x1 at
+(30, 0), around Mycelium's picture at (0, 0).
+
+**Not tested:** how it looks; whether a row of 3 or 4 reaches the text.
+
+## 2026-11-02 Level-end pictures at full size, in a row
+
+**Your report:** the pictures looked squished and small; keep them their normal size, next to each
+other.
+
+**Changed:** `ResourceBag.LevelEndNotice` keeps each picture at Mycelium's own size (and its own
+aspect setting). The first sits where Mycelium's picture is; the rest go beside it, 1.1 picture
+widths apart, on the side away from the text (worked out from where the text is). The count is a
+little smaller relative to the picture.
+
+**Tested how:** `-mcResourceTest` with the stand-in. The log said Mycelium's picture is 55 x 55 with
+the text to its right, so the row goes left: Calcite Deposit x2 at (0, 0), Flesh x1 at (-60, 0),
+both 55. The pictures were gone after the notification.
+
+**Not tested:** how it looks. With 3 or 4 types the row reaches 2 or 3 pictures further left; not
+checked that it fits on screen.
+
+## 2026-11-02 The level-end notification shows every resource stored
+
+**Your request:** between levels, with more than one resource, say "Resources stored at The
+Carcass", and instead of the one picture show each type stored, with a small count at its bottom
+right.
+
+**Changed:** `ResourceBag.LevelEndNotice` (called in `MinecraftDriver.LateUpdate`) changes Mycelium's
+own notification once it shows "... stored at the Carcass" with 2 or more carried. It sets the new
+line, hides the picture, and puts one picture per type (Mycelium's own sprites) in a grid in the
+same square, each with a count. They're removed when the notification ends. `-mcResourceTest` now
+picks up 4 (a second Calcite) and shows the notification as LevelEnd does.
+
+**Tested how:** `-mcResourceTest` with the stand-in. After the throw, Calcite, Flesh and Calcite
+were carried. The log said the line became "Resources stored at The Carcass", with pictures Calcite
+Deposit x2 and Flesh x1 side by side, and the pictures were gone 6 s later. The level end then
+stored all three.
+
+**Not tested:** how it looks (sizes, the count's place and readability), and a real level end.
+With one resource the notification is Mycelium's own, unchanged.
+
+**A slip, fixed:** a text replace in the test briefly changed every 4 s wait in
+`MinecraftDriver.cs` to 6 s; they were put back before the final build (the diff shows only the
+test's own wait changed).
+
+## 2026-11-02 A thrown resource's pop-up moves with it
+
+**Your report:** a thrown resource's pop-up stayed where it was, as thrown weapons' used to.
+
+**Changed:** `ResourceBag.cs` moves the pop-up along with the flying resource, with the weapons' own
+`WeaponBag.MovePopUp` (now shared). `-mcResourceTest` gives the thrown one a pop-up first, made as
+Mycelium's `GetMaterial` makes it.
+
+**Tested how:** `-mcResourceTest` with the stand-in (`LINKTEST_THROW_RESOURCE=1 LINKTEST_LENGTH=20`):
+"its pop-up moved with it for 91 frames, now at (4.9, 2.8, 280.8)", the same place the Rotten Log
+landed.
+
+**Not tested:** in real Minecraft, with a pop-up you made by looking at a real resource.
+
+## 2026-11-02 Several resources at once, throwable; the resource panel kept hidden (protocol v39)
+
+**Your report and request:**
+- The resource panel still showed in later levels.
+- You want to hold several resources, throw them like the weapons, and have each take its own
+  inventory slot.
+
+**Changed:**
+- **New `ResourceBag.cs` (Mycelium), replacing `ResourceWatch.cs`:** a bag of the resources you
+  pick up while Minecraft drives. The one Mycelium puts back down on a pickup is hidden again and
+  stays in the bag. At a level's end the rest of the bag is stored at the Carcass too, and
+  Mycelium's save is written again. Dying loses them all. Thrown ones follow their Minecraft item
+  and stay on the ground as pickups.
+- **The panel:** every frame (after Mycelium's own slide), every resource panel is put at its
+  out-of-sight spot while Minecraft is linked, instead of being slid away once per pickup.
+- **`MycResources.java`:** one item per resource id, max stack 1. Thrown ones fly, can't be picked
+  up, and are removed once landed (as the weapons). `MycWeapons.thrownFrame` sends them in the
+  Thrown block with a new "resource" flag; `WeaponBag.cs` skips those.
+- **Protocol v39:** MycState 0x74 is now the count, 0x78 the list; Thrown flag bit1.
+- **Stand-in:** `LINKTEST_THROW_RESOURCE`, `LINKTEST_LENGTH`; `-mcResourceTest` does three pickups,
+  waits for a throw, and does a level end without saving.
+- PROTOCOL, DESIGN §5.0.4.1, README.
+
+**Tested how:** `-mcResourceTest` with the stand-in in Daybreak Arboretum (stand-in objects, since
+the level has none lying around):
+- The stand-in saw 1, 2, then 3 resources, then 2 after throwing the first, then 0 at the level end.
+- The two put back down stayed hidden; the thrown Rotten Log was left on the ground where it landed.
+- The level end stored the held Flesh (Mycelium) and the Calcite (the bag): 0/8/2/1 → 0/8/3/2.
+- The panel was pushed out of sight after each pickup.
+
+**Not tested:** real Minecraft, real pickups, a real level end with the save written, a real throw.
+I don't know why the old slide-away failed in later levels; the log now names the HUD whenever the
+panel has to be pushed out.
+
+## 2026-11-02 Resources as Minecraft items (protocol v38)
+
+**Your request:** turn the resources into Minecraft items, like the weapons:
+- Rotten Log as a poisonous potato;
+- Fresh Exoskeleton as a nautilus shell;
+- Calcite Deposit as tube coral;
+- Flesh as rotten flesh.
+
+Named correctly, no textures yet. They don't need to show on Mycelium's UI any more when picked up.
+
+**Changed:**
+- **New `ResourceWatch.cs` (Mycelium):** reads which resource you carry (Mycelium carries one at a
+  time) and sends it in MycState 0x74. After a pickup, it slides Mycelium's resource panel away with
+  Mycelium's own `HUDItem.LostItem`.
+- **New `MycResources.java` (Minecraft):** keeps exactly one named, marked item for it, or none.
+  The item can't be eaten or placed, and a dropped one comes back. It's taken away before
+  Minecraft's death drop.
+- **Wiring:** `MinecraftDriver.cs`, `MyceliumLink.cs` and both `Proto` files (v38),
+  `MycLink.java`, `MyceliumCraftClient.java`. Test aid `-mcResourceTest`; the stand-in logs the
+  resource.
+- PROTOCOL, DESIGN §5.0.4.1, README.
+
+**Tested how:** `-mcResourceTest` with the stand-in in Daybreak Arboretum. There were none lying
+around, so the test does what a pickup does.
+- The stand-in saw "carries resource 1", then 3, then 0 after "as dying does".
+- "Mycelium's resource panel slid away" after each pickup; the panel ended at its "out" place.
+
+**Not tested:** the items in real Minecraft (names, the description, can't eat, place or drop), and a
+real pickup from the ground.
+
+**Left as Mycelium's:** the resources stored at the Carcass (for the grow and upgrade menus) aren't
+items.
+
 ## 2026-11-02 The combat roll animation redone (it looked like teleporting)
 
 **Your report:** it looked bad; the character seemed to teleport around. You asked for something

@@ -512,6 +512,9 @@ public final class MycLink {
 		public int windowW, windowH;
 		/** Mycelium's dash (Blitz, the roll), Minecraft blocks per second; 0 and 0 = none. */
 		public float dashX, dashZ;
+		/** The resources you carry: how many, and each one's id and type (1 Rotten Log, 2 Fresh Exoskeleton, 3 Calcite Deposit, 4 Flesh). */
+		public int resourceCount;
+		public final int[] resourceIds = new int[RES_MAX], resourceTypes = new int[RES_MAX];
 
 		public boolean inLevel() {
 			return (this.flags & MYC_IN_LEVEL) != 0;
@@ -552,6 +555,12 @@ public final class MycLink {
 			out.windowH = s.get(JAVA_INT, b + MY_WINDOW_H);
 			out.dashX = s.get(JAVA_FLOAT, b + MY_DASH_X);
 			out.dashZ = s.get(JAVA_FLOAT, b + MY_DASH_Z);
+			out.resourceCount = Math.max(0, Math.min(RES_MAX, s.get(JAVA_INT, b + MY_RESOURCE_COUNT)));
+			for (int i = 0; i < out.resourceCount; i++) {
+				int e = s.get(JAVA_INT, b + MY_RESOURCES + 4L * i);
+				out.resourceIds[i] = e >>> 4;
+				out.resourceTypes[i] = e & 0xF;
+			}
 			VarHandle.loadLoadFence();
 			int seq2 = (int) INT.getVolatile(s, b + MY_SEQ);
 			if (seq1 == seq2) {

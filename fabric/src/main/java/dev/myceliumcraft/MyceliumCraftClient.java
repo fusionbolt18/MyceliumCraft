@@ -48,6 +48,7 @@ public final class MyceliumCraftClient implements ClientModInitializer {
 		// Diagnostic: what stalls Minecraft's server (late hits, 2026-10-21).
 		ServerStallWatch.init();
 		MycWeapons.init(); // thrown weapons: no pickup, removed once landed
+		MycResources.init(); // your Mycelium resources: not placed; thrown ones fly, then go
 		MycBetterCombat.init(); // Better Combat's attack starts count as Mycelium swings
 		MycSkillAnimation.init(); // Living Cyclone: Better Combat's two_handed_spin, looped
 		net.fabricmc.fabric.api.client.rendering.v1.EntityRendererRegistry.register(dev.myceliumcraft.combat.EnemyProxies.TYPE, net.minecraft.client.renderer.entity.NoopRenderer::new);
@@ -214,6 +215,7 @@ public final class MyceliumCraftClient implements ClientModInitializer {
 			move[0], move[1]); // your held movement keys: Mycelium's dodge roll goes that way
 		// Your Mycelium weapons as carrots in the inventory.
 		MycWeapons.frame(minecraft, player, haveMyc && MycLink.myceliumAlive() && MYC.inLevel());
+		MycResources.frame(minecraft, player, haveMyc && MycLink.myceliumAlive() && MYC.inLevel(), MYC); // the resources you carry
 		MycWeapons.thrownFrame(minecraft, partial); // thrown weapons, for Mycelium to show
 		dev.myceliumcraft.combat.EnemyProxies.clientSnap(minecraft.level);
 		sendHitBoxes(minecraft);
@@ -600,6 +602,7 @@ public final class MyceliumCraftClient implements ClientModInitializer {
 					ServerPlayer sp = server.getPlayerList().getPlayer(uuid);
 					if (sp != null) {
 						MycWeapons.removeAll(sp); // Mycelium's weapons don't drop into Minecraft's world
+						MycResources.removeAll(sp); // nor its resources
 						sp.kill(sp.level());
 					}
 				});

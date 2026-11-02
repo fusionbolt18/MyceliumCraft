@@ -699,6 +699,87 @@ hides it when you walk away. Here it goes into the bag, so the panel stayed (you
 `HUDStats.HideStats` (Mycelium's), unless another weapon's pop-up is open (that one hides it when it
 closes). `-mcPickupTest <Type/Prefab>` picks up a chosen weapon and logs where the panel is.
 
+### 5.0.4.1 Resources: each one you carry is an item (since 2026-11-02, protocol v39)
+
+Your requests: Mycelium's resources as Minecraft items, like the weapons; several at once, one
+inventory slot each, and throwable like the weapons.
+- **Mycelium carries one at a time** (`NutrientTracker.heldLog`, `heldExoskeleton`, `heldCalcite`,
+  `heldFlesh`, and `heldItem`, which is the picked-up object itself: each resource prefab's
+  `GetMaterial` points at its own object). Picking one up puts the one you had back on the ground
+  where the new one lay (`GetMaterial.AddMaterial`). At a level's end the held one is stored at the
+  Carcass (`LevelEnd.SceneChangeSetup`: `KeepMaterials`, `LoseMaterials`, then the save is written);
+  dying loses it. Every scene reads the save again when it starts (`ProfileManager.Start`).
+- **The bag** (`ResourceBag.cs`, Mycelium side), while Minecraft drives:
+  - A pickup is seen as `heldItem` becoming an object not in the bag. It goes into the bag with a new
+    id. The one Mycelium put back down is hidden again at once (`SetActive(false)`) and stays in the
+    bag. At most 16; past that, Mycelium's own swap happens.
+  - Mycelium's own "held" is kept as the newest in the bag, so its notifications ("... stored at the
+    Carcass", "... dropped!") still name one.
+  - **Level end:** seen as "held" going to none while the stored total went up. Mycelium stored one;
+    the bag stores the rest (`storedLog` etc. + 1 each) and writes Mycelium's save again
+    (`ProfileManager.SaveOverride`), because the next scene reads it. A scene load takes a fade, so
+    this happens before it.
+  - **Lost:** "held" going to none without anything stored (dying, quitting), or a scene loading with
+    resources still in the bag.
+  - **Sent** in MycState: the count at 0x74, each `(id << 4) | type` from 0x78.
+- **In Minecraft** (`MycResources.java`): exactly one item per id, on the integrated server, at once
+  on a change and twice a second otherwise. Stray ones (an unknown id, a copy, an item made before
+  ids) are removed.
+
+  | Mycelium | Minecraft item |
+  | --- | --- |
+  | Rotten Log | poisonous potato |
+  | Fresh Exoskeleton | nautilus shell |
+  | Calcite Deposit | tube coral |
+  | Flesh | rotten flesh |
+
+  - Each is marked in its custom data (type and id), named as Mycelium names it, and has a
+    description: "Resource (Mycelium)", and "Used to grow and upgrade sporelius / toxitious /
+    costaalis / gloomacea Spores", as Mycelium's pop-up says.
+  - Never stacked: its own id, and a max stack size of 1.
+  - Not edible. Can't be placed (tube coral is a block: `UseBlockCallback` refuses).
+  - Taken away before Minecraft's death drop, as the weapons are.
+  - No textures yet.
+- **Throwing** (Q), as the weapons: the item flies through Minecraft's world and can't be picked up.
+  `MycWeapons.thrownFrame` sends it in the Thrown block with flag bit1 `RESOURCE` and its resource id
+  (WeaponBag skips those). The bag takes it out, shows the real object again and moves it along the
+  item's path, as high above it as the resource lay above its ground when picked up (a downward ray
+  at pickup). Once the item has rested 5 ticks (or after 10 s) Minecraft removes it, and the real
+  one stays where it is, a pickup again (a new id if picked up). While it flies its id counts as
+  present, so Minecraft doesn't make it again.
+  - Its pop-up (Mycelium's "Press E to Pick Up", placed once where the thing is) moves with it, as
+    a thrown weapon's does (`WeaponBag.MovePopUp`, shared).
+- **The level-end notification** (`LevelEnd` calls `NotificationManager.Notification` with
+  "<held> stored at the Carcass" and that resource's picture), when you carry more than one
+  (`ResourceBag.LevelEndNotice`, every `LateUpdate`, once the notification is showing): the line
+  becomes "Resources stored at The Carcass" and the picture is hidden. In its place goes one
+  picture per type carried (Mycelium's own `notificationSprites`, by name), each at Mycelium's own
+  size, in a row 1.1 widths apart, centred on where Mycelium's picture is (your request; before, the
+  row started there and went away from the text). A grid squeezed into the one square looked small and squished (your
+  report). Each has a small count at its bottom right, a copy of the notification's own text so it
+  uses the game's font. They're removed when the notification is over
+  (`isDisplaying`). Thrown ones still lying in the level aren't counted (they aren't stored).
+  - Checked with `-mcResourceTest` (Calcite, Flesh, Calcite carried): the line changed, pictures
+    "Calcite Deposit x2" at (-30, 0) and "Flesh x1" at (30, 0) around Mycelium's picture's place
+    (0, 0), both 55 x 55 as Mycelium's; gone after the notification. How it looks is not checked.
+- **Mycelium's resource panel** never shows while Minecraft is linked: every frame, after Mycelium's
+  slide coroutines (`LateUpdate`), every `HUDItem`'s `itemPanel` is put at its out-of-sight spot
+  (`materialOutsideTarget`). The first way (sliding it away once after each pickup with
+  `HUDItem.LostItem`) logged a slide-away after every pickup, yet you still saw the panel in later
+  levels; why is not known. The log names the HUD and scene each time it has to push the panel out.
+- **Checked** with `-mcResourceTest` and the stand-in (`LINKTEST_THROW_RESOURCE=1
+  LINKTEST_LENGTH=20`) in Daybreak Arboretum, which has none lying around at the start, so the test
+  does what `AddMaterial` does with stand-in objects:
+  - Three pickups: the stand-in saw 1, 2, then 3 resources; the two put back down stayed hidden;
+    Mycelium held the newest; the panel was pushed out each time and ended out of sight.
+  - The throw: the bag went to 2, and the real Rotten Log was left on the ground where the item
+    landed. The test gave it a pop-up first (`TooltipManager.CreateTooltip`, as `GetMaterial` does);
+    it moved with it for 91 frames and ended where the Rotten Log lay.
+  - A level end (without saving): stored went from 0/8/2/1 to 0/8/3/2 (Mycelium stored the Flesh,
+    the bag the Calcite); the bag was empty after. The counts were put back after.
+- **Not tested:** any of it in real Minecraft, real pickups from the ground, a real level end with
+  the save, and a real throw's look.
+
 ### 5.0.5 Better Combat animations, timing and reach for weapons (since 2026-10-21)
 
 **Presets:** our mod carries three Better Combat weapon presets as data

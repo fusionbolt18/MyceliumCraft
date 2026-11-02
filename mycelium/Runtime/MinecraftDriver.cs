@@ -74,6 +74,7 @@ namespace MyceliumCraft
         readonly EnemyCombat combat = new EnemyCombat();
         readonly ShroomSmack shrooms = new ShroomSmack();
         readonly RollSound rollSound = new RollSound();
+        readonly ResourceBag resources = new ResourceBag();
         readonly uint[] bindKinds = new uint[Proto.BMax];
         readonly uint[] bindCodes = new uint[Proto.BMax];
         bool heldByMycelium;   // Mycelium has the controls (menu, pause, cutscene): don't drive the spore
@@ -240,6 +241,11 @@ namespace MyceliumCraft
             // Test aid: "-mcShroomTest" swings at the nearest mushroom from just in front of it 4 s
             // into driving, again at once (its cooldown), then facing away after the cooldown.
             if (Array.IndexOf(args, "-mcShroomTest") >= 0) StartCoroutine(ShroomTest());
+            // Test aid: "-mcResourceTest" picks up three resources from 4 s into driving, 1 s apart (the
+            // level's own with GetMaterial.Interact, else stand-ins as AddMaterial does), logs the bag and
+            // the panel, waits 5 s (for LINKTEST_THROW_RESOURCE), then does a level end without saving
+            // and puts the stored counts back.
+            if (Array.IndexOf(args, "-mcResourceTest") >= 0) StartCoroutine(ResourceTest());
             combat.Swung += () =>
             {
                 weapons.HeldSwing(out int type, out float reach, out float perSecond);
@@ -332,6 +338,7 @@ namespace MyceliumCraft
                 sprout.SceneLoaded(scene);
                 weapons.SceneLoaded(scene);
                 shrooms.SceneLoaded();
+                resources.SceneLoaded(scene);
                 SetPhase(Phase.Idle, "new scene");
             };
         }
@@ -371,10 +378,13 @@ namespace MyceliumCraft
             float health = 0f, maxHealth = 0f;
             if (rb != null) ReadHealth(out health, out maxHealth);
             dash.ForMinecraft(map, out float dashX, out float dashZ); // Blitz, the roll: Minecraft's player dashes (DashWatch)
+            int nutrients = rb != null ? ReadNutrients() : -1;
+            // The resources you carry: items in Minecraft's inventory, thrown ones follow theirs (ResourceBag, MycResources.java).
+            int resourceCount = resources.Update(rb != null ? nutrientTracker : null, phase == Phase.Driving && link.MinecraftAlive, link, map);
             link.WriteMycState(flags, pos.x, pos.y, pos.z, yaw, frame, tp, rb != null ? playerHeightBlocks : 0f, health, maxHealth,
-                               rb != null ? ReadNutrients() : -1, sprout.Update(), rb != null ? SpeedFactor() : 0f,
+                               nutrients, sprout.Update(), rb != null ? SpeedFactor() : 0f,
                                Screen.width, Screen.height, // Minecraft's window follows this size (MycWindowSize.java)
-                               dashX, dashZ);
+                               dashX, dashZ, resourceCount, resources.Entries);
 
             bool alive = link.MinecraftAlive;
             if (alive != mcWasAlive)
@@ -555,6 +565,9 @@ namespace MyceliumCraft
                             animator != null && animator.isActiveAndEnabled && animator.GetBool("Roll"), RollToward(out string rollFrom), rollFrom);
             // The roll's sound as you press the key, not at its end (RollSound).
             rollSound.Update(link != null && link.MinecraftAlive && phase == Phase.Driving, animator != null && animator.isActiveAndEnabled && animator.GetBool("Roll"));
+            // Mycelium's resource panel stays out of sight: your resources are in Minecraft's inventory.
+            resources.KeepPanelOut(link != null && link.MinecraftAlive);
+            resources.LevelEndNotice(); // "Resources stored at The Carcass", a picture per type
         }
 
         void FixedUpdate()
@@ -1226,6 +1239,123 @@ namespace MyceliumCraft
             controller?.GetType().GetMethod("EnableController", Type.EmptyTypes)?.Invoke(controller, null);
             yield return null;
             McLog.Info($"cyclone test: ended as the skill does; canUseSkill now {controller?.GetType().GetField("canUseSkill")?.GetValue(controller)}");
+        }
+
+        /// <summary>Test aid: see "-mcResourceTest" in Awake.</summary>
+        System.Collections.IEnumerator ResourceTest()
+        {
+            while (phase != Phase.Driving) yield return null;
+            yield return new WaitForSeconds(4f);
+            resources.NoSave = true; // the level end below must not touch your save
+            Type t = Type.GetType("GetMaterial, Assembly-CSharp");
+            var all = t != null ? UnityEngine.Object.FindObjectsOfType(t) : new UnityEngine.Object[0];
+            McLog.Info($"resource test: {all.Length} resources in the level");
+            GameObject player = GameObject.FindWithTag("currentPlayer");
+            Type nt = Type.GetType("NutrientTracker, Assembly-CSharp");
+            var tracker = nt != null ? UnityEngine.Object.FindObjectOfType(nt) as Component : null;
+            GameObject hud = GameObject.Find("HUD");
+            Type ht = Type.GetType("HUDItem, Assembly-CSharp");
+            Component hudItem = hud != null && ht != null ? hud.GetComponent(ht) : null;
+            if (tracker == null || hudItem == null || rb == null) { McLog.Info("resource test: no NutrientTracker, HUDItem or spore"); yield break; }
+            var picked = new System.Collections.Generic.List<GameObject>();
+            int done = 0;
+            foreach (UnityEngine.Object o in all)
+            {
+                if (!(o is Component c) || !c.gameObject.activeInHierarchy || done >= 4) continue;
+                McLog.Info($"resource test: picking up '{c.gameObject.name}'");
+                t.GetMethod("Interact")?.Invoke(c, new object[] { player });
+                picked.Add(c.gameObject);
+                done++;
+                yield return new WaitForSeconds(1f);
+            }
+            // None (or too few) lying in the level: what GetMaterial.AddMaterial does, with stand-in objects
+            // (the one Mycelium held goes back on the ground where the new one lay).
+            var fakes = new[] { ("heldLog", "Rotten Log", "RottenLog"), ("heldCalcite", "Calcite Deposit", "Calcite"), ("heldFlesh", "Flesh", "Flesh"), ("heldCalcite", "Calcite Deposit", "Calcite") };
+            for (int i = done; i < 4; i++)
+            {
+                var (field, name, objName) = fakes[i];
+                var o = new GameObject(objName);
+                o.transform.position = rb.position + rb.transform.forward * (1.5f + i);
+                McLog.Info($"resource test: as a pickup of {name} does");
+                nt.GetMethod("LoseMaterials")?.Invoke(tracker, null);
+                nt.GetField(field)?.SetValue(tracker, 1);
+                var before = nt.GetField("heldItem")?.GetValue(tracker) as GameObject;
+                if (before != null) { before.transform.position = o.transform.position; before.SetActive(true); }
+                nt.GetField("heldItem")?.SetValue(tracker, o);
+                ht.GetMethod("PickUpItem")?.Invoke(hudItem, new object[] { name });
+                o.SetActive(false);
+                picked.Add(o);
+                yield return new WaitForSeconds(1f);
+            }
+            var shown = new System.Collections.Generic.List<string>();
+            foreach (GameObject o in picked) shown.Add($"'{o.name}' {(o.activeSelf ? "ON THE GROUND" : "hidden")}");
+            McLog.Info($"resource test: after 4 pickups the bag has {resources.Count}; {string.Join(", ", shown)}; held by Mycelium: {HeldName(tracker)}; {resources.PanelReport()}");
+            // LINKTEST_THROW_RESOURCE throws the first one now (see the stand-in's log); wait for it to land.
+            // It gets a pop-up as Mycelium's GetMaterial makes one when you look at it, to see it follow.
+            Type tm = Type.GetType("TooltipManager, Assembly-CSharp");
+            object manager = tm?.GetField("Instance", BindingFlags.Public | BindingFlags.Static)?.GetValue(null);
+            MethodInfo create = null;
+            if (tm != null)
+                foreach (MethodInfo m in tm.GetMethods())
+                    if (m.Name == "CreateTooltip" && m.GetParameters().Length >= 4 && m.GetParameters()[0].ParameterType == typeof(GameObject)) create = m;
+            if (manager != null && create != null && picked.Count > 0)
+            {
+                ParameterInfo[] ps = create.GetParameters(); // the rest are optional: their defaults
+                var callArgs = new object[ps.Length];
+                object[] given = { picked[0], picked[0].name, "test pop-up", "" };
+                for (int i = 0; i < ps.Length; i++) callArgs[i] = i < given.Length ? given[i] : ps[i].DefaultValue;
+                create.Invoke(manager, callArgs);
+                var popUp = tm.GetField("currentTooltip")?.GetValue(manager) as GameObject;
+                McLog.Info($"resource test: pop-up made for '{picked[0].name}' at {(popUp != null ? popUp.transform.position.ToString("F1") : "none")}");
+            }
+            else McLog.Info("resource test: no TooltipManager.CreateTooltip: no pop-up");
+            yield return new WaitForSeconds(5f);
+            McLog.Info($"resource test: after the throw the bag has {resources.Count}; held by Mycelium: {HeldName(tracker)}; {string.Join(", ", ActiveList(picked))}");
+            // A level end as LevelEnd.SceneChangeSetup does it (not saved: NoSave), then put back.
+            // The notification LevelEnd shows as you reach the end (ResourceBag.LevelEndNotice changes it).
+            Type nm = Type.GetType("NotificationManager, Assembly-CSharp");
+            object notices = nm?.GetField("Instance", BindingFlags.Public | BindingFlags.Static)?.GetValue(null);
+            string heldNow = HeldName(tracker);
+            if (notices != null)
+                nm.GetMethod("Notification")?.Invoke(notices, new object[] { "<color=#7FFF00>AREA COMPLETE</color>", heldNow + " stored at the Carcass", null, heldNow, -1f });
+            yield return null;
+            yield return null;
+            var helperNow = nm?.GetField("helperText", BindingFlags.NonPublic | BindingFlags.Instance)?.GetValue(notices) as Component;
+            McLog.Info($"resource test: the notification says '{helperNow?.GetType().GetProperty("text")?.GetValue(helperNow)}'");
+            yield return new WaitForSeconds(6f); // the notification lasts about 4.25 s
+            McLog.Info($"resource test: after the notification: {GameObject.FindObjectsOfType<UnityEngine.UI.Image>().Length} images, stand-in pictures left: {(GameObject.Find("MyceliumCraft stored Calcite Deposit") != null)}");
+            int[] storedBefore = Stored(nt, tracker);
+            McLog.Info("resource test: as a level end does (KeepMaterials, LoseMaterials)");
+            nt.GetMethod("KeepMaterials")?.Invoke(tracker, null);
+            nt.GetMethod("LoseMaterials")?.Invoke(tracker, null);
+            yield return null;
+            yield return null;
+            int[] storedAfter = Stored(nt, tracker);
+            McLog.Info($"resource test: stored at the Carcass went from {string.Join("/", storedBefore)} to {string.Join("/", storedAfter)} (log/exoskeleton/calcite/flesh); the bag has {resources.Count}");
+            string[] names = { "storedLog", "storedExoskeleton", "storedCalcite", "storedFlesh" };
+            for (int i = 0; i < 4; i++) nt.GetField(names[i])?.SetValue(tracker, storedBefore[i]);
+            McLog.Info("resource test: stored counts put back");
+        }
+
+        static int[] Stored(Type nt, Component tracker)
+        {
+            string[] names = { "storedLog", "storedExoskeleton", "storedCalcite", "storedFlesh" };
+            var v = new int[4];
+            for (int i = 0; i < 4; i++) v[i] = nt.GetField(names[i])?.GetValue(tracker) is int n ? n : -1;
+            return v;
+        }
+
+        static string HeldName(Component tracker)
+        {
+            string s = tracker.GetType().GetMethod("GetCurrentHeldMaterial")?.Invoke(tracker, null) as string;
+            return string.IsNullOrEmpty(s) ? "nothing" : s;
+        }
+
+        static System.Collections.Generic.List<string> ActiveList(System.Collections.Generic.List<GameObject> objs)
+        {
+            var l = new System.Collections.Generic.List<string>();
+            foreach (GameObject o in objs) l.Add($"'{o.name}' {(o.activeSelf ? $"on the ground at {o.transform.position:F1}" : "hidden")}");
+            return l;
         }
 
         /// <summary>Test aid: see "-mcShroomTest" in Awake.</summary>

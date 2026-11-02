@@ -74,10 +74,11 @@ namespace MyceliumCraft.Link
         public const int ThrMax = 16;
         public const int ThrSize = 0x20;        // u32 weapon id, u32 flags, f64 x, y, z (Minecraft, the item's feet)
         public const uint ThrLanded = 1u << 0;  // resting on the ground
+        public const uint ThrResource = 1u << 1; // a resource of yours (MycState's list), not a weapon; since v39
 
         public const int MappingBytes = OffThrown + ThrownBytes;
         public const uint Magic = 0x4343594D; // "MYCC"
-        public const uint Version = 37;
+        public const uint Version = 39;
         public const ulong HeartbeatTimeoutMs = 3000;
 
         // Header @0x000
@@ -113,6 +114,9 @@ namespace MyceliumCraft.Link
         public const int MyWindowH = 0x68;
         public const int MyDashX = 0x6C;       // f32: Mycelium's dash (Blitz, the roll), Minecraft blocks/s along x; 0 and 0 = none; since v32
         public const int MyDashZ = 0x70;       // f32: the same along z
+        public const int MyResourceCount = 0x74; // u32: how many resources you carry (at most ResMax); since v39 (v38: the one resource)
+        public const int MyResources = 0x78;   // u32[ResMax]: each (id << 4) | type, type 1 Rotten Log, 2 Fresh Exoskeleton, 3 Calcite Deposit, 4 Flesh; since v39
+        public const int ResMax = 16;
         public const uint MycInLevel = 1u << 0;
         public const uint MycPaused = 1u << 1;
         public const uint MycOverlay = 1u << 2; // Mycelium shows Minecraft's overlay: Minecraft skips drawing its world

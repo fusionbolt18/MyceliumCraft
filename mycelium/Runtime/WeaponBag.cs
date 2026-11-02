@@ -499,6 +499,7 @@ namespace MyceliumCraft
             seenThrown.Clear();
             for (int i = 0; i < n; i++)
             {
+                if ((thrFlags[i] & Proto.ThrResource) != 0) continue; // a resource: ResourceBag's
                 uint id = thrIds[i];
                 seenThrown.Add(id);
                 if (!flying.TryGetValue(id, out GameObject o))
@@ -533,7 +534,7 @@ namespace MyceliumCraft
         /// thrown weapon moves, so its pop-up goes with it (your choice, 2026-10-21; keeping it from
         /// being interactable until it landed took too long).
         /// </summary>
-        static bool MovePopUp(GameObject weapon, Vector3 by, out Vector3 at)
+        internal static bool MovePopUp(GameObject weapon, Vector3 by, out Vector3 at) // also for thrown resources (ResourceBag)
         {
             at = Vector3.zero;
             if (by.sqrMagnitude < 1e-8f) return false;

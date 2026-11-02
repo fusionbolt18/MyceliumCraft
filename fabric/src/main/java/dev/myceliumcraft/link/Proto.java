@@ -67,10 +67,11 @@ public final class Proto {
 	public static final int THR_MAX = 16;
 	public static final long THR_SIZE = 0x20; // u32 weapon id, u32 flags, f64 x, y, z (Minecraft, the item's feet)
 	public static final int THR_LANDED = 1 << 0; // resting on the ground
+	public static final int THR_RESOURCE = 1 << 1; // a resource of yours (MycState's list), not a weapon; since v39
 
 	public static final long MAPPING_BYTES = OFF_THROWN + THROWN_BYTES;
 	public static final int MAGIC = 0x4343594D; // "MYCC"
-	public static final int VERSION = 37;
+	public static final int VERSION = 39;
 	/** A side is alive if its heartbeat is younger than this. */
 	public static final long HEARTBEAT_TIMEOUT_MS = 3000;
 
@@ -105,6 +106,9 @@ public final class Proto {
 	public static final long MY_SPEED = 0x60; // the spore's walking speed / its base speed (Speed stat, speed effects); 0 = not known; since v26
 	public static final long MY_WINDOW_W = 0x64, MY_WINDOW_H = 0x68; // i32: Mycelium's window size in pixels; 0 = not known; since v31
 	public static final long MY_DASH_X = 0x6C, MY_DASH_Z = 0x70; // f32: Mycelium's dash (Blitz, the roll), blocks/s; 0 and 0 = none; since v32
+	public static final long MY_RESOURCE_COUNT = 0x74; // u32: how many resources you carry (at most RES_MAX); since v39 (v38: the one resource)
+	public static final long MY_RESOURCES = 0x78; // u32[RES_MAX]: each (id << 4) | type, type 1 Rotten Log, 2 Fresh Exoskeleton, 3 Calcite Deposit, 4 Flesh; since v39
+	public static final int RES_MAX = 16;
 	public static final int MYC_IN_LEVEL = 1 << 0;
 	public static final int MYC_PAUSED = 1 << 1;
 	public static final int MYC_OVERLAY = 1 << 2; // Mycelium shows Minecraft's overlay: Minecraft skips drawing its world

@@ -48,6 +48,14 @@ public final class LinkTestMain {
 	private static final boolean HIT = "1".equals(System.getenv("LINKTEST_HIT"));
 	private static int dashFrames;
 	private static boolean vanishedSeen, cycloneSeen, rollSeen;
+	/** LINKTEST_LENGTH=s: run this many seconds instead of 10.5. */
+	private static final double LENGTH = Double.parseDouble(System.getenv().getOrDefault("LINKTEST_LENGTH", "10.5"));
+	private static String resourceSeen = "";
+	// LINKTEST_THROW_RESOURCE=1: once Mycelium lists 3 resources, the first is thrown 1 s later, flying
+	// 3 blocks forward until 1.5 s after, landed for 0.5 s, then gone, as Minecraft reports a thrown item.
+	private static final boolean THROW_RESOURCE = "1".equals(System.getenv("LINKTEST_THROW_RESOURCE"));
+	private static double throwResourceAt = -1;
+	private static int throwResourceId;
 	// LINKTEST_FUNGAL=1: a swing at 5 s that hits nothing, then a swing at 7 s that hits the nearest
 	// enemy once (from 7.1 s), for Fungal Might ending only with a swing that hits (-mcFungalTest).
 	private static final boolean FUNGAL = "1".equals(System.getenv("LINKTEST_FUNGAL"));
@@ -258,7 +266,7 @@ public final class LinkTestMain {
 		MycLink.Tick tick = new MycLink.Tick();
 		while (true) {
 			double t = (System.currentTimeMillis() - start) / 1000.0;
-			if (t > 10.5) {
+			if (t > LENGTH) {
 				break;
 			}
 			// Like Minecraft: apply any new teleport from Mycelium (move there) and confirm it.
@@ -371,6 +379,38 @@ public final class LinkTestMain {
 			if (cycloneNow != cycloneSeen) {
 				cycloneSeen = cycloneNow;
 				System.out.printf("t=%.1f Mycelium's Living Cyclone %s%n", t, cycloneNow ? "spinning (third person behind)" : "over");
+			}
+			if (MycLink.readMycState(myc)) {
+				StringBuilder list = new StringBuilder();
+				for (int i = 0; i < myc.resourceCount; i++) {
+					list.append(i > 0 ? ", " : "").append("type ").append(myc.resourceTypes[i]).append(" #").append(myc.resourceIds[i]);
+				}
+				if (!list.toString().equals(resourceSeen)) {
+					resourceSeen = list.toString();
+					System.out.printf("t=%.2f Mycelium carries %d resource(s): %s%n", t, myc.resourceCount, resourceSeen.isEmpty() ? "none" : resourceSeen);
+				}
+				if (THROW_RESOURCE && throwResourceAt < 0 && myc.resourceCount >= 3) {
+					throwResourceAt = t + 1;
+					throwResourceId = myc.resourceIds[0];
+				}
+			}
+			if (THROW_RESOURCE && throwResourceAt >= 0) {
+				int n = 0;
+				double since = t - throwResourceAt;
+				if (since >= 0 && since < 2) {
+					double f = Math.min(1, since / 1.5);
+					THROW_IDS[0] = throwResourceId;
+					THROW_FLAGS[0] = Proto.THR_RESOURCE | (f >= 1 ? Proto.THR_LANDED : 0);
+					double fx = -Math.sin(Math.toRadians(yaw)), fz = Math.cos(Math.toRadians(yaw));
+					THROW_XYZ[0] = px + (0.3 + 3 * f) * fx;
+					THROW_XYZ[1] = y + 1.2 + 1.5 * f - 2.7 * f * f;
+					THROW_XYZ[2] = pz + (0.3 + 3 * f) * fz;
+					n = 1;
+					if (since < 0.02) {
+						System.out.printf("t=%.2f throwing resource #%d%n", t, throwResourceId);
+					}
+				}
+				MycLink.writeThrown(n, THROW_IDS, THROW_FLAGS, THROW_XYZ);
 			}
 			boolean rollNow = MycLink.readMycState(myc) && (myc.flags & Proto.MYC_ROLL) != 0;
 			if (rollNow != rollSeen) {
