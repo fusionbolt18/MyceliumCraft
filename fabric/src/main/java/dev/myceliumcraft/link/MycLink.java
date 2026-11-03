@@ -488,6 +488,48 @@ public final class MycLink {
 		INT.setRelease(s, b + HB_SEQ, seq + 2);
 	}
 
+	/** Plain snapshot of the Colony block: every spore in your colony. */
+	public static final class Colony {
+		public int count;
+		/** Average happiness 0..1 (-1 = no colony). */
+		public float average = -1f;
+		/** The spore you control (-1 = none). */
+		public int current = -1;
+		public final int[] colors = new int[COL_MAX];
+		public final float[] happiness = new float[COL_MAX];
+		public final String[] names = new String[COL_MAX];
+	}
+
+	/** Seqlock read of the Colony block. Returns false if not linked or the writer kept interrupting. */
+	public static boolean readColony(Colony out) {
+		MemorySegment s = shm;
+		if (s == null) {
+			return false;
+		}
+		long b = OFF_COLONY;
+		for (int attempt = 0; attempt < 16; attempt++) {
+			int seq1 = (int) INT.getAcquire(s, b + COL_SEQ);
+			if ((seq1 & 1) != 0) {
+				Thread.onSpinWait();
+				continue;
+			}
+			out.count = Math.max(0, Math.min(COL_MAX, s.get(JAVA_INT, b + COL_COUNT)));
+			out.average = s.get(JAVA_FLOAT, b + COL_AVERAGE);
+			out.current = s.get(JAVA_INT, b + COL_CURRENT);
+			for (int i = 0; i < out.count; i++) {
+				long e = b + COL_LIST + COL_SIZE * i;
+				out.colors[i] = s.get(JAVA_INT, e + CE_COLOR);
+				out.happiness[i] = s.get(JAVA_FLOAT, e + CE_HAPPINESS);
+				out.names[i] = utf8(s, e + CE_NAME, CE_NAME_BYTES);
+			}
+			VarHandle.loadLoadFence();
+			if (seq1 == (int) INT.getVolatile(s, b + COL_SEQ)) {
+				return true;
+			}
+		}
+		return false;
+	}
+
 	/** Plain snapshot of MycState. */
 	public static final class MycState {
 		public int flags;
@@ -515,6 +557,8 @@ public final class MycLink {
 		/** The resources you carry: how many, and each one's id and type (1 Rotten Log, 2 Fresh Exoskeleton, 3 Calcite Deposit, 4 Flesh). */
 		public int resourceCount;
 		public final int[] resourceIds = new int[RES_MAX], resourceTypes = new int[RES_MAX];
+		/** The name of the spore you control ("" = none). */
+		public String sporeName = "";
 
 		public boolean inLevel() {
 			return (this.flags & MYC_IN_LEVEL) != 0;
@@ -561,6 +605,7 @@ public final class MycLink {
 				out.resourceIds[i] = e >>> 4;
 				out.resourceTypes[i] = e & 0xF;
 			}
+			out.sporeName = utf8(s, b + MY_SPORE_NAME, MY_SPORE_NAME_BYTES);
 			VarHandle.loadLoadFence();
 			int seq2 = (int) INT.getVolatile(s, b + MY_SEQ);
 			if (seq1 == seq2) {

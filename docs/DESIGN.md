@@ -1798,3 +1798,43 @@ Like SkyCraft's `fake_skyrim.py`:
 - **Mycelium's Steam code** (achievements, stats, overlay pause) stays exactly as Mycelium has it.
   The private build doesn't include `steam_appid.txt`, so Steam achievements probably won't
   initialise in it. Not tested.
+
+**Your player goes by the spore's name** (since 2026-11-03, your request; protocol v41).
+- **Mycelium** (`MinecraftDriver.SporeName`): `CharacterStats.sporeName` on the "currentPlayer"
+  object, looked up every 0.5 s (so a spore swap shows within half a second), sent in MycState
+  0xC0. Logged as "name: the spore you control is '…'".
+- **Minecraft** (`MycName.java`): while Mycelium has a spore in a level, your player's display
+  name is that name; otherwise your Minecraft name. Only your own player (by its id).
+  - `PlayerDisplayNameMixin`: `Player.getDisplayName` uses it instead of `getName()`, so chat,
+    death messages and anything else that asks for a display name show it (team colours stay).
+  - `PlayerTabNameMixin`: the player list names players by their profile's name, so that one
+    is swapped there too.
+  - Your Minecraft name itself (the profile, `getName`) is unchanged: commands, saves and the
+    scoreboard still know you by it.
+- **Checked:** the stand-in got "the spore you control is called 'Cline'" (Daybreak Arboretum).
+  The mixins only run in real Minecraft.
+
+**Your colony in the player list** (since 2026-11-03, your request; protocol v42).
+- **Mycelium** (`ColonyWatch.cs`): every 0.5 s, every spore in `SwapCharacter.characters` on
+  "PlayerParent": name, body colour (`DesignTracker.bodyColor`), happiness
+  (`CharacterStats.sporeHappiness`, 0..1), which one you control, and the average (the same sum
+  as `HappinessManager.GetAverageColonyHappiness`). Sent in the Colony block.
+- **Mycelium's colony meter** (`HUDHappiness`: the "Colony x N" text and the happiness slider)
+  is switched off while Minecraft drives and back to how Mycelium had it afterwards. If Mycelium
+  shows it meanwhile, that's noted and it stays hidden.
+- **Minecraft** (`MycColony.java`):
+  - **The other spores are rows like other players'** (since your second request that day):
+    `PlayerTabRowsMixin` adds them after the real players that `PlayerTabOverlay.getPlayerInfos`
+    returns. Each is a `PlayerInfo` with a made-up id from its name (the same each time) and the
+    name cut to 16 characters (Minecraft's longest player name). Its skin is one of Minecraft's
+    built-in ones (`DefaultPlayerSkin.get(id)`, set through `PlayerInfoAccessor`), because
+    Minecraft's own lookup can ask Mojang's skin servers. You are your own row (named by MycName).
+    Made again only when the colony or the spore you control changes.
+  - The footer (under the rows): "Colony Happiness", then a bar of 40 `|`: filled ones in the happiness colour, the rest dark grey. It moves toward
+    the average at 0.6 of its length per second, so it fills up or down as it changes.
+  - Mycelium's word under it: Happy over 0.5, Unhappy under, Content at 0.5 (that's where
+    Mycelium's stat bonus from happiness is above, below or at none), in Mycelium's colours.
+  - Cleared when Mycelium has no spore in a level.
+- **Checked** in the stand-in (The Carcass): "colony: 2 spore(s), average 0.25: Cline (you) 0.00
+  #E3DEFF, Gerf 0.50 #D7D378", and "colony meter hidden (HappinessSlider=True,
+  ColonyHappinessText=True)". The footer itself only shows in real Minecraft.

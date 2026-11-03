@@ -51,6 +51,9 @@ public final class LinkTestMain {
 	/** LINKTEST_LENGTH=s: run this many seconds instead of 10.5. */
 	private static final double LENGTH = Double.parseDouble(System.getenv().getOrDefault("LINKTEST_LENGTH", "10.5"));
 	private static String resourceSeen = "";
+	private static String sporeNameSeen = "";
+	private static String colonySeen = "";
+	private static final MycLink.Colony colony = new MycLink.Colony();
 	// LINKTEST_THROW_RESOURCE=1: once Mycelium lists 3 resources, the first is thrown 1 s later, flying
 	// 3 blocks forward until 1.5 s after, landed for 0.5 s, then gone, as Minecraft reports a thrown item.
 	private static final boolean THROW_RESOURCE = "1".equals(System.getenv("LINKTEST_THROW_RESOURCE"));
@@ -384,6 +387,22 @@ public final class LinkTestMain {
 				StringBuilder list = new StringBuilder();
 				for (int i = 0; i < myc.resourceCount; i++) {
 					list.append(i > 0 ? ", " : "").append("type ").append(myc.resourceTypes[i]).append(" #").append(myc.resourceIds[i]);
+				}
+				if (MycLink.readColony(colony)) {
+					StringBuilder c = new StringBuilder();
+					for (int i = 0; i < colony.count; i++) {
+						c.append(i > 0 ? ", " : "").append(colony.names[i]).append(i == colony.current ? " (you)" : "")
+							.append(String.format(" %.2f #%06X", colony.happiness[i], colony.colors[i]));
+					}
+					String seen = colony.count + " spore(s), average " + String.format("%.2f", colony.average) + ": " + c;
+					if (!seen.equals(colonySeen)) {
+						colonySeen = seen;
+						System.out.printf("t=%.2f colony: %s%n", t, seen);
+					}
+				}
+				if (!myc.sporeName.equals(sporeNameSeen)) {
+					sporeNameSeen = myc.sporeName;
+					System.out.printf("t=%.2f the spore you control is called '%s'%n", t, sporeNameSeen);
 				}
 				if (!list.toString().equals(resourceSeen)) {
 					resourceSeen = list.toString();

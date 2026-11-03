@@ -70,6 +70,7 @@ a block without locks.
 | 0x70 | f32 | the dash along Minecraft's z |
 | 0x74 | u32 | how many resources you carry, at most 16 (MyceliumCraft's bag: several at once while Minecraft drives). Since version 39; in version 38 it was the one resource the spore carried |
 | 0x78 | u32 ×16 | the resources you carry, each `(id << 4) \| type`: id is MyceliumCraft's own for that one resource (from 1), type 1 Rotten Log, 2 Fresh Exoskeleton, 3 Calcite Deposit, 4 Flesh. Minecraft keeps exactly one item per id in the inventory. Since version 39 |
+| 0xC0 | utf8[64] | the name of the spore you control (`CharacterStats.sporeName`), zero-terminated; "" = none. Minecraft's player goes by it (chat, death messages, the player list). Since version 41 |
 
 ### McState @ 0x200 (Minecraft → Mycelium, seqlock)
 
@@ -280,6 +281,19 @@ mapping grows by 0x400.
 | 0x00 | u32 | seq |
 | 0x04 | u32 | count (at most 16) |
 | 0x10 + 0x20·i | entry | u32 weapon id (Weapons table), or a resource id (MycState 0x78) when flags bit1 is set; u32 flags (bit0 landed, bit1 `RESOURCE`: a thrown resource, since version 39); f64 x, y, z (Minecraft, the item's feet, interpolated to the frame) |
+
+### Colony @ after Thrown (Mycelium → Minecraft, seqlock). Since version 42
+
+Every spore in your colony (`SwapCharacter.characters`), for Minecraft's player list
+(`ColonyWatch.cs`, `MycColony.java`). Written every 0.5 s. The mapping grows by 0x800.
+
+| Off | Type | Field |
+|---|---|---|
+| 0x00 | u32 | seq |
+| 0x04 | u32 | count (at most 24) |
+| 0x08 | f32 | the colony's average happiness 0..1 (as `HappinessManager.GetAverageColonyHappiness`); −1 = no colony |
+| 0x0C | i32 | which entry is the spore you control; −1 = none |
+| 0x10 + 0x40·i | entry | u32 body colour `0xRRGGBB` (`DesignTracker.bodyColor`); f32 happiness 0..1 (`CharacterStats.sporeHappiness`); utf8[56] name |
 
 ### GroundGrid @ 0x1000 (Mycelium → Minecraft, seqlock)
 

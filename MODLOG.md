@@ -1,5 +1,69 @@
 # MODLOG
 
+## 2026-11-03 The player list footer says "Colony Happiness"
+
+**Your request:** change the word Colony to Colony Happiness.
+
+**Changed (Minecraft only):** `MycColony.java`, the footer's title line.
+
+**Tested how:** the jar builds. **Not tested in Minecraft.**
+
+## 2026-11-03 The other spores are rows in the player list, like players
+
+**Your request:** the happiness meter looks good; make the other spores look like other players in
+the list rather than names in text.
+
+**Changed (Minecraft only):**
+- New `PlayerTabRowsMixin`: the player list's rows (`PlayerTabOverlay.getPlayerInfos`) get the
+  other spores added after the real players.
+- `MycColony.java` makes a `PlayerInfo` per spore: a fixed made-up id from its name, the name
+  (at most 16 characters), and one of Minecraft's built-in skins via the new `PlayerInfoAccessor`
+  (Minecraft's own lookup can ask Mojang's skin servers; this stays offline).
+- The footer keeps "Colony", the bar and the word; the names are gone from it.
+
+**Tested how:** the jar builds. **Not tested in Minecraft** (the stand-in has no player list).
+
+## 2026-11-03 Your colony in the player list instead of Mycelium's colony meter (protocol v42)
+
+**Your request:** get rid of Mycelium's colony count UI; put every spore's name in your colony in
+Minecraft's player list, with a text bar under the names that fills up or down like the
+happiness bar.
+
+**Changed:**
+- New `ColonyWatch.cs`: hides `HUDHappiness`'s colony text and slider while Minecraft drives
+  (back as Mycelium had them after), and every 0.5 s sends every spore's name, body colour and
+  happiness, which one you control and the average (new Colony block, after Thrown).
+- New `MycColony.java`: the player list's footer shows "Colony", the names in their colours
+  (yours bold), a 40-segment `|` bar of the average that moves toward it at 0.6 per second, and
+  Happy / Content / Unhappy.
+- The stand-in prints the colony it gets. Protocol 41 -> 42: install the new jar.
+
+**Tested how:** stand-in, The Carcass: Mycelium sent "2 spore(s), average 0.25: Cline (you) 0.00
+#E3DEFF, Gerf 0.50 #D7D378", the fake Minecraft got the same, and the meter was hidden (both parts
+were on before). **Not tested:** the footer in Minecraft, the bar's fill animation, the meter
+coming back after Minecraft stops driving.
+
+**Note:** Unity's first build after adding a new file failed (CS0246, ColonyWatch not found: it
+compiled before importing the file); a second build was clean.
+
+## 2026-11-03 Your player goes by the spore's name (protocol v41)
+
+**Your request:** change the Minecraft player's display name to the name of the spore you control.
+
+**Changed:**
+- Mycelium sends `CharacterStats.sporeName` of the current spore (MycState 0xC0, looked up every
+  0.5 s, so a swap shows within half a second).
+- Minecraft: `MycName.java` holds it. `PlayerDisplayNameMixin` puts it into
+  `Player.getDisplayName` (chat, death messages), `PlayerTabNameMixin` into the player list.
+  Only while Mycelium has a spore in a level, and only your own player. Your real Minecraft name
+  (profile) is untouched.
+- The stand-in prints the name it gets. Protocol 40 -> 41: install the new jar.
+
+**Tested how:** stand-in, Daybreak Arboretum: Mycelium logged "the spore you control is 'Cline'",
+the fake Minecraft got "called 'Cline'". **Not tested in Minecraft** (the mixins only run there).
+Spore swaps not tested. The stand-in's "weapons version: got 3, expected 7" check failed in this
+level; it expects another level's weapons and this change doesn't touch weapons.
+
 ## 2026-11-03 The player list shows in single player
 
 **Your request:** make the player list work in single-player worlds.

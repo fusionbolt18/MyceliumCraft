@@ -69,9 +69,18 @@ public final class Proto {
 	public static final int THR_LANDED = 1 << 0; // resting on the ground
 	public static final int THR_RESOURCE = 1 << 1; // a resource of yours (MycState's list), not a weapon; since v39
 
-	public static final long MAPPING_BYTES = OFF_THROWN + THROWN_BYTES;
+	// Colony (Mycelium -> Minecraft, seqlock): every spore in your colony, for the player list (since v42).
+	public static final long OFF_COLONY = OFF_THROWN + THROWN_BYTES;
+	public static final long COLONY_BYTES = 0x800;
+	public static final long COL_SEQ = 0x00, COL_COUNT = 0x04, COL_AVERAGE = 0x08, COL_CURRENT = 0x0C, COL_LIST = 0x10;
+	public static final int COL_MAX = 24;
+	public static final long COL_SIZE = 0x40; // u32 body colour 0xRRGGBB, f32 happiness 0..1, utf8[56] name
+	public static final long CE_COLOR = 0x00, CE_HAPPINESS = 0x04, CE_NAME = 0x08;
+	public static final int CE_NAME_BYTES = 0x38;
+
+	public static final long MAPPING_BYTES = OFF_COLONY + COLONY_BYTES;
 	public static final int MAGIC = 0x4343594D; // "MYCC"
-	public static final int VERSION = 40;
+	public static final int VERSION = 42;
 	/** A side is alive if its heartbeat is younger than this. */
 	public static final long HEARTBEAT_TIMEOUT_MS = 3000;
 
@@ -109,6 +118,8 @@ public final class Proto {
 	public static final long MY_RESOURCE_COUNT = 0x74; // u32: how many resources you carry (at most RES_MAX); since v39 (v38: the one resource)
 	public static final long MY_RESOURCES = 0x78; // u32[RES_MAX]: each (id << 4) | type, type 1 Rotten Log, 2 Fresh Exoskeleton, 3 Calcite Deposit, 4 Flesh; since v39
 	public static final int RES_MAX = 16;
+	public static final long MY_SPORE_NAME = 0xC0; // utf8[64]: the name of the spore you control; "" = none; since v41
+	public static final int MY_SPORE_NAME_BYTES = 64;
 	public static final int MYC_IN_LEVEL = 1 << 0;
 	public static final int MYC_PAUSED = 1 << 1;
 	public static final int MYC_OVERLAY = 1 << 2; // Mycelium shows Minecraft's overlay: Minecraft skips drawing its world

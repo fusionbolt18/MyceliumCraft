@@ -61,6 +61,7 @@ namespace MyceliumCraft
         readonly WeaponBag weapons = new WeaponBag();
         readonly SkillAim skillAim = new SkillAim();
         readonly DashWatch dash = new DashWatch();
+        readonly ColonyWatch colony = new ColonyWatch();
         readonly VanishWatch vanish = new VanishWatch();
         readonly KeyHints keyHints = new KeyHints();
         readonly SkillIconWatch skillIcons = new SkillIconWatch();
@@ -344,6 +345,7 @@ namespace MyceliumCraft
                 weapons.SceneLoaded(scene);
                 shrooms.SceneLoaded();
                 resources.SceneLoaded(scene);
+                colony.SceneLoaded();
                 SetPhase(Phase.Idle, "new scene");
             };
         }
@@ -389,7 +391,15 @@ namespace MyceliumCraft
             link.WriteMycState(flags, pos.x, pos.y, pos.z, yaw, frame, tp, rb != null ? playerHeightBlocks : 0f, health, maxHealth,
                                nutrients, sprout.Update(), rb != null ? SpeedFactor() : 0f,
                                Screen.width, Screen.height, // Minecraft's window follows this size (MycWindowSize.java)
-                               dashX, dashZ, resourceCount, resources.Entries);
+                               dashX, dashZ, resourceCount, resources.Entries,
+                               rb != null ? SporeName() : ""); // Minecraft's player goes by it (MycName.java)
+
+            // Your colony: in Minecraft's player list instead of Mycelium's colony meter (ColonyWatch, MycColony.java).
+            if (colony.Update(rb != null && phase == Phase.Driving && link.MinecraftAlive))
+            {
+                if (rb != null) link.WriteColony(colony.Count, colony.Colors, colony.Happiness, colony.Names, colony.Average, colony.Current);
+                else link.WriteColony(0, colony.Colors, colony.Happiness, colony.Names, -1f, -1);
+            }
 
             bool alive = link.MinecraftAlive;
             if (alive != mcWasAlive)
@@ -1176,6 +1186,29 @@ namespace MyceliumCraft
         /// changed while speed effects last: Nimble's boost, slows) / SporeAttributeRanges.moveSpeedBase.
         /// 1 at Speed level 1 with no effects. 0 when not known.
         /// </summary>
+        /// <summary>
+        /// The name of the spore you control (CharacterStats.sporeName on "currentPlayer"; it changes
+        /// when you swap spores). Looked up every 0.5 s; "" if there's none.
+        /// </summary>
+        string SporeName()
+        {
+            if (Time.realtimeSinceStartup < nextNameLook) return sporeName;
+            nextNameLook = Time.realtimeSinceStartup + 0.5f;
+            GameObject player = GameObject.FindWithTag("currentPlayer");
+            Type ct = Type.GetType("CharacterStats, Assembly-CSharp");
+            Component stats = player != null && ct != null ? player.GetComponent(ct) : null;
+            string name = (stats != null ? ct.GetField("sporeName")?.GetValue(stats) as string : null) ?? "";
+            name = name.Trim();
+            if (name != sporeName)
+            {
+                McLog.Info($"name: the spore you control is '{name}' (was '{sporeName}'); Minecraft's player goes by it");
+                sporeName = name;
+            }
+            return sporeName;
+        }
+        string sporeName = "";
+        float nextNameLook;
+
         float SpeedFactor()
         {
             GameObject parent = GameObject.Find("PlayerParent");

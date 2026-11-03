@@ -122,6 +122,9 @@ public final class MyceliumCraftClient implements ClientModInitializer {
 			MycWindowSize.follow(minecraft, MYC.windowW, MYC.windowH); // Minecraft's window the size of Mycelium's
 		}
 		LocalPlayer player = minecraft.player;
+		// Your player goes by the spore's name while Mycelium has one (MycName).
+		MycName.update(haveMyc && MycLink.myceliumAlive() && MYC.inLevel() ? MYC.sporeName : "", player != null ? player.getUUID() : null);
+		MycColony.update(minecraft, haveMyc && MycLink.myceliumAlive() && MYC.inLevel()); // your colony in the player list
 		MycOverlay.setActive(haveMyc && MycLink.myceliumAlive() && MYC.inLevel() && (MYC.flags & Proto.MYC_OVERLAY) != 0
 			&& player != null && minecraft.level != null);
 		if (player == null || minecraft.level == null) {

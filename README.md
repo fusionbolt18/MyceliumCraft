@@ -159,6 +159,14 @@ Single-player and offline only.
 - **Trophic Cascade:** your Minecraft body vanishes and reappears with the spore, and from first
   person the view goes to third person behind meanwhile (not tested in Minecraft; tested in
   Mycelium with a fake vanish).
+- **Your colony is in Minecraft's player list** (Tab): the other spores are rows like other
+  players' (a built-in Minecraft skin each), then a text bar of the colony's happiness that fills up or down, and Happy / Content / Unhappy.
+  Mycelium's own colony meter is hidden while Minecraft drives. The colony reaches a fake
+  Minecraft and the meter hides; the bar looks right in Minecraft (your test); **the spore rows
+  are not tested**.
+- **Your Minecraft player goes by the name of the spore you control** (chat, death messages, the
+  player list); your Minecraft name otherwise. The name reaches a fake Minecraft; **not tested in
+  Minecraft**.
 - **Blitz and the dodge roll move your Minecraft player** (not tested in Minecraft; the dash reaches
   a fake Minecraft).
   - **The dodge roll goes the way your held movement keys point,** else the way you last moved,

@@ -76,9 +76,18 @@ namespace MyceliumCraft.Link
         public const uint ThrLanded = 1u << 0;  // resting on the ground
         public const uint ThrResource = 1u << 1; // a resource of yours (MycState's list), not a weapon; since v39
 
-        public const int MappingBytes = OffThrown + ThrownBytes;
+        // Colony (Mycelium -> Minecraft, seqlock): every spore in your colony, for Minecraft's player
+        // list (since v42).
+        public const int OffColony = OffThrown + ThrownBytes;
+        public const int ColonyBytes = 0x800;
+        public const int ColSeq = 0x00, ColCount = 0x04, ColAverage = 0x08, ColCurrent = 0x0C, ColList = 0x10;
+        public const int ColMax = 24;
+        public const int ColSize = 0x40;           // u32 body colour 0xRRGGBB, f32 happiness 0..1, utf8[56] name
+        public const int CeColor = 0x00, CeHappiness = 0x04, CeName = 0x08, CeNameBytes = 0x38;
+
+        public const int MappingBytes = OffColony + ColonyBytes;
         public const uint Magic = 0x4343594D; // "MYCC"
-        public const uint Version = 40;
+        public const uint Version = 42;
         public const ulong HeartbeatTimeoutMs = 3000;
 
         // Header @0x000
@@ -117,6 +126,8 @@ namespace MyceliumCraft.Link
         public const int MyResourceCount = 0x74; // u32: how many resources you carry (at most ResMax); since v39 (v38: the one resource)
         public const int MyResources = 0x78;   // u32[ResMax]: each (id << 4) | type, type 1 Rotten Log, 2 Fresh Exoskeleton, 3 Calcite Deposit, 4 Flesh; since v39
         public const int ResMax = 16;
+        public const int MySporeName = 0xC0;   // utf8[64]: the name of the spore you control (CharacterStats.sporeName); "" = none; since v41
+        public const int MySporeNameBytes = 64;
         public const uint MycInLevel = 1u << 0;
         public const uint MycPaused = 1u << 1;
         public const uint MycOverlay = 1u << 2; // Mycelium shows Minecraft's overlay: Minecraft skips drawing its world

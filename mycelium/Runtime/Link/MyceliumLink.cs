@@ -152,7 +152,7 @@ namespace MyceliumCraft.Link
         }
 
         /// <summary>Seqlock write of MycState.</summary>
-        public void WriteMycState(uint flags, double x, double y, double z, float yaw, ulong frame, in Teleport tp, float playerHeightBlocks, float health = 0f, float maxHealth = 0f, int nutrients = -1, float emerge = -1f, float speed = 0f, int windowW = 0, int windowH = 0, float dashX = 0f, float dashZ = 0f, int resourceCount = 0, uint[] resources = null)
+        public void WriteMycState(uint flags, double x, double y, double z, float yaw, ulong frame, in Teleport tp, float playerHeightBlocks, float health = 0f, float maxHealth = 0f, int nutrients = -1, float emerge = -1f, float speed = 0f, int windowW = 0, int windowH = 0, float dashX = 0f, float dashZ = 0f, int resourceCount = 0, uint[] resources = null, string sporeName = "")
         {
             int b = Proto.OffMycState;
             uint seq = ReadU32(view, b + Proto.MySeq);
@@ -182,6 +182,7 @@ namespace MyceliumCraft.Link
             resourceCount = resources == null ? 0 : Math.Min(Math.Min(resourceCount, resources.Length), Proto.ResMax);
             WriteU32(view, b + Proto.MyResourceCount, (uint)resourceCount);
             for (int i = 0; i < resourceCount; i++) WriteU32(view, b + Proto.MyResources + 4 * i, resources[i]);
+            WriteUtf8(view, b + Proto.MySporeName, Proto.MySporeNameBytes, sporeName);
             Thread.MemoryBarrier();
             WriteU32(view, b + Proto.MySeq, seq + 2); // even: done
         }
@@ -442,6 +443,28 @@ namespace MyceliumCraft.Link
         }
 
         /// <summary>A string as UTF-8, cut to fit (whole characters) and zero-terminated.</summary>
+        /// <summary>Seqlock write of the Colony block (average -1: no colony; current -1: none).</summary>
+        public void WriteColony(int count, uint[] colors, float[] happiness, string[] names, float average, int current)
+        {
+            int b = Proto.OffColony;
+            count = Math.Max(0, Math.Min(count, Proto.ColMax));
+            uint seq = ReadU32(view, b + Proto.ColSeq);
+            WriteU32(view, b + Proto.ColSeq, seq + 1);
+            Thread.MemoryBarrier();
+            WriteU32(view, b + Proto.ColCount, (uint)count);
+            WriteF32(view, b + Proto.ColAverage, average);
+            Marshal.WriteInt32(view, b + Proto.ColCurrent, current);
+            for (int i = 0; i < count; i++)
+            {
+                int e = b + Proto.ColList + Proto.ColSize * i;
+                WriteU32(view, e + Proto.CeColor, colors[i]);
+                WriteF32(view, e + Proto.CeHappiness, happiness[i]);
+                WriteUtf8(view, e + Proto.CeName, Proto.CeNameBytes, names[i]);
+            }
+            Thread.MemoryBarrier();
+            WriteU32(view, b + Proto.ColSeq, seq + 2);
+        }
+
         static void WriteUtf8(IntPtr p, int off, int bytes, string s)
         {
             byte[] data = System.Text.Encoding.UTF8.GetBytes(s ?? "");
