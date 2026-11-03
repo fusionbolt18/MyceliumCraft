@@ -33,7 +33,7 @@ namespace MyceliumCraft
         const float RayLength = 400f;
         const float SlabBlocks = 0.5f;       // thickness of a surface with no underside found
         const float PlayerBlocks = 1.8f;     // Minecraft player height, for the "too low" count
-        const float ThinUnderside = 0.01f;   // an underside at least this far below its surface is real (units)
+        const float ThinUnderside = 0.001f;  // an underside at least this far below its surface is real (units); an oyster cap edge 0.009 thin was missed at 0.01 and became a pillar (2026-11-03)
 
         // Layers the spore collides with but which are not ground (characters, weapons, effects).
         static readonly string[] NotGround =

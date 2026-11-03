@@ -81,6 +81,8 @@ namespace MyceliumCraft
         bool checkAfterHold;   // just got the controls back: resync if Mycelium moved the spore
         string controlsWhy = "";
         bool needScan = true;
+        bool rescanCompare;    // the next scan is a rescan after Mycelium had the controls: log what changed
+        bool firstScan;        // the next scan is the first in this level: log what solid things are near the spore
         Component controller;
         Rigidbody rb;
         Animator animator;
@@ -605,9 +607,15 @@ namespace MyceliumCraft
             if (needScan || Math.Abs(sporeMcX - ground.CenterX) > RescanBlocks || Math.Abs(sporeMcZ - ground.CenterZ) > RescanBlocks)
             {
                 needScan = false;
+                float[] before = rescanCompare ? (float[])ground.Pieces.Clone() : null;
+                double beforeX = ground.OriginX, beforeZ = ground.OriginZ;
                 string summary = ground.Scan(pos, map);
                 link.WriteGround(ground.Version, GroundScanner.N, ground.OriginX, ground.OriginZ, GroundScanner.CellBlocks, ground.Pieces);
                 McLog.Info(summary);
+                if (before != null) LogScanChanges(before, beforeX, beforeZ);
+                rescanCompare = false;
+                if (firstScan) LogSolidsNear(pos);
+                firstScan = false;
                 if (Array.IndexOf(Environment.GetCommandLineArgs(), "-mcDumpGrid") >= 0) DumpGrid();
                 // Test aid: "-mcColumn x,z;x,z" logs what the scan finds in those columns (Minecraft coordinates).
                 string[] cmd = Environment.GetCommandLineArgs();
@@ -618,7 +626,11 @@ namespace MyceliumCraft
                         string[] p = xz.Split(',');
                         if (p.Length == 2 && double.TryParse(p[0], System.Globalization.NumberStyles.Float, System.Globalization.CultureInfo.InvariantCulture, out double cx)
                                           && double.TryParse(p[1], System.Globalization.NumberStyles.Float, System.Globalization.CultureInfo.InvariantCulture, out double cz))
+                        {
                             McLog.Info(ground.DescribeColumn(cx, cz, pos, map));
+                            // Again with the rays starting 50 units higher: a box the rays start inside isn't seen.
+                            McLog.Info("(rays 50 higher) " + ground.DescribeColumn(cx, cz, pos + Vector3.up * 50f, map));
+                        }
                     }
             }
 
@@ -663,6 +675,12 @@ namespace MyceliumCraft
             {
                 heldByMycelium = false;
                 checkAfterHold = true;
+                // Scan the ground again: while Mycelium had the controls (the sprout on arrival, a
+                // cutscene, a menu) things can appear and go. The first scan happens 0.1 s after
+                // arriving, mid-sprout, and something solid there then stays a block in Minecraft
+                // after it's gone (your report, 2026-11-03: an invisible wall where you appear).
+                needScan = true;
+                rescanCompare = true;
                 McLog.Info("hold: Mycelium gave the controls back; Minecraft drives the spore again");
             }
 
@@ -761,6 +779,68 @@ namespace MyceliumCraft
         }
 
         /// <summary>Test aid ("-mcDumpGrid"): the grid exactly as sent to Minecraft, to grid_v{N}.csv next to the exe.</summary>
+        /// <summary>
+        /// After a rescan: how many cells changed since the scan before, and the first few (where,
+        /// pieces before and now). A piece that was there and is gone was an invisible block.
+        /// </summary>
+        void LogScanChanges(float[] before, double beforeX, double beforeZ)
+        {
+            const int N = GroundScanner.N, F = Proto.GFloatsPerCell;
+            int di = (int)Math.Round((ground.OriginX - beforeX) / GroundScanner.CellBlocks);
+            int dj = (int)Math.Round((ground.OriginZ - beforeZ) / GroundScanner.CellBlocks);
+            int changed = 0;
+            var near = new System.Collections.Generic.List<(double d, string text)>();
+            for (int j = 0; j < N; j++)
+                for (int i = 0; i < N; i++)
+                {
+                    int oi = i + di, oj = j + dj; // the same spot in the scan before
+                    if (oi < 0 || oj < 0 || oi >= N || oj >= N) continue;
+                    int a = (j * N + i) * F, b = (oj * N + oi) * F;
+                    bool same = true;
+                    for (int k = 0; k < F && same; k++)
+                    {
+                        float x = ground.Pieces[a + k], y = before[b + k];
+                        same = x == y || Math.Abs(x - y) < 0.05f;
+                    }
+                    if (same) continue;
+                    changed++;
+                    double cx = ground.OriginX + (i + 0.5) * GroundScanner.CellBlocks, cz = ground.OriginZ + (j + 0.5) * GroundScanner.CellBlocks;
+                    double d = Math.Sqrt((cx - ground.CenterX) * (cx - ground.CenterX) + (cz - ground.CenterZ) * (cz - ground.CenterZ));
+                    near.Add((d, $"\n  at Minecraft ({cx:F2}, {cz:F2}), {d:F1} blocks from the spore: before {Pieces(before, b)}, now {Pieces(ground.Pieces, a)}"));
+                }
+            near.Sort((p, q) => p.d.CompareTo(q.d));
+            var sb = new System.Text.StringBuilder();
+            for (int k = 0; k < near.Count && k < 8; k++) sb.Append(near[k].text);
+            McLog.Info($"ground rescan after Mycelium gave the controls back: {changed} of {N * N} cells changed{(changed > 8 ? " (the 8 nearest the spore shown)" : "")}{sb}");
+        }
+
+        static string Pieces(float[] p, int at)
+        {
+            var sb = new System.Text.StringBuilder();
+            for (int k = 0; k < Proto.GPieces; k++)
+            {
+                float bottom = p[at + 2 * k], top = p[at + 2 * k + 1];
+                if (top >= Proto.Unused) break;
+                sb.Append(bottom <= Proto.FarBelow ? $"(far below, {top:F2})" : $"({bottom:F2}, {top:F2})");
+            }
+            return sb.Length > 0 ? sb.ToString() : "(nothing)";
+        }
+
+        /// <summary>First scan in a level: the solid colliders (not the terrain) within 6 units of the spore.</summary>
+        void LogSolidsNear(Vector3 at)
+        {
+            var sb = new System.Text.StringBuilder();
+            int n = 0;
+            foreach (Collider c in Physics.OverlapSphere(at, 6f, ground.LayerMask, QueryTriggerInteraction.Ignore))
+            {
+                if (c is TerrainCollider) continue;
+                n++;
+                Bounds b = c.bounds;
+                sb.Append($"\n  '{c.name}' {c.GetType().Name} layer={LayerMask.LayerToName(c.gameObject.layer)} from ({b.min.x:F1}, {b.min.y:F1}, {b.min.z:F1}) to ({b.max.x:F1}, {b.max.y:F1}, {b.max.z:F1})");
+            }
+            McLog.Info($"ground: {n} solid things (not the terrain) within 6 units of the spore at the first scan{sb}");
+        }
+
         void DumpGrid()
         {
             var inv = System.Globalization.CultureInfo.InvariantCulture;
@@ -870,6 +950,8 @@ namespace MyceliumCraft
             playerHeightBlocks = McConfig.MatchSporeSize && sporeHeight > 0.1f ? (float)(sporeHeight / map.Scale) : 0f;
             McLog.Info($"spore body: {sporeHeight:F2} units tall -> Minecraft player height {(playerHeightBlocks > 0 ? $"{playerHeightBlocks:F3} blocks (scale {playerHeightBlocks / 1.8f:F3})" : "unchanged (matchSporeSize=0)")}");
             needScan = true;
+            firstScan = true;
+            rescanCompare = false;
             SetPhase(Phase.Idle, "new player");
             McLog.Info($"found PlayerController on '{controller.gameObject.name}', rigidbody on '{rb.gameObject.name}' (layer {LayerMask.LayerToName(rb.gameObject.layer)}, useGravity={rb.useGravity}, interpolation={rb.interpolation}) at {rb.position:F2}, feet y={FeetY(rb.position.y):F2}");
             McLog.Info($"ground layers: {ground.LayerNames}");

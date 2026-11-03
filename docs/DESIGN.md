@@ -232,9 +232,20 @@ player to fix that.
   Mycelium's ground, unchanged.
 
 **Known limits:**
+- An underside counts if it's at least 0.001 units below its surface (a surface's own back face
+  is exactly 0.000). At 0.01, the thin edge of an oyster mushroom cap (0.009) was missed, the cap
+  looked one-sided, and the gap under it was filled into an invisible pillar.
 - One-way surfaces become ½-block slabs, so you can't jump up through them from below like the
   spore could.
-- Things that move (doors, platforms) aren't rescanned.
+- Things that move (doors, platforms) aren't rescanned while you walk. The ground is scanned
+  again each time Mycelium gives the controls back (after the sprout on arrival, a cutscene, a
+  menu), because the first scan happens 0.1 s after arriving, mid-sprout, and anything solid
+  there then stayed an invisible block in Minecraft. The log says how many cells changed and lists
+  the 8 nearest the spore ("ground rescan after Mycelium gave the controls back"). The first scan
+  in a level also lists the solid things within 6 units of the spore.
+- The rays start 60 units above the spore. The Carcass's edge walls are 61 units tall, so when
+  you arrive low the rays start inside them and those walls can be missing in Minecraft (seen in
+  the stand-in, 2026-11-03; not fixed).
 - Holes go all the way down to the superflat world's own ground.
 
 ### 5.0.1 Minecraft rules changed by the mod (for combat)

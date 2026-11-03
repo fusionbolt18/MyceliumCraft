@@ -1,5 +1,51 @@
 # MODLOG
 
+## 2026-11-03 The invisible wall in the Carcass: a pillar under a mushroom cap's thin edge
+
+**Your report:** the same invisible thing was still there after the rescan change. You walked into
+it and quit.
+
+**What the logs showed:** both runs, you stopped at Minecraft x = 7.30 facing east. With your
+body's half-width (0.2 blocks) that's a face at x = 7.5, a cell edge. Probing those cells: the one
+at (7.75, 0.75) was sent as a solid piece from the ground (0.72) to 3.50 blocks. Above it is an
+`OysterCap` (a big flat mushroom cap) whose underside there is only 0.009 units below its top.
+The scanner only counted an underside more than 0.01 below (to skip a surface's own back face,
+which is exactly 0.000), so the cap looked one-sided, and the 3.9-unit gap under it was filled
+solid (gaps under one-sided surfaces smaller than 4.25 units are filled).
+
+**Changed (`GroundScanner.cs`):** that limit is now 0.001 units. The cell is now just the cap,
+(3.49, 3.50), with open space under it. Across the whole Carcass scan, 123 thin undersides are found
+instead of about 110, so other cells had the same problem.
+
+**The rescan change from earlier today** wasn't the fix. I'm keeping it: it's harmless (one scan,
+about 35 ms, each time you get the controls back), and its log helps when the ground changes.
+
+**Tested how:** stand-in Carcass, column probe. **Not tested in Minecraft.**
+
+## 2026-11-03 Ground scanned again after the sprout (invisible wall where you appear)
+
+**Your report:** an invisible wall in the Carcass, near where you appear, not near the level's own
+invisible walls.
+
+**What the logs showed:** the ground is scanned once on arrival, 0.1 s in, while the spore is still
+sprouting. In the stand-in, the fixed level has nothing at body height within 3 blocks of where you
+appeared (169 columns checked). So the wall was most likely something there only during the
+arrival, kept as a block in Minecraft. **I did not find which object it was.** Your arrival spot
+(Mycelium (20.1, 5.1)) isn't where the stand-in arrives, so I couldn't repeat it exactly.
+
+**Changed (`MinecraftDriver.cs`):** the ground is scanned again each time Mycelium gives the
+controls back (after the sprout, a cutscene, a menu). The log lists how many cells changed, the 8
+nearest the spore, and on the first scan the solid things within 6 units of the spore. The
+`-mcColumn` test aid now also probes with the rays 50 units higher.
+
+**Tested how:** stand-in Carcass with `-mcHoldTest`. The first rescan changed 52 cells, including
+a floating piece 1.06–1.44 blocks high at Minecraft (17.25, -7.25) that went away. A second rescan
+changed 0 cells. **Not tested in Minecraft.**
+
+**Dead end, recorded:** the first rescan attempt didn't compile (`List` needed its full name).
+Also seen: the Carcass's 61-unit edge walls can go missing in Minecraft when the scan's rays
+start inside them. Not fixed.
+
 ## 2026-11-02 No Minecraft toasts
 
 **Your request:** prevent all of Minecraft's toast pop-ups.

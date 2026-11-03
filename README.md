@@ -26,6 +26,10 @@ Single-player and offline only.
   in Minecraft (zero-thickness pieces). That's fixed but **not tested in Minecraft yet**. Against
   the game's actual grid, every position the spore stood in your last two logs is open (0/188,
   0/90 closed).
+- **Ground rescanned after the sprout (not tested in Minecraft):** clears things that were only
+  there while you arrived. In the stand-in Carcass the rescan removed 52 stale cells.
+- **No pillars under thin mushroom-cap edges (not tested in Minecraft):** the invisible wall near
+  where you appear in the Carcass. Gone in the stand-in's scan.
 - **Stuck safety net (not tested in Minecraft):** if the spore and Minecraft's player disagree by
   more than 1.5 units for 2 seconds, Minecraft's player is moved back onto the spore.
 - **Teleport handshake and tracking:** tested with a fake Minecraft. Teleport confirmed in under
