@@ -35,10 +35,15 @@ namespace MyceliumCraft
 
         Vector3 inUpdate;
         bool rolling;      // this dash is the dodge roll (not Blitz)
-        Vector3 rollDir;   // where the roll goes (horizontal, unit), when redirected
+        Vector3 dashDir;   // where the dash goes (horizontal, unit), when redirected
 
-        /// <summary>The roll's direction while it's redirected along your movement; zero otherwise.</summary>
-        public Vector3 RollDirection => dashing && rolling ? rollDir : Vector3.zero;
+        /// <summary>A dodge roll or Blitz is moving you now.</summary>
+        public bool Dashing => dashing;
+        /// <summary>The dash now is the dodge roll (else Blitz); only meaningful while Dashing.</summary>
+        public bool Rolling => rolling;
+
+        /// <summary>The dash's direction while it's redirected (the roll: your movement; Blitz: the camera); zero otherwise.</summary>
+        public Vector3 DashDirection => dashing ? dashDir : Vector3.zero;
 
         /// <summary>Update (before coroutines run): the velocity as it is now.</summary>
         public void BeforeCoroutines(Rigidbody rb)
@@ -58,8 +63,12 @@ namespace MyceliumCraft
         /// it faces Minecraft's body, which can point well away from the walk (strafing, walking
         /// back), so the roll went sideways. So a roll's dash keeps its speed but goes along
         /// moveDir, and the spore faces that way while it rolls (MinecraftDriver).
+        ///
+        /// Blitz goes where the camera looks (your request, 2026-11-03; the roll stays as above).
+        /// Mycelium sends Blitz along the spore's facing too, Minecraft's body here. camDir: the
+        /// camera's forward, flattened (horizontal, unit; zero if there's no camera).
         /// </summary>
-        public void LateUpdate(Component controller, Rigidbody rb, bool driving, bool roll, Vector3 moveDir, string moveFrom)
+        public void LateUpdate(Component controller, Rigidbody rb, bool driving, bool roll, Vector3 moveDir, string moveFrom, Vector3 camDir)
         {
             if (!looked && controller != null)
             {
@@ -82,13 +91,18 @@ namespace MyceliumCraft
                         start = Time.time;
                         startPos = rb.position;
                         rolling = roll;
-                        rollDir = roll && moveDir.sqrMagnitude > 0.5f ? moveDir.normalized : Vector3.zero;
+                        Vector3 toward = roll ? moveDir : camDir;
+                        dashDir = toward.sqrMagnitude > 0.5f ? toward.normalized : Vector3.zero;
                         if (roll)
-                            McLog.Info(rollDir != Vector3.zero
-                                ? $"dash: dodge roll along {moveFrom} ({Yaw(rollDir):F0} deg) instead of the spore's facing ({Yaw(rb.transform.forward):F0} deg; Mycelium's roll heads {Yaw(v):F0} deg)"
+                            McLog.Info(dashDir != Vector3.zero
+                                ? $"dash: dodge roll along {moveFrom} ({Yaw(dashDir):F0} deg) instead of the spore's facing ({Yaw(rb.transform.forward):F0} deg; Mycelium's roll heads {Yaw(v):F0} deg)"
                                 : $"dash: dodge roll along the spore's facing ({Yaw(v):F0} deg): you haven't moved yet");
+                        else
+                            McLog.Info(dashDir != Vector3.zero
+                                ? $"dash: Blitz along the camera ({Yaw(dashDir):F0} deg) instead of the spore's facing ({Yaw(rb.transform.forward):F0} deg; Mycelium's Blitz heads {Yaw(v):F0} deg)"
+                                : $"dash: Blitz along the spore's facing ({Yaw(v):F0} deg): no camera");
                     }
-                    dash = rolling && rollDir != Vector3.zero ? rollDir * v.magnitude : v;
+                    dash = dashDir != Vector3.zero ? dashDir * v.magnitude : v;
                     until = Time.time + HoldSeconds;
                     frames++;
                 }

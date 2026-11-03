@@ -20,7 +20,9 @@ namespace MyceliumCraft
     /// Mycelium's code is unchanged.
     ///
     /// A key bound to a Mycelium action belongs to Mycelium: the input bridge doesn't send it to
-    /// Minecraft (OwnedScancodes, OwnedButtons). Everything else goes to Minecraft. Escape and P
+    /// Minecraft (OwnedScancodes, OwnedButtons), except one that's also Minecraft's List Players key
+    /// (id 12, since v40; your request, 2026-11-03: Tab both shows stats and lists players): that
+    /// one goes to both. Everything else goes to Minecraft. Escape and P
     /// always stay Mycelium's pause keys. Until Minecraft sends bindings, Defaults are used (your
     /// choice of 2026-10-17: R interact, Tab show stats).
     ///
@@ -118,7 +120,19 @@ namespace MyceliumCraft
                 }
                 newPaths[i] = path;
             }
-            string sig = string.Join("|", newPaths);
+            // Minecraft's List Players key (after Mycelium's actions and Minecraft's Attack): shared.
+            string shared = "";
+            int list = Actions.Length + 1;
+            if (mc && count > list)
+            {
+                if (kinds[list] == Proto.BindKey && newScancodes.Remove((int)codes[list])) shared = $"scancode {codes[list]}";
+                else if (kinds[list] == Proto.BindMouse && codes[list] < 32 && (newButtons & (1u << (int)codes[list])) != 0)
+                {
+                    newButtons &= ~(1u << (int)codes[list]);
+                    shared = $"mouse button {codes[list]}";
+                }
+            }
+            string sig = string.Join("|", newPaths) + "|" + shared;
             if (sig == signature && mc == fromMinecraft) return;
             signature = sig;
             fromMinecraft = mc;
@@ -128,7 +142,8 @@ namespace MyceliumCraft
             ownedButtons = newButtons;
             McLog.Info($"keys: Mycelium key binds {(mc ? "from Minecraft's Controls menu" : "(defaults; Minecraft hasn't sent any)")}: " +
                        string.Join(", ", Actions.Select((a, i) => $"{a.id}={(paths[i] == "" ? "unbound" : paths[i])}")) +
-                       $". Not sent to Minecraft: scancodes [{string.Join(",", ownedScancodes.OrderBy(c => c))}], mouse buttons mask {ownedButtons}");
+                       $". Not sent to Minecraft: scancodes [{string.Join(",", ownedScancodes.OrderBy(c => c))}], mouse buttons mask {ownedButtons}" +
+                       (shared != "" ? $". Sent to both (also Minecraft's List Players): {shared}" : ""));
             if (active)
             {
                 // Bindings changed while driving: take the old overrides off and apply the new ones.

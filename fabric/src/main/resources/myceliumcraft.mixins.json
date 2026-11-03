@@ -15,6 +15,7 @@
     "GameRendererAccessor",
     "FramerateLimitTrackerMixin",
     "GuiDeathScreenMixin",
+    "HudTabListMixin",
     "HumanoidEmergeMixin",
     "InputConstantsMixin",
     "LevelRendererMixin",

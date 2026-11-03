@@ -67,6 +67,11 @@ namespace MyceliumCraft
         float nextFeelLog;
         string lastFeel = "";
         public float FovScale => fovScale;
+        /// <summary>Set every frame: a dodge roll or Blitz is moving you (the view widens a little).</summary>
+        public bool Dashing;
+        public string DashName = "dash";
+        float dashFov = 1f;       // the dash's FOV multiplier now, eased toward McConfig.DashFov and back
+        bool dashLogged;
         public float EyeScale => eyeScale;
         readonly System.Collections.Generic.List<(Renderer r, UnityEngine.Rendering.ShadowCastingMode mode, bool off)> hidden =
             new System.Collections.Generic.List<(Renderer, UnityEngine.Rendering.ShadowCastingMode, bool)>();
@@ -168,7 +173,21 @@ namespace MyceliumCraft
 
             fovScale = mc.FovScale > 0.05f && mc.FovScale < 10f ? mc.FovScale : 1f;
             eyeScale = mc.EyeScale > 0.05f && mc.EyeScale < 2f ? mc.EyeScale : 1f;
-            if (savedFov > 0f) freeLook.m_Lens.FieldOfView = Mathf.Clamp(savedFov * fovScale, 1f, 179f);
+            // The dash kick (your request, 2026-11-03): quick out (about 0.05 s), slower back (about 0.2 s).
+            float dashTarget = Dashing ? McConfig.DashFov : 1f;
+            dashFov = Mathf.Lerp(dashFov, dashTarget, 1f - Mathf.Exp(-Time.unscaledDeltaTime * (Dashing ? 40f : 12f)));
+            if (Mathf.Abs(dashFov - dashTarget) < 0.001f) dashFov = dashTarget;
+            if (Dashing && !dashLogged && McConfig.DashFov != 1f)
+            {
+                dashLogged = true;
+                McLog.Info($"camera: {DashName}: view widened x{McConfig.DashFov:F2} (lens {savedFov * fovScale:F1} -> {savedFov * fovScale * McConfig.DashFov:F1} degrees)");
+            }
+            if (!Dashing && dashLogged && dashFov == 1f)
+            {
+                dashLogged = false;
+                McLog.Info($"camera: {DashName} over: view back to x1.00 (camera now {(Camera.main != null ? Camera.main.fieldOfView : 0f):F1} degrees)");
+            }
+            if (savedFov > 0f) freeLook.m_Lens.FieldOfView = Mathf.Clamp(savedFov * fovScale * dashFov, 1f, 179f);
             string feel = $"FOV x{fovScale:F2}, eye x{eyeScale:F2}";
             if (feel != lastFeel && Time.realtimeSinceStartup >= nextFeelLog)
             {

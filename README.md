@@ -137,7 +137,10 @@ Single-player and offline only.
   Controls → Key Binds has a "Mycelium" section (Interact, Show Stats, Subspecies Skill, Salvage,
   Attack, Curio, Dodge Roll, Skill 1, Skill 2, Navigate Camera, Reset Camera). A key bound there
   belongs to Mycelium and isn't sent to Minecraft; every other key goes to Minecraft. Defaults:
-  R interact, Tab show stats, V subspecies skill, middle click salvage, the rest unbound. Tested
+  R interact, Tab show stats, V subspecies skill, middle click salvage, the rest unbound. A key
+  that is also Minecraft's List Players (Tab, by default) goes to both games, and the player list
+  shows in single player too (normally only with more than one player): built, **not tested**.
+  Tested
   with a fake Minecraft: Mycelium followed the binds it sent, and a change during play was picked
   up within a frame. See DESIGN §5.3.
 - **Mycelium's key hints show your Minecraft binds** ("Press [R] to Open", the skill bar's keys,
@@ -164,6 +167,11 @@ Single-player and offline only.
     in play).
   - **A combat roll animation** (a forward somersault, the body facing the roll): not tested in
     play; the roll's signal reaches a fake Minecraft.
+  - **Blitz goes the way the camera looks,** not where your body faces (the roll is unchanged).
+    Tested in the stand-in only with the camera and body facing the same way; not tested in play.
+  - **The view widens a little (10%) during a roll or Blitz** and eases back after. `dashFov=` in
+    `MyceliumCraft.cfg` sets how much (1 = off). Tested with the roll in the stand-in (60 -> 66
+    degrees and back); Blitz and play not tested.
 - **Projectile skills fire where you look** (Spineshot, Undergrowth, Unstable Puffball, Death
   Blossom), not where Minecraft's body faces. Tested in Mycelium with a fake Minecraft (aim only;
   no skill fired).

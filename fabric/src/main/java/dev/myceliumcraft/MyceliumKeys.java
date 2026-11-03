@@ -35,9 +35,10 @@ public final class MyceliumKeys {
 		key("reset_camera", InputConstants.Type.KEYBOARD, NONE),
 	};
 
-	// One more after them: Minecraft's own Attack key, for Mycelium's hints (since v35; KeyHints.cs).
-	private static final int[] KINDS = new int[KEYS.length + 1];
-	private static final int[] CODES = new int[KEYS.length + 1];
+	// Two more after them: Minecraft's own Attack key, for Mycelium's hints (since v35; KeyHints.cs),
+	// and its List Players key: a key bound to it and a Mycelium action works in both games (since v40).
+	private static final int[] KINDS = new int[KEYS.length + 2];
+	private static final int[] CODES = new int[KEYS.length + 2];
 	private static String lastLogged = "";
 
 	private MyceliumKeys() {
@@ -50,6 +51,19 @@ public final class MyceliumKeys {
 	/** Load the class (registers the key binds; must happen before Minecraft reads options.txt). */
 	public static void init() {
 		MycLink.LOG.info("MyceliumCraft: {} Mycelium key binds registered", KEYS.length);
+	}
+
+	/** One of Minecraft's own key binds into slot a (after Mycelium's actions). */
+	private static void minecraftKey(int a, KeyMapping mapping, String name, StringBuilder log) {
+		InputConstants.Key bound = KeyMappingHelper.getBoundKeyOf(mapping);
+		if (mapping.isUnbound() || bound.getValue() == NONE) {
+			KINDS[a] = Proto.BIND_NONE;
+			CODES[a] = 0;
+		} else {
+			KINDS[a] = bound.getType() == InputConstants.Type.MOUSE ? Proto.BIND_MOUSE : Proto.BIND_KEY;
+			CODES[a] = bound.getValue();
+		}
+		log.append(", ").append(name).append('=').append(KINDS[a] == Proto.BIND_NONE ? "unbound" : (KINDS[a] == Proto.BIND_MOUSE ? "mouse " : "key ") + CODES[a]);
 	}
 
 	/** Every frame: tell Mycelium what its actions are bound to. */
@@ -67,18 +81,10 @@ public final class MyceliumKeys {
 			log.append(i == 0 ? "" : ", ").append(KEYS[i].getName().substring("key.myceliumcraft.".length())).append('=')
 				.append(KINDS[i] == Proto.BIND_NONE ? "unbound" : (KINDS[i] == Proto.BIND_MOUSE ? "mouse " : "key ") + CODES[i]);
 		}
-		KeyMapping attack = net.minecraft.client.Minecraft.getInstance().options.keyAttack;
-		InputConstants.Key attackKey = KeyMappingHelper.getBoundKeyOf(attack);
-		int a = KEYS.length;
-		if (attack.isUnbound() || attackKey.getValue() == NONE) {
-			KINDS[a] = Proto.BIND_NONE;
-			CODES[a] = 0;
-		} else {
-			KINDS[a] = attackKey.getType() == InputConstants.Type.MOUSE ? Proto.BIND_MOUSE : Proto.BIND_KEY;
-			CODES[a] = attackKey.getValue();
-		}
-		log.append(", minecraft_attack=").append(KINDS[a] == Proto.BIND_NONE ? "unbound" : (KINDS[a] == Proto.BIND_MOUSE ? "mouse " : "key ") + CODES[a]);
-		MycLink.writeBindings(KINDS, CODES, KEYS.length + 1);
+		var options = net.minecraft.client.Minecraft.getInstance().options;
+		minecraftKey(KEYS.length, options.keyAttack, "minecraft_attack", log);
+		minecraftKey(KEYS.length + 1, options.keyPlayerList, "minecraft_player_list", log);
+		MycLink.writeBindings(KINDS, CODES, KEYS.length + 2);
 		String now = log.toString();
 		if (!now.equals(lastLogged)) {
 			lastLogged = now;

@@ -1,5 +1,63 @@
 # MODLOG
 
+## 2026-11-03 The player list shows in single player
+
+**Your request:** make the player list work in single-player worlds.
+
+**Why it didn't:** Minecraft's `Hud.extractTabList` (read from its compiled code, nothing saved)
+shows the list only when you're not on your own world's server, or more than one player is listed,
+or a scoreboard is shown in the list. Alone in single player, none of those holds.
+
+**Changed:** new `HudTabListMixin.java` (in the client mixins): that check's `isLocalServer()`
+answers false, so holding List Players always shows the list (just you). Logs "player list: shown
+in single player too" once. Minecraft side only.
+
+**Tested how:** the jar builds, and the call it patches is there in 26.3's code. **Not tested in
+Minecraft** (the stand-in has no real Minecraft, so the mixin never runs there).
+
+## 2026-11-03 Show Stats and List Players can share a key (protocol v40)
+
+**Your request:** let Show Stats and Minecraft's List Players both work when they're on the same key.
+
+**Before:** a key bound to a Mycelium action (Show Stats on Tab) was never sent to Minecraft, so
+Minecraft's List Players on Tab did nothing.
+
+**Changed:** `MyceliumKeys.java` also sends Minecraft's List Players key (Bindings id 12, count
+13). `KeyOwnership.cs` keeps a Mycelium key that's also List Players as Mycelium's action but
+sends it to Minecraft too. Protocol version 39 -> 40 (both sides: install the new jar).
+
+**Tested how:** both build. **Not tested** at all otherwise: Minecraft was open, and the stand-in
+doesn't send key binds. Not sure: in single-player, Minecraft may only show the player list when
+there's more than one player (or a scoreboard), so Tab might still show nothing there.
+
+## 2026-11-03 Blitz goes the way the camera looks
+
+**Your request:** Blitz should go in the direction of the camera; leave the dodge roll as it is.
+
+**Changed:** `DashWatch` now redirects Blitz (a dash without the "Roll" animation) along Mycelium's
+camera's forward, flattened, keeping its speed. The spore faces that way while it lasts. The roll
+still goes the way you move. `MinecraftDriver` passes the camera direction (`CameraFlatForward`)
+and has a new test aid, `-mcBlitzTest`. `RollDirection` is now `DashDirection` (it covers both).
+
+**Tested how:** stand-in, Daybreak Arboretum, `-mcBlitzTest`. Log: "dash: Blitz along the camera
+(90 deg) instead of the spore's facing (90 deg…)", dash sent for 0.40 s, view widened and back.
+The camera and body faced the same way there, so **Blitz going a different way than the body was
+not tested.** **Not tested in Minecraft.** Known: Blitz's particles still start along the body.
+
+## 2026-11-03 The view widens a little during a dodge roll or Blitz
+
+**Your request:** make the FOV increase slightly whenever you dodge roll or use Blitz.
+
+**Changed:** `DashWatch` now says when a dash is moving you (and whether it's the roll or Blitz).
+`CameraSync` multiplies the lens by the new `dashFov` setting (default 1.1, so 10% wider) while it
+does, easing out fast and back slowly. The setting is read from `MyceliumCraft.cfg`. Your existing
+file doesn't have the line, so the default is used until you add `dashFov=...`.
+
+**Tested how:** stand-in, Daybreak Arboretum, `-mcDashTest` (a dodge roll). Log: "dodge roll: view
+widened x1.10 (lens 60.0 -> 66.0 degrees)", then 0.39 s after the roll ended "view back to x1.00
+(camera now 60.1 degrees)". **Blitz not tested** (it goes through the same dash watch). **Not
+tested in Minecraft.**
+
 ## 2026-11-03 The invisible wall in the Carcass: a pillar under a mushroom cap's thin edge
 
 **Your report:** the same invisible thing was still there after the rescan change. You walked into

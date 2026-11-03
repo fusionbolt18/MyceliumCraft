@@ -879,7 +879,8 @@ the side (your report: Spineshot).
   (head) yaw, in Update and again in LateUpdate (after the body turns). The body and its
   animations keep Minecraft's body yaw. When Minecraft doesn't drive, it's turned back.
 - Only the yaw: looking up or down doesn't tilt them (Mycelium's projectiles fly flat).
-- Blitz still dashes the way the body faces (`rb.transform.forward`): a dash, not a projectile.
+- Blitz isn't turned by this (it dashes along `rb.transform.forward`); since 2026-11-03 `DashWatch`
+  sends it along the camera instead (below).
 
 **Dashes: Blitz and the dodge roll move you** (since 2026-10-25, protocol v32). Both set
 `PlayerController.activeDodge` and write the spore's velocity from a coroutine every frame (Blitz
@@ -911,11 +912,23 @@ step to follow Minecraft, which cancelled them.
 - **The roll:** `DashWatch` tells a roll from Blitz by the spore's Animator "Roll" (only
   `Dodging` sets it). The roll's dash keeps its speed but goes along your direction, and the
   spore faces that way while it rolls, instead of Minecraft's body. If you haven't moved yet in
-  the level, it rolls as Mycelium aims it. Blitz is unchanged.
+  the level, it rolls as Mycelium aims it.
 - **Checked** with `-mcDashTest`:
   - with the fake Minecraft strafing: "dodge roll along your movement (90 deg) instead of the
     spore's facing (135 deg…)";
   - standing still from the start: "along the spore's facing (90 deg): you haven't moved yet".
+
+**Blitz goes where the camera looks** (since 2026-11-03, your request; the roll stays as above).
+- Mycelium sends Blitz along the spore's facing at its start, Minecraft's body here.
+- `DashWatch` gets Mycelium's camera's forward, flattened (`MinecraftDriver.CameraFlatForward`,
+  `Camera.main`). A dash without "Roll" keeps its speed but goes that way, and the spore faces it
+  while it lasts. No camera: as Mycelium aims it.
+- In the "in front" F5 view the camera looks back at you, so Blitz goes toward the camera's
+  facing, the way the screen points.
+- Blitz's particles still start along the body's facing (Mycelium draws them at the start).
+- **Checked** with `-mcBlitzTest` (does what Blitz's coroutine does: `activeDodge` on, 40 units/s
+  along the facing for 0.3 s): "Blitz along the camera (90 deg)…", sent for 0.40 s. In the
+  stand-in the camera and the body face the same way, so a different direction wasn't checked.
   - strafing east (90°) while "holding" right (`LINKTEST_KEYS=right`, looking 0°: west): "dodge
     roll along the movement keys you hold (270 deg)"; without keys, "along the way you last
     moved (90 deg)".
@@ -1070,6 +1083,12 @@ small allowance later. For now the measured real height is used, unchanged.
 (§4.1) moves it back onto the spore when that happens.
 
 ## 5.2 Camera: Mycelium's camera follows Minecraft's look (`CameraSync`)
+
+**Dash FOV kick** (since 2026-11-03): while `DashWatch` sees a dodge roll or Blitz moving you,
+the lens is multiplied by `dashFov` (default 1.1) on top of Minecraft's FOV multiplier. It eases
+out in about 0.05 s and back in about 0.2 s. It's done in Mycelium only, because Mycelium draws the
+world; Minecraft's own FOV (and its hand) don't change. Logged once per dash ("view widened",
+"over").
 
 **Sprint FOV and crouching** (since 2026-10-18):
 - **What Minecraft sends:** two ratios, read from its own camera (`CameraAccessor`), interpolated
@@ -1387,7 +1406,7 @@ Until Minecraft sends binds (or with an older mod), Mycelium uses the same defau
 | E | Minecraft | inventory | skill 2 (unbound) |
 | Q | Minecraft | drop item | skill 1 (unbound) |
 | Ctrl | Minecraft | sprint | navigate camera (unbound) |
-| Tab | **Mycelium** | show stats (hold) | reset camera (unbound); Minecraft's player list unbound |
+| Tab | **Mycelium** (and Minecraft, while it's also List Players) | show stats (hold) | reset camera (unbound) |
 | Esc | Minecraft | pause menu, closes Minecraft's screens; Mycelium freezes meanwhile | Mycelium's pause (its Escape binding is switched off) |
 | P | **Mycelium** | pause and Mycelium's menu; Minecraft's world freezes meanwhile | |
 | WASD, 1–9, F5, … | Minecraft | as in Minecraft | WASD still read by Mycelium, overridden by the driver |
@@ -1405,8 +1424,17 @@ Until Minecraft sends binds (or with an older mod), Mycelium uses the same defau
 - **Cheat panel:** Mycelium's developer cheat panel (`TestingManager`, in `ManagerBundle`) reads
   the digits, K, L, Z, X and Minus directly, and digits are Minecraft's hotbar. It's switched off
   while Minecraft drives.
-- **Minecraft:** the bridge doesn't send the keys bound to Mycelium actions (R, Tab, V and middle
+- **Minecraft:** the bridge doesn't send the keys bound to Mycelium actions (R, V and middle
   click by default).
+- **Shared with List Players** (since 2026-11-03, your request; protocol v40): Minecraft also
+  sends its own List Players key (Bindings id 12). A Mycelium action's key that is also List
+  Players stays Mycelium's action *and* is sent to Minecraft, so Tab shows Mycelium's stats and
+  Minecraft's player list together. Logged as "Sent to both (also Minecraft's List Players)".
+  Bind List Players to something else and Tab is Mycelium's only again.
+- **The list in single player** (`HudTabListMixin.java`): Minecraft's `Hud.extractTabList` shows
+  it only off your own world's server, with more than one player listed, or with a scoreboard in
+  the list slot. The mixin makes its `isLocalServer()` check answer false there, so the list shows
+  whenever the key is held. Logged once: "player list: shown in single player too".
 
 **Checked** by holding E, Q, Space, Shift, Ctrl, Tab and R in Mycelium (`-mcHoldKeys`), and
 logging which Mycelium actions register as pressed:

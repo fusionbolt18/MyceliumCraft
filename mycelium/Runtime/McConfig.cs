@@ -32,6 +32,9 @@ namespace MyceliumCraft
         /// <summary>Seconds the third-person camera takes to move in front of a wall (Mycelium's own: 0, instant).</summary>
         public static float CameraCollisionSmoothing = 0.2f;
 
+        /// <summary>FOV multiplier while a dodge roll or Blitz moves you (1: no change).</summary>
+        public static float DashFov = 1.1f;
+
         /// <summary>Split the keys between the games while Minecraft drives (KeyOwnership).</summary>
         public static bool KeyOwnership = true;
 
@@ -96,6 +99,9 @@ namespace MyceliumCraft
             "# Mycelium's own is 0 (an instant jump); bigger is smoother but may show a wall's edge briefly.\n" +
             "cameraCollisionSmoothing=0.2\n" +
             "\n" +
+            "# The view widens by this much while a dodge roll or Blitz moves you (1.1 = 10% wider; 1 = off).\n" +
+            "dashFov=1.1\n" +
+            "\n" +
             "# 1: while Minecraft drives, clicks, Shift, Space, E, Q and Ctrl are Minecraft's; R (interact) and Tab\n" +
             "# (show stats) are Mycelium's; dodge, skills and camera keys are unbound. 0: both games react to every key.\n" +
             "keyOwnership=1\n";
@@ -138,6 +144,10 @@ namespace MyceliumCraft
                     {
                         CameraCollisionSmoothing = cs;
                     }
+                    else if (key == "dashfov" && float.TryParse(value, NumberStyles.Float, CultureInfo.InvariantCulture, out float df) && df >= 0.5f && df <= 2f)
+                    {
+                        DashFov = df;
+                    }
                     else if (key == "keyownership" && (value == "0" || value == "1"))
                     {
                         KeyOwnership = value == "1";
@@ -176,7 +186,7 @@ namespace MyceliumCraft
             {
                 McLog.Info($"config: couldn't read {path} ({e.Message}); using defaults");
             }
-            McLog.Info($"config: scale={Scale.ToString(CultureInfo.InvariantCulture)} Mycelium units per block, matchSporeSize={(MatchSporeSize ? 1 : 0)}, syncCamera={(SyncCamera ? 1 : 0)}, cameraPitchOffset={CameraPitchOffset.ToString(CultureInfo.InvariantCulture)}, cameraSmoothing={CameraSmoothing.ToString(CultureInfo.InvariantCulture)}, matchF5View={(MatchF5View ? 1 : 0)}, inputBridge={(InputBridge ? 1 : 0)}, cameraCollisionSmoothing={CameraCollisionSmoothing.ToString(CultureInfo.InvariantCulture)}, keyOwnership={(KeyOwnership ? 1 : 0)}, overlay={(Overlay ? 1 : 0)}, playerModel={(PlayerModel ? 1 : 0)}, damageScale={DamageScale.ToString(CultureInfo.InvariantCulture)}");
+            McLog.Info($"config: scale={Scale.ToString(CultureInfo.InvariantCulture)} Mycelium units per block, matchSporeSize={(MatchSporeSize ? 1 : 0)}, syncCamera={(SyncCamera ? 1 : 0)}, cameraPitchOffset={CameraPitchOffset.ToString(CultureInfo.InvariantCulture)}, cameraSmoothing={CameraSmoothing.ToString(CultureInfo.InvariantCulture)}, matchF5View={(MatchF5View ? 1 : 0)}, inputBridge={(InputBridge ? 1 : 0)}, cameraCollisionSmoothing={CameraCollisionSmoothing.ToString(CultureInfo.InvariantCulture)}, dashFov={DashFov.ToString(CultureInfo.InvariantCulture)}, keyOwnership={(KeyOwnership ? 1 : 0)}, overlay={(Overlay ? 1 : 0)}, playerModel={(PlayerModel ? 1 : 0)}, damageScale={DamageScale.ToString(CultureInfo.InvariantCulture)}");
         }
     }
 }

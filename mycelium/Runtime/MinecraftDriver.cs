@@ -230,6 +230,9 @@ namespace MyceliumCraft
             // Test aid: "-mcDashTest" starts Mycelium's own dodge roll (PlayerController.Dodging) 4 s
             // into driving, as the Dodge key would; DashWatch sends it to Minecraft.
             if (Array.IndexOf(args, "-mcDashTest") >= 0) StartCoroutine(DashTest());
+            // Test aid: "-mcBlitzTest" does what Blitz's coroutine does (activeDodge on, the velocity
+            // 40 units/s along the spore's facing for 0.3 s) 4 s into driving; DashWatch sends it along the camera.
+            if (Array.IndexOf(args, "-mcBlitzTest") >= 0) StartCoroutine(BlitzTest());
             // Test aid: "-mcVanishTest" does what Trophic Cascade's vanish does to the spore (every
             // renderer off for 1 s, then on again, not particles) 4 s into driving.
             if (Array.IndexOf(args, "-mcVanishTest") >= 0) StartCoroutine(VanishTest());
@@ -406,6 +409,8 @@ namespace MyceliumCraft
             }
             bool camFresh2 = lastCamMcTime >= 0f && Time.realtimeSinceStartup - lastCamMcTime <= HiccupSeconds;
             bool look = alive && phase != Phase.Idle && camFresh2;
+            cameraSync.Dashing = dash.Dashing; // the dash kick: the view widens a little (CameraSync)
+            if (dash.Dashing) cameraSync.DashName = dash.Rolling ? "dodge roll" : "Blitz";
             cameraSync.Update(look, lastCamMc);
             // Minecraft's hurt tilt: when the spore loses health, lean the view toward what hit it.
             cameraSync.Hurt = hurtTilt;
@@ -540,6 +545,16 @@ namespace MyceliumCraft
             return lastMoveDir;
         }
 
+        /// <summary>Where Mycelium's camera looks, flattened (horizontal unit; zero without a camera or looking straight up/down). For Blitz.</summary>
+        static Vector3 CameraFlatForward()
+        {
+            Camera cam = Camera.main;
+            if (cam == null) return Vector3.zero;
+            Vector3 f = cam.transform.forward;
+            f.y = 0f;
+            return f.sqrMagnitude > 1e-4f ? f.normalized : Vector3.zero;
+        }
+
         /// <summary>Switch Mycelium's own "face where I walk" (PlayerController.looking) off while Minecraft drives, and back on afterwards.</summary>
         void SetMyceliumTurning(bool on)
         {
@@ -564,7 +579,7 @@ namespace MyceliumCraft
             skillAim.Update(aimDriving, aimYaw); // again, after the body's turn this frame
             // Mycelium's dash coroutines (Blitz, the roll) have written the spore's velocity by now.
             dash.LateUpdate(controller, rb, link != null && link.MinecraftAlive && phase == Phase.Driving,
-                            animator != null && animator.isActiveAndEnabled && animator.GetBool("Roll"), RollToward(out string rollFrom), rollFrom);
+                            animator != null && animator.isActiveAndEnabled && animator.GetBool("Roll"), RollToward(out string rollFrom), rollFrom, CameraFlatForward());
             // The roll's sound as you press the key, not at its end (RollSound).
             rollSound.Update(link != null && link.MinecraftAlive && phase == Phase.Driving, animator != null && animator.isActiveAndEnabled && animator.GetBool("Roll"));
             // Mycelium's resource panel stays out of sight: your resources are in Minecraft's inventory.
@@ -694,7 +709,7 @@ namespace MyceliumCraft
                 mcVel = Vector3.Lerp(mcVel, vNow, 0.3f);
                 // Your walk's direction, for the dodge roll: not while a dash moves you (that's not you walking).
                 Vector3 flatVel = new Vector3(mcVel.x, 0f, mcVel.z);
-                if (dash.RollDirection == Vector3.zero && !(activeDodgeField != null && controller != null && activeDodgeField.GetValue(controller) is bool dodging && dodging)
+                if (dash.DashDirection == Vector3.zero && !(activeDodgeField != null && controller != null && activeDodgeField.GetValue(controller) is bool dodging && dodging)
                     && flatVel.magnitude > (float)(1.0 * map.Scale))
                     lastMoveDir = flatVel.normalized;
             }
@@ -771,9 +786,9 @@ namespace MyceliumCraft
             // bridge it gets WASD too, and the two fought (the spore flickered when not walking
             // forward), so its turning is switched off while Minecraft drives.
             SetMyceliumTurning(false);
-            // ...except while the dodge roll goes along your movement: it faces the roll (DashWatch).
-            Vector3 rollDir = dash.RollDirection;
-            rb.MoveRotation(rollDir != Vector3.zero ? Quaternion.LookRotation(rollDir) : Quaternion.Euler(0f, WorldMapping.MycYaw(bodyYaw), 0f));
+            // ...except while a dash is redirected (the roll: your movement; Blitz: the camera): it faces the dash (DashWatch).
+            Vector3 dashDir = dash.DashDirection;
+            rb.MoveRotation(dashDir != Vector3.zero ? Quaternion.LookRotation(dashDir) : Quaternion.Euler(0f, WorldMapping.MycYaw(bodyYaw), 0f));
             if (animator != null) animator.SetBool("Walk", mcSpeed > 0.5f);
             driving = true;
         }
@@ -1515,6 +1530,24 @@ namespace MyceliumCraft
             if (dodging == null || !(controller is MonoBehaviour mb)) { McLog.Info("dash test: no PlayerController.Dodging"); yield break; }
             McLog.Info($"dash test: Mycelium's dodge roll, facing {rb.rotation.eulerAngles.y:F0} deg");
             mb.StartCoroutine((System.Collections.IEnumerator)dodging.Invoke(controller, null));
+        }
+
+        /// <summary>Test aid: see "-mcBlitzTest" in Awake.</summary>
+        System.Collections.IEnumerator BlitzTest()
+        {
+            while (phase != Phase.Driving) yield return null;
+            yield return new WaitForSeconds(4f);
+            if (activeDodgeField == null || controller == null) { McLog.Info("blitz test: no PlayerController.activeDodge"); yield break; }
+            Vector3 cam = CameraFlatForward();
+            McLog.Info($"blitz test: Blitz, facing {rb.rotation.eulerAngles.y:F0} deg, camera {Mathf.Repeat(Mathf.Atan2(cam.x, cam.z) * Mathf.Rad2Deg, 360f):F0} deg");
+            activeDodgeField.SetValue(controller, true);
+            Vector3 v = rb.transform.forward * 40f;
+            for (float t = 0f; t < 0.3f; t += Time.deltaTime)
+            {
+                rb.velocity = v;
+                yield return null;
+            }
+            activeDodgeField.SetValue(controller, false);
         }
 
         /// <summary>Test aid: see "-mcFungalTest" in Awake.</summary>
