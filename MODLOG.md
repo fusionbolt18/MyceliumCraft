@@ -1,5 +1,37 @@
 # MODLOG
 
+## 2026-11-02 No Minecraft toasts
+
+**Your request:** prevent all of Minecraft's toast pop-ups.
+
+**Changed:** new `mixin/ToastManagerMixin.java` (a mixin is a small patch our mod applies to
+Minecraft's own code as it loads), listed in the mixins file. It cancels `ToastManager.addToast`,
+which every toast goes through, and `showNowPlayingToast`, the music pop-up. Each kind of toast held
+back is logged once. Advancements and recipes are still earned; only the pop-ups are gone.
+
+**Tested how:** built. Both method shapes were checked against Minecraft 26.3's own class with
+javap: `addToast(Toast)` and `showNowPlayingToast()`. **Not tested in Minecraft.** A wrong mixin
+would stop Minecraft at start-up, so starting it is the first test.
+
+## 2026-11-02 Thrown items don't clump together
+
+**Your request:** thrown items on the Minecraft side shouldn't clump together.
+
+**What the log showed:** weapons #7 and #8, thrown a second apart, ended 0.5 blocks apart.
+Minecraft doesn't merge them (each has its own id), but items thrown from one spot land in one spot.
+
+**Changed:** new `MycThrownSpread.java` (registered in `MyceliumCraftClient.java`). Every server
+tick, two of your thrown weapons or resources closer than 0.8 blocks across get pushed apart
+sideways, harder the closer they are. The motion is sent to the client (`needsSync`). The first
+push of each pair is logged.
+
+**Tested how:** only built. The stand-in Minecraft has no item physics, so this can't be tested
+there. **Not tested.**
+
+**Seen in passing, not changed:** most thrown weapons in your log were removed "still flying after
+10 s" rather than "landed". My guess, not checked: an item on the ground keeps bouncing a tiny bit,
+so it rarely counts as resting, and the real weapon becomes a pickup only after 10 s.
+
 ## 2026-11-02 Level-end pictures centred
 
 **Your request:** centre the pictures.

@@ -26,6 +26,7 @@
     "SpriteContentsAccessor",
     "TextureBindingAccessor",
     "TextureManagerAccessor",
+    "ToastManagerMixin",
     "WaitingForPlayerChunkMixin",
     "WindowMixin"
   ],

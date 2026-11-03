@@ -251,6 +251,11 @@ This is in the mod, not Minecraft's game rules (`fallDamage`, `naturalRegenerati
 saved into your world, and these changes aren't. Without the mod, Minecraft is normal again. Each
 prevented fall or heal is logged at most once a second.
 
+Also always (your request, 2026-11-02): **no toasts**, Minecraft's pop-ups in the top right corner
+(advancements, new recipes, tutorial hints, system messages, "now playing" music).
+`ToastManagerMixin` cancels `ToastManager.addToast` and `showNowPlayingToast`. Each kind is logged
+the first time one is held back. Advancements and recipes are still earned; only the pop-up is gone.
+
 ### 5.0.2 Health: Mycelium's is in charge (your choice, 2026-10-19)
 
 - **Mycelium** reads its `PlayerHealth.currentHealth` and `maxHealth` (by reflection) and sends
@@ -749,6 +754,12 @@ inventory slot each, and throwable like the weapons.
   present, so Minecraft doesn't make it again.
   - Its pop-up (Mycelium's "Press E to Pick Up", placed once where the thing is) moves with it, as
     a thrown weapon's does (`WeaponBag.MovePopUp`, shared).
+  - **No clumps** (`MycThrownSpread.java`, weapons and resources alike): two thrown from the same
+    spot landed in the same spot (your log: weapons #7 and #8 0.5 blocks apart), so Mycelium showed
+    the real ones inside each other. Every server tick, two of your thrown items less than 0.8
+    blocks apart across (within a block up or down) get a sideways nudge away from each other, up
+    to 0.04 blocks/tick per tick when right on top of each other, less as they part. Two at the very
+    same spot part along a direction made from the id. The first push of each pair is logged.
 - **The level-end notification** (`LevelEnd` calls `NotificationManager.Notification` with
   "<held> stored at the Carcass" and that resource's picture), when you carry more than one
   (`ResourceBag.LevelEndNotice`, every `LateUpdate`, once the notification is showing): the line

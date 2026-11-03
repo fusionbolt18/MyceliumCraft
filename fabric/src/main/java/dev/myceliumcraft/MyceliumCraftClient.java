@@ -49,6 +49,7 @@ public final class MyceliumCraftClient implements ClientModInitializer {
 		ServerStallWatch.init();
 		MycWeapons.init(); // thrown weapons: no pickup, removed once landed
 		MycResources.init(); // your Mycelium resources: not placed; thrown ones fly, then go
+		MycThrownSpread.init(); // thrown weapons and resources don't land in a clump
 		MycBetterCombat.init(); // Better Combat's attack starts count as Mycelium swings
 		MycSkillAnimation.init(); // Living Cyclone: Better Combat's two_handed_spin, looped
 		net.fabricmc.fabric.api.client.rendering.v1.EntityRendererRegistry.register(dev.myceliumcraft.combat.EnemyProxies.TYPE, net.minecraft.client.renderer.entity.NoopRenderer::new);
