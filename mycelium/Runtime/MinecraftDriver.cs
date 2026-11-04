@@ -62,6 +62,7 @@ namespace MyceliumCraft
         readonly SkillAim skillAim = new SkillAim();
         readonly DashWatch dash = new DashWatch();
         readonly ColonyWatch colony = new ColonyWatch();
+        readonly BirthCutscene birth = new BirthCutscene();
         readonly VanishWatch vanish = new VanishWatch();
         readonly KeyHints keyHints = new KeyHints();
         readonly SkillIconWatch skillIcons = new SkillIconWatch();
@@ -72,6 +73,7 @@ namespace MyceliumCraft
         readonly KeyOwnership keys = new KeyOwnership();
         readonly McOverlay overlay = new McOverlay();
         readonly McPlayerModel playerModel = new McPlayerModel();
+        readonly McColonyBodies colonyBodies = new McColonyBodies();
         readonly EnemyCombat combat = new EnemyCombat();
         readonly ShroomSmack shrooms = new ShroomSmack();
         readonly RollSound rollSound = new RollSound();
@@ -261,6 +263,10 @@ namespace MyceliumCraft
             // old one is let go into the world, a new one goes in the hand) 4 s into driving, and logs
             // which of the two Mycelium draws.
             if (Array.IndexOf(args, "-mcSwapTest") >= 0) StartCoroutine(SwapTest());
+            // Test aid: "-mcSporeSwapTest" swaps to the next spore, then logs which spores are still drawn.
+            if (Array.IndexOf(args, "-mcSporeSwapTest") >= 0) StartCoroutine(SporeSwapTest());
+            // Test aid: "-mcGrowTest" grows a new spore as the shop does, 4 s into driving.
+            if (Array.IndexOf(args, "-mcGrowTest") >= 0) StartCoroutine(GrowTest());
             // Test aid: "-mcPickupTest" puts a Cactus Mace on the ground in front of the spore 4 s into
             // driving and picks it up through Mycelium's own WeaponInteraction.Interact.
             if (Array.IndexOf(args, "-mcPickupTest") >= 0) StartCoroutine(PickupTest());
@@ -346,6 +352,7 @@ namespace MyceliumCraft
                 shrooms.SceneLoaded();
                 resources.SceneLoaded(scene);
                 colony.SceneLoaded();
+                birth.SceneLoaded();
                 SetPhase(Phase.Idle, "new scene");
             };
         }
@@ -395,10 +402,10 @@ namespace MyceliumCraft
                                rb != null ? SporeName() : ""); // Minecraft's player goes by it (MycName.java)
 
             // Your colony: in Minecraft's player list instead of Mycelium's colony meter (ColonyWatch, MycColony.java).
-            if (colony.Update(rb != null && phase == Phase.Driving && link.MinecraftAlive))
+            if (colony.Update(rb != null && phase == Phase.Driving && link.MinecraftAlive, (float)map.Scale))
             {
-                if (rb != null) link.WriteColony(colony.Count, colony.Colors, colony.Happiness, colony.Names, colony.Average, colony.Current);
-                else link.WriteColony(0, colony.Colors, colony.Happiness, colony.Names, -1f, -1);
+                if (rb != null) link.WriteColony(colony.Count, colony.Colors, colony.Caps, colony.Speeds, colony.Emerges, colony.Happiness, colony.Names, colony.Average, colony.Current);
+                else link.WriteColony(0, colony.Colors, colony.Caps, colony.Speeds, colony.Emerges, colony.Happiness, colony.Names, -1f, -1);
             }
 
             bool alive = link.MinecraftAlive;
@@ -481,7 +488,8 @@ namespace MyceliumCraft
             // about half a second: the grace alone wasn't enough).
             bool overlayBlocked = controls && !controlsWhy.EndsWith("knockback")
                                   && (controlsWhy == "paused" || Time.realtimeSinceStartup - controlsSince >= OverlayControlsGrace);
-            overlay.Update(link, McConfig.Overlay && alive && phase != Phase.Idle && !overlayBlocked && !covered);
+            birth.Update(alive && phase != Phase.Idle); // a spore grown in the shop: no HUD, no overlay
+            overlay.Update(link, McConfig.Overlay && alive && phase != Phase.Idle && !overlayBlocked && !covered && !birth.On);
             // Minecraft's pause menu (Escape) pauses Mycelium too.
             FreezeForMinecraftPause(alive && phase == Phase.Driving && camFresh2 && (lastCamMc.Flags & Proto.McPaused) != 0);
             pauseBlur.Update();
@@ -490,6 +498,8 @@ namespace MyceliumCraft
             playerModel.Update(link, bodyWanted, rb != null ? rb.transform.position - Vector3.up * feetOffset : Vector3.zero, (float)map.Scale);
             playerModel.SetVanished(vanished);
             cameraSync.ReplaceSpore = playerModel.Shown;
+            // The other spores as Minecraft characters too, while yours is one.
+            colonyBodies.Update(link, playerModel.Shown, colony, playerModel, feetOffset, (float)map.Scale);
             // Which game owns which key, while Minecraft drives the spore.
             // (Re-sync teleports count as driving: giving Mycelium its keys back for those few frames
             // let a click become Mycelium's attack right after a hit, your report 2026-10-19.)
@@ -586,6 +596,8 @@ namespace MyceliumCraft
         void LateUpdate()
         {
             cameraSync.RefreshHidden();
+            // Again before drawing: the shop's button runs after our Update, and turns the HUD on.
+            birth.Update(link != null && link.MinecraftAlive && phase != Phase.Idle);
             skillAim.Update(aimDriving, aimYaw); // again, after the body's turn this frame
             // Mycelium's dash coroutines (Blitz, the roll) have written the spore's velocity by now.
             dash.LateUpdate(controller, rb, link != null && link.MinecraftAlive && phase == Phase.Driving,
@@ -955,6 +967,14 @@ namespace MyceliumCraft
 
         void FindPlayer()
         {
+            // Swapped to another spore (PlayerController.GetStats): start over with it, as with a new
+            // player, so Minecraft drives that one and moves to where it stands.
+            if (controller != null && rb != null && rbField?.GetValue(controller) is Rigidbody now && now != rb)
+            {
+                McLog.Info($"spore swapped: Minecraft follows '{now.name}' now");
+                controller = null;
+                nextFindTime = 0f;
+            }
             if (controller != null || playerControllerType == null || Time.realtimeSinceStartup < nextFindTime) return;
             nextFindTime = Time.realtimeSinceStartup + 0.5f;
             controller = (Component)FindObjectOfType(playerControllerType);
@@ -1920,6 +1940,58 @@ namespace MyceliumCraft
             {
                 McLog.Info("hit test: Knockback failed: " + (e.InnerException?.Message ?? e.Message));
             }
+        }
+
+        /// <summary>Test aid (-mcGrowTest): the shop's SpawnNewCharacter, then the Sprout on the new spore is sent (ColonyWatch).</summary>
+        System.Collections.IEnumerator GrowTest()
+        {
+            while (phase != Phase.Driving) yield return null;
+            yield return new WaitForSeconds(4f);
+            GameObject parent = GameObject.FindWithTag("PlayerParent");
+            Type t = Type.GetType("SpawnCharacter, Assembly-CSharp");
+            Component spawn = parent != null && t != null ? parent.GetComponent(t) : null;
+            if (spawn == null) { McLog.Info("grow test: no SpawnCharacter"); yield break; }
+            McLog.Info($"grow test: growing a spore ({colony.Count} in the colony)");
+            t.GetMethod("SpawnNewCharacter").Invoke(spawn, new object[] { "Default", null, null, true, true });
+            SendTeleport("grow test: as the shop closing does"); // the cutscene must hold through this
+        }
+
+        /// <summary>Test aid (-mcSporeSwapTest): swap to the next spore; no spore should be drawn after it, each is a Minecraft body.</summary>
+        System.Collections.IEnumerator SporeSwapTest()
+        {
+            while (phase != Phase.Driving) yield return null;
+            yield return new WaitForSeconds(4f);
+            GameObject parent = GameObject.FindWithTag("PlayerParent");
+            Type t = Type.GetType("SwapCharacter, Assembly-CSharp");
+            Component swap = parent != null && t != null ? parent.GetComponent(t) : null;
+            if (swap == null) { McLog.Info("spore swap test: no SwapCharacter"); yield break; }
+            for (int round = 0; round < 2; round++)
+            {
+                McLog.Info($"spore swap test: swap {round + 1}, from '{GameObject.FindWithTag("currentPlayer")?.name}' ({colony.Names[Mathf.Max(0, colony.Current)]})");
+                t.GetMethod("SwitchToNextCharacter").Invoke(swap, null);
+                yield return new WaitForSeconds(1f);
+                for (int i = 0; i < colony.Count; i++)
+                {
+                    int drawn = 0;
+                    foreach (Renderer r in colony.Spores[i].GetComponentsInChildren<Renderer>(true)) if (!r.forceRenderingOff) drawn++;
+                    McLog.Info($"spore swap test: {colony.Names[i]}{(i == colony.Current ? " (you)" : "")}: {drawn} spore renderers drawn (want 0)");
+                }
+            }
+            // The popup on another spore: its happiness faces are sprites under that spore.
+            int other = colony.Current == 0 ? 1 : 0;
+            GameObject looked = colony.Spores[other];
+            Type popup = Type.GetType("SporeInteraction, Assembly-CSharp");
+            Component interaction = popup != null ? looked.GetComponent(popup) : null;
+            if (interaction == null) { McLog.Info("spore swap test: no SporeInteraction"); yield break; }
+            popup.GetMethod("CreateTooltip").Invoke(interaction, new object[] { GameObject.FindWithTag("currentPlayer") });
+            yield return new WaitForSeconds(1f);
+            int faces = 0, facesDrawn = 0;
+            foreach (SpriteRenderer s in looked.GetComponentsInChildren<SpriteRenderer>(false))
+            {
+                faces++;
+                if (!s.forceRenderingOff) facesDrawn++;
+            }
+            McLog.Info($"spore swap test: popup on {colony.Names[other]}: {facesDrawn} of {faces} happiness faces drawn (want all)");
         }
 
         /// <summary>Test aid (-mcSwapTest): a weapon swap like a pickup, then which weapon is drawn.</summary>

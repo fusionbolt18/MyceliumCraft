@@ -1,5 +1,131 @@
 # MODLOG
 
+## 2026-11-03 No flash at the cutscene's start; smoother new spore
+
+**Your report:** the UI and overlay showed for a split second as the cutscene started, and the new
+spore's animation looked like a lower framerate.
+
+**Why the flash:** your log showed the cutscene on, off 0.0 s later and on again 0.06 s later. Closing
+the shop starts a re-sync teleport, and `BirthCutscene` counted only "Driving", so it switched off
+for that teleport. The stand-in couldn't show this: its grow doesn't go through the shop.
+
+**Why the lower framerate:** `MycSporeBodies` posed at most 30 times a second; your own body is posed
+every Minecraft frame.
+
+**Changed:**
+- `MinecraftDriver.cs`: the cutscene holds through the teleport, and is checked again just before
+  drawing, because the shop's button turns the HUD on after our Update.
+- `MycSporeBodies.java`: no limit: a pose every Minecraft frame while a spore walks or sprouts.
+- `-mcGrowTest` now also sends a teleport right after the grow, as the shop closing does.
+
+**Tested how:** stand-in, `-mcGrowTest`: the cutscene went on once and over once 2.5 s later, right
+through the teleport, with the overlay hidden the whole time. The jar builds. **Not tested:** buying
+a spore in the real shop, and how smooth the pose rate looks in Minecraft.
+
+## 2026-11-03 No HUD or overlay during the spore birth cutscene
+
+**Your request:** hide both the UI and the overlay during the cutscene.
+
+**Changed (Mycelium only):** new `BirthCutscene.cs`: while Mycelium's "GrowCamera" is the live
+camera, the HUD's alpha is held at 0 and the overlay is off, and both come back after. Mycelium's
+"was born" notification stays (own canvas): it's the one place the new spore's name shows.
+
+**Tested how:** stand-in with a test overlay picture, `-mcGrowTest`: the cutscene started 0.01 s after
+the grow, HUD alpha 1.00 -> 0 and overlay hidden; after 2.5 s the HUD was back at 1.00 and the overlay
+showing. Before the grow the grow camera's priority was 0 and the main's 10, so normal play isn't
+affected. The test spores don't reach your save: Rose from the last test wasn't in this run's colony.
+**Not tested in real play:** opening the shop and buying a spore.
+
+## 2026-11-03 A spore grown in the shop digs out of the ground (protocol v44)
+
+**Your request:** the new spore should crawl out of the ground during its spawn cutscene, with the
+same animation you use when spawning in The Carcass.
+
+**Changed:**
+- `ColonyWatch.cs`: sends how far through Mycelium's "Sprout" each spore is (new Colony field), every
+  frame while one is sprouting.
+- `MycSporeBodies.java`: poses that body with `EmergePose`, and sends it on every pose meanwhile.
+- New test aid `-mcGrowTest`: grows a spore the way the shop does. The stand-in prints the sprout.
+  Protocol 43 -> 44: install the new jar.
+
+**Tested how:** stand-in, The Carcass, `-mcGrowTest`: new spore "Rose" grew, its progress reached
+the stand-in from 0.01 to 0.89 in even steps, the Sprout ended after 2.84 s, and its body was shown
+within 0.05 s of the spawn. The test spore isn't saved: Mycelium was killed, and it saves on pause or quit.
+**Not tested in Minecraft:** the real dig-out on that body, seen from the cutscene's camera.
+
+## 2026-11-03 The happiness faces are back on the spore popup
+
+**Your report:** the popup when looking at other spores has lost its little happiness faces.
+
+**Why:** my own bug. The popup hangs under the spore it's about, and its faces are sprites
+(`HappinessSlider.prefab`, "Faces"). `McColonyBodies` hid every renderer under a spore, so they went
+too; the rest of the popup is UI, which isn't a renderer, so it stayed.
+
+**Changed (Mycelium only):** `McColonyBodies.cs` leaves alone anything on a canvas.
+`-mcSporeSwapTest` also opens a popup on another spore and counts the faces drawn.
+
+**Tested how:** stand-in, The Carcass, `-mcSporeSwapTest`: a real popup on Cline had 5 of 5 faces drawn, and the spores themselves stayed hidden (0 renderers drawn). **Not tested** by looking at a spore in real play.
+
+## 2026-11-03 The other spores are your size; the cap matches in brightness too
+
+**Your report:** the other spores look like Minecraft characters now, but bigger than you.
+**Your request:** match the cap's brightness as well as its hue.
+
+**Why bigger:** your player is scaled down to the spore's height (Minecraft's scale attribute); the
+made-up player that poses the bodies was left at full size.
+
+**Changed (Minecraft only):**
+- `MycSporeBodies.java`: each body takes your player's scale, and is sent again if it changes.
+- `MycSkins.java`: every clearly coloured pixel of `spore_cap.png` has its brightness scaled too, so
+  the picture's main colour has the cap's brightness. The white spots stay as drawn.
+
+**Tested how:** the jar builds. **Not tested in Minecraft.**
+
+## 2026-11-03 The other spores' bodies work; the cap picture is hue shifted
+
+**Your report:** the other spores still looked like Mycelium spores. **Your request:** `spore_cap.png`
+now has colour, so hue shift it instead of colouring a grey picture.
+
+**Why they stayed spores:** your `latest.log` showed "couldn't pose a body", caused by "Tried to
+access entity ID before ID assignment". The world gives entities their ids, and the made-up player
+is never in the world, so Minecraft's renderer refused it and the feature switched itself off.
+The stand-in couldn't catch this: it sends boxes, not Minecraft's renderer.
+
+**Changed (Minecraft only):**
+- `MycSporeBodies.java`: the made-up player gets a made-up id. After a failure it stops at once
+  (it logged three times), and tries again on a new link.
+- `MycSkins.java`: every pixel of `spore_cap.png` has its hue turned so the picture's main colour
+  (#CD1331) takes the cap's hue. Brightness, colour strength and the white spots stay.
+
+**Tested how:** the jar builds. **Not tested in Minecraft.**
+
+## 2026-11-03 Every spore is a Minecraft character in its own colours (protocol v43)
+
+**Your request:** make each spore in the colony a Minecraft character like the player, with your
+two skin parts coloured to match its cap and body and combined into a skin; the player too.
+
+**Changed:**
+- New `MycSkins.java`: tints `dist/skin/spore_cap.png` and `spore_body.png` and combines them;
+  `build.gradle` puts the two pictures in the jar. New `PlayerInfoSkinMixin`: your player wears
+  the skin of the spore you control. The player list's rows use the spores' skins.
+- New `MycSporeBodies.java` and `McColonyBodies.cs`: Minecraft poses a body per other spore (new
+  Bodies block), and Mycelium draws it at the spore's feet instead of the spore.
+- `ColonyWatch.cs` also sends cap colours and walking speed, every 0.1 s instead of 0.5 s.
+- **Bug fixed:** swapping spores left Minecraft driving the old spore (`rb` was found only once).
+  The new test aid `-mcSporeSwapTest` showed it. `MinecraftDriver` now follows the swap.
+- `McPlayerModel.cs`: its mesh building is shared with the bodies. Protocol 42 -> 43.
+
+**Tested how:** stand-in in The Carcass with `LINKTEST_MODEL=1`, which sends a box as each body: 4
+spores with their cap and body colours came through, 3 boxes stood at the spores' feet (y 1.01, the
+same as your feet) and followed them as they wandered, facing and speed logged (1.6 blocks/s). Two
+swaps: 0 spore renderers drawn on any spore after each. All spores drawn again when Minecraft went.
+The stand-in's FAIL lines are its checks for FakeMycelium's test level.
+**Not tested in Minecraft:** the skins, the real posed bodies, walking legs, heads in the list.
+
+**Failed first:** the swap test showed the new spore drawn under your body, 1 s after the swap.
+Cause: the old `rb` bug above. Unity's first build after adding a file failed again (CS0246); the
+second was clean.
+
 ## 2026-11-03 The player list footer says "Colony Happiness"
 
 **Your request:** change the word Colony to Colony Happiness.

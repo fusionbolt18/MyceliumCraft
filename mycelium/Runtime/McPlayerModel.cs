@@ -133,11 +133,26 @@ namespace MyceliumCraft
 
         void Rebuild(MyceliumLink link, float scale)
         {
-            int n = data.Vertices;
+            FillMesh(mesh, data.Raw, data.Vertices, scale);
+            mesh.subMeshCount = data.Batches;
+            var materials = new Material[data.Batches];
+            for (int b = 0; b < data.Batches; b++)
+            {
+                mesh.SetTriangles(Triangles(data.First[b], data.Count[b]), b, false);
+                materials[b] = MaterialFor(link, data.Texture[b]);
+            }
+            mesh.RecalculateBounds();
+            lastBounds = mesh.bounds;
+            meshRenderer.sharedMaterials = materials;
+            updates++;
+        }
+
+        /// <summary>Minecraft's vertices into a mesh (its triangles are set after).</summary>
+        public static void FillMesh(Mesh mesh, byte[] raw, int n, float scale)
+        {
             var vertices = new Vector3[n];
             var uvs = new Vector2[n];
             var colors = new Color32[n];
-            byte[] raw = data.Raw;
             for (int i = 0; i < n; i++)
             {
                 int o = i * Proto.MVertexBytes;
@@ -153,29 +168,23 @@ namespace MyceliumCraft
             mesh.vertices = vertices;
             mesh.uv = uvs;
             mesh.colors32 = colors;
-            mesh.subMeshCount = data.Batches;
-            var materials = new Material[data.Batches];
-            for (int b = 0; b < data.Batches; b++)
-            {
-                int first = data.First[b], count = data.Count[b];
-                var tris = new int[count];
-                // Same triangles, opposite winding: z is mirrored into Unity's axes.
-                for (int t = 0; t + 2 < count; t += 3)
-                {
-                    tris[t] = first + t;
-                    tris[t + 1] = first + t + 2;
-                    tris[t + 2] = first + t + 1;
-                }
-                mesh.SetTriangles(tris, b, false);
-                materials[b] = MaterialFor(link, data.Texture[b]);
-            }
-            mesh.RecalculateBounds();
-            lastBounds = mesh.bounds;
-            meshRenderer.sharedMaterials = materials;
-            updates++;
         }
 
-        Material MaterialFor(MyceliumLink link, int id)
+        /// <summary>Same triangles, opposite winding: z is mirrored into Unity's axes.</summary>
+        public static int[] Triangles(int first, int count)
+        {
+            var tris = new int[count];
+            for (int t = 0; t + 2 < count; t += 3)
+            {
+                tris[t] = first + t;
+                tris[t + 1] = first + t + 2;
+                tris[t + 2] = first + t + 1;
+            }
+            return tris;
+        }
+
+        /// <summary>The material for a texture from Minecraft (the other spores' bodies use these too).</summary>
+        public Material MaterialFor(MyceliumLink link, int id)
         {
             if (link.TryReadTexture(id, out uint version, out int w, out int h, out System.IntPtr pixels))
             {

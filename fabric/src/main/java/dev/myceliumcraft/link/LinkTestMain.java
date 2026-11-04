@@ -53,6 +53,7 @@ public final class LinkTestMain {
 	private static String resourceSeen = "";
 	private static String sporeNameSeen = "";
 	private static String colonySeen = "";
+	private static double nextSproutPrint;
 	private static final MycLink.Colony colony = new MycLink.Colony();
 	// LINKTEST_THROW_RESOURCE=1: once Mycelium lists 3 resources, the first is thrown 1 s later, flying
 	// 3 blocks forward until 1.5 s after, landed for 0.5 s, then gone, as Minecraft reports a thrown item.
@@ -144,6 +145,12 @@ public final class LinkTestMain {
 		int[] data = v.stream().mapToInt(Integer::intValue).toArray();
 		int vertices = data.length / 6;
 		MycLink.writeModel(Proto.M_VISIBLE | (firstPerson ? Proto.M_FIRST_PERSON : 0), new int[] { 1, 0, vertices }, 1, data, vertices);
+		// The same box as the other spores' bodies.
+		if (MycLink.readColony(colony)) {
+			for (int i = 0; i < colony.count; i++) {
+				MycLink.writeBody(i, 1, data, i == colony.current ? 0 : vertices);
+			}
+		}
 	}
 
 	private static void box(java.util.List<Integer> out, float x0, float y0, float z0, float x1, float y1, float z1) {
@@ -389,10 +396,16 @@ public final class LinkTestMain {
 					list.append(i > 0 ? ", " : "").append("type ").append(myc.resourceTypes[i]).append(" #").append(myc.resourceIds[i]);
 				}
 				if (MycLink.readColony(colony)) {
+					for (int i = 0; i < colony.count; i++) {
+						if (colony.emerges[i] >= 0f && t >= nextSproutPrint) {
+							nextSproutPrint = t + 0.5;
+							System.out.printf("t=%.2f colony: %s sprouting, %.2f of the way%n", t, colony.names[i], colony.emerges[i]);
+						}
+					}
 					StringBuilder c = new StringBuilder();
 					for (int i = 0; i < colony.count; i++) {
 						c.append(i > 0 ? ", " : "").append(colony.names[i]).append(i == colony.current ? " (you)" : "")
-							.append(String.format(" %.2f #%06X", colony.happiness[i], colony.colors[i]));
+							.append(String.format(" %.2f body #%06X cap #%06X", colony.happiness[i], colony.colors[i], colony.caps[i]));
 					}
 					String seen = colony.count + " spore(s), average " + String.format("%.2f", colony.average) + ": " + c;
 					if (!seen.equals(colonySeen)) {

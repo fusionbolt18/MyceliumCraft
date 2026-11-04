@@ -95,6 +95,10 @@ tasks.register('weaponResources') {
 
 processResources {
 	from(tasks.named('weaponResources'))
+	// Your two spore skin parts (MycSkins.java colours and combines them while the game runs).
+	from(rootProject.file('../dist/skin')) {
+		into 'assets/myceliumcraft/textures/spore_skin'
+	}
 	def version = project.version
 	// When this jar was built, logged at start so an old jar in the mods folder is easy to spot.
 	def built = new Date().format("yyyy-MM-dd HH:mm")

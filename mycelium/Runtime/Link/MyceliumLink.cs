@@ -357,6 +357,30 @@ namespace MyceliumCraft.Link
             return false;
         }
 
+        /// <summary>Seqlock read of one colony spore's body into data (one batch: Texture[0]). False if Minecraft kept interrupting.</summary>
+        public bool TryReadBody(int slot, ModelData data)
+        {
+            int b = Proto.OffBodies + slot * Proto.BodySlotBytes;
+            for (int attempt = 0; attempt < 16; attempt++)
+            {
+                uint seq1 = ReadU32(view, b + Proto.BoSeq);
+                Thread.MemoryBarrier();
+                if ((seq1 & 1) != 0) { Thread.SpinWait(20); continue; }
+                int vertices = (int)ReadU32(view, b + Proto.BoVertices);
+                if (vertices < 0 || vertices > Proto.BoMaxVertices) return false;
+                data.Texture[0] = (int)ReadU32(view, b + Proto.BoTexture);
+                data.Frame = Marshal.ReadInt64(view, b + Proto.BoFrame);
+                int bytes = vertices * Proto.MVertexBytes;
+                if (data.Raw.Length < bytes) data.Raw = new byte[bytes];
+                Marshal.Copy(view + b + Proto.BoVertexData, data.Raw, 0, bytes);
+                Thread.MemoryBarrier();
+                if (ReadU32(view, b + Proto.BoSeq) != seq1) continue;
+                data.Vertices = vertices;
+                return true;
+            }
+            return false;
+        }
+
         /// <summary>Texture id (1-based) from Minecraft, if it has been sent: RGBA pixels, top row first.</summary>
         public bool TryReadTexture(int id, out uint version, out int width, out int height, out IntPtr pixels)
         {
@@ -444,7 +468,7 @@ namespace MyceliumCraft.Link
 
         /// <summary>A string as UTF-8, cut to fit (whole characters) and zero-terminated.</summary>
         /// <summary>Seqlock write of the Colony block (average -1: no colony; current -1: none).</summary>
-        public void WriteColony(int count, uint[] colors, float[] happiness, string[] names, float average, int current)
+        public void WriteColony(int count, uint[] colors, uint[] caps, float[] speeds, float[] emerges, float[] happiness, string[] names, float average, int current)
         {
             int b = Proto.OffColony;
             count = Math.Max(0, Math.Min(count, Proto.ColMax));
@@ -458,6 +482,9 @@ namespace MyceliumCraft.Link
             {
                 int e = b + Proto.ColList + Proto.ColSize * i;
                 WriteU32(view, e + Proto.CeColor, colors[i]);
+                WriteU32(view, e + Proto.CeCap, caps[i]);
+                WriteF32(view, e + Proto.CeSpeed, speeds[i]);
+                WriteF32(view, e + Proto.CeEmerge, emerges[i]);
                 WriteF32(view, e + Proto.CeHappiness, happiness[i]);
                 WriteUtf8(view, e + Proto.CeName, Proto.CeNameBytes, names[i]);
             }

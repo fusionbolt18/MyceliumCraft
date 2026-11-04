@@ -159,8 +159,17 @@ Single-player and offline only.
 - **Trophic Cascade:** your Minecraft body vanishes and reappears with the spore, and from first
   person the view goes to third person behind meanwhile (not tested in Minecraft; tested in
   Mycelium with a fake vanish).
+- **Every spore is a Minecraft character in its own colours:** your two skin pictures (`dist/skin`)
+  are coloured to each spore's cap (hue and brightness) and body (a tint) and combined into a skin, for your player, the
+  player list's heads and the other spores, which are drawn as Minecraft bodies that walk where the
+  spores walk. Swapping spores moves Minecraft to the new one. The bodies, their hiding of the
+  spores, and swaps work with a stand-in body in Mycelium. Minecraft's log shows the skins made and your player wearing one;
+  you've seen the other spores as Minecraft characters. **Not tested in Minecraft:** their size
+  matching yours, their walking, the cap's brightness.
+- **A spore grown in the shop digs out of the ground** during its little cutscene, as you do in
+  The Carcass. Mycelium's HUD and Minecraft's overlay are hidden for the cutscene. Mycelium's side reaches a fake Minecraft; **not tested in Minecraft.**
 - **Your colony is in Minecraft's player list** (Tab): the other spores are rows like other
-  players' (a built-in Minecraft skin each), then a text bar of the colony's happiness that fills up or down, and Happy / Content / Unhappy.
+  players' (each in its own skin), then a text bar of the colony's happiness that fills up or down, and Happy / Content / Unhappy.
   Mycelium's own colony meter is hidden while Minecraft drives. The colony reaches a fake
   Minecraft and the meter hides; the bar looks right in Minecraft (your test); **the spore rows
   are not tested**.

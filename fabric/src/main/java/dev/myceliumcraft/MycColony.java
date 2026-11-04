@@ -10,7 +10,6 @@ import java.util.List;
 import java.util.UUID;
 import net.minecraft.client.Minecraft;
 import net.minecraft.client.multiplayer.PlayerInfo;
-import net.minecraft.client.resources.DefaultPlayerSkin;
 import net.minecraft.world.entity.player.PlayerSkin;
 import net.minecraft.network.chat.Component;
 import net.minecraft.network.chat.MutableComponent;
@@ -20,8 +19,8 @@ import net.minecraft.network.chat.Style;
  * Your Mycelium colony in the player list, instead of Mycelium's colony meter (your requests,
  * 2026-11-03; Colony block, protocol v42; ColonyWatch.cs).
  * - The other spores are rows like other players' (PlayerTabRowsMixin): a PlayerInfo each, with a
- *   made-up id from its name and one of Minecraft's built-in skins (DefaultPlayerSkin, so nothing
- *   is asked of Mojang's skin servers). You are your own row already (MycName).
+ *   made-up id from its name and its own skin in its colours (MycSkins, so nothing is asked of
+ *   Mojang's skin servers). You are your own row already (MycName), in your spore's skin.
  * - The footer: a bar of text for the colony's average happiness that fills up or down toward
  *   it, as Mycelium's meter does, and Mycelium's word for it (Happy over half, Unhappy under,
  *   Content at half: where its stat bonus is above, below or at none).
@@ -40,6 +39,7 @@ public final class MycColony {
 	private static boolean footerSet;
 	private static List<PlayerInfo> rows = List.of();
 	private static String rowsKey = "";
+	private static boolean present;
 
 	private MycColony() {
 	}
@@ -50,9 +50,11 @@ public final class MycColony {
 		float dt = lastNanos == 0 ? 0f : Math.min(0.25f, (now - lastNanos) / 1e9f);
 		lastNanos = now;
 		boolean have = active && MycLink.readColony(COLONY) && COLONY.count > 0 && COLONY.average >= 0f;
+		present = have;
 		if (!have) {
 			if (footerSet) {
 				minecraft.gui.hud.getTabList().setFooter(null);
+				MycSkins.setYours(null, null);
 				footerSet = false;
 				rows = List.of();
 				rowsKey = "";
@@ -63,6 +65,9 @@ public final class MycColony {
 			}
 			return;
 		}
+		boolean haveCurrent = COLONY.current >= 0 && COLONY.current < COLONY.count && minecraft.player != null;
+		MycSkins.setYours(haveCurrent ? minecraft.player.getUUID() : null,
+			haveCurrent ? MycSkins.skin(COLONY.caps[COLONY.current], COLONY.colors[COLONY.current]) : null);
 		float target = Math.max(0f, Math.min(1f, COLONY.average));
 		if (shown < 0f) {
 			shown = target; // first time: where it is, no fill from empty
@@ -73,7 +78,7 @@ public final class MycColony {
 		int filled = Math.round(shown * SEGMENTS);
 		StringBuilder key = new StringBuilder().append(COLONY.current).append('|').append(word(target));
 		for (int i = 0; i < COLONY.count; i++) {
-			key.append('|').append(COLONY.names[i]).append('#').append(COLONY.colors[i]);
+			key.append('|').append(COLONY.names[i]).append('#').append(COLONY.colors[i]).append('#').append(COLONY.caps[i]);
 		}
 		String list = key.toString();
 		boolean listChanged = !list.equals(lastList);
@@ -93,6 +98,11 @@ public final class MycColony {
 		}
 	}
 
+	/** Your colony as last read, or null when there is none. */
+	public static MycLink.Colony colony() {
+		return present ? COLONY : null;
+	}
+
 	/** The other spores' rows for the player list (not the one you control: that's you). */
 	public static List<PlayerInfo> otherSporeRows() {
 		return rows;
@@ -103,7 +113,7 @@ public final class MycColony {
 		StringBuilder key = new StringBuilder();
 		for (int i = 0; i < COLONY.count; i++) {
 			if (i != COLONY.current) {
-				key.append(i).append(':').append(COLONY.names[i]).append('|');
+				key.append(i).append(':').append(COLONY.names[i]).append('#').append(COLONY.colors[i]).append('#').append(COLONY.caps[i]).append('|');
 			}
 		}
 		if (key.toString().equals(rowsKey)) {
@@ -121,8 +131,11 @@ public final class MycColony {
 			}
 			UUID id = UUID.nameUUIDFromBytes(("myceliumcraft-spore:" + name).getBytes(StandardCharsets.UTF_8));
 			PlayerInfo info = new PlayerInfo(new GameProfile(id, name), false);
-			PlayerSkin skin = DefaultPlayerSkin.get(id);
-			((PlayerInfoAccessor) info).myceliumcraft$setSkinLookup(() -> skin);
+			PlayerSkin skin = MycSkins.skin(COLONY.caps[i], COLONY.colors[i]);
+			if (skin != null) {
+				((PlayerInfoAccessor) info).myceliumcraft$setSkinLookup(() -> skin);
+			}
+			info.setShowHat(true); // the cap's outer layer, on the list's little head
 			made.add(info);
 		}
 		rows = List.copyOf(made);

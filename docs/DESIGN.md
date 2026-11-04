@@ -1826,15 +1826,50 @@ Like SkyCraft's `fake_skyrim.py`:
   - **The other spores are rows like other players'** (since your second request that day):
     `PlayerTabRowsMixin` adds them after the real players that `PlayerTabOverlay.getPlayerInfos`
     returns. Each is a `PlayerInfo` with a made-up id from its name (the same each time) and the
-    name cut to 16 characters (Minecraft's longest player name). Its skin is one of Minecraft's
-    built-in ones (`DefaultPlayerSkin.get(id)`, set through `PlayerInfoAccessor`), because
-    Minecraft's own lookup can ask Mojang's skin servers. You are your own row (named by MycName).
+    name cut to 16 characters (Minecraft's longest player name). Its skin is its own (`MycSkins`,
+    set through `PlayerInfoAccessor`), because Minecraft's own lookup can ask Mojang's skin
+    servers. You are your own row (named by MycName).
     Made again only when the colony or the spore you control changes.
   - The footer (under the rows): "Colony Happiness", then a bar of 40 `|`: filled ones in the happiness colour, the rest dark grey. It moves toward
     the average at 0.6 of its length per second, so it fills up or down as it changes.
   - Mycelium's word under it: Happy over 0.5, Unhappy under, Content at 0.5 (that's where
     Mycelium's stat bonus from happiness is above, below or at none), in Mycelium's colours.
   - Cleared when Mycelium has no spore in a level.
+- **Spore skins** (`MycSkins.java`, since 2026-11-03): your two pictures in `dist/skin` go into
+  the jar when it's built, and are combined into one 64x64 skin (they share no pixels).
+  `spore_cap.png` is in colour: every pixel's hue is turned and every clearly coloured pixel's
+  brightness scaled by the same amounts, so the picture's commonest clearly coloured pixel takes
+  the cap's hue and brightness. Strength of colour stays as drawn, so a pale cap comes out
+  stronger than it really is, and the white spots stay white.
+  `spore_body.png` is grey and is multiplied by the body colour (greys below white come out darker
+  than the colour). It's a wide-armed skin, one texture
+  per pair of colours, kept for the whole run: Mycelium's textures block holds 256, so a very
+  large number of colour changes would run out. `PlayerInfoSkinMixin` gives your player the skin
+  of the spore you control, everywhere Minecraft asks for it.
+- **The other spores as Minecraft characters** (since 2026-11-03):
+  - **Minecraft** (`MycSporeBodies.java`): one made-up player, never in the world, is posed by
+    Minecraft's renderer once per spore in that spore's skin (it needs a made-up entity id, or
+    Minecraft's renderer refuses it), and `MycPlayerModel` takes its
+    triangles into the spore's Bodies slot. Facing south, at the origin, at your player's scale
+    (`getScale()`: your player is scaled to the spore's height). One pose per Minecraft frame
+    while a spore walks or sprouts; none while it stands.
+  - **Walking:** Mycelium measures each spore's speed along the ground (every 0.1 s); 5 blocks a
+    second is Minecraft's full leg swing. The spores keep wandering as Mycelium moves them.
+  - **Mycelium** (`McColonyBodies.cs`): a mesh per spore at its feet, turned to where it faces; the
+    spore's renderers get `forceRenderingOff`, except those on a canvas (the popup hangs under the
+    spore, and its happiness faces are sprites). Only while your own Minecraft body is shown, and
+    given back when it goes. Standing on a chair or in a bed, a body just stands (no sitting pose).
+  - **A spore grown in the shop digs out of the ground** (since 2026-11-03): `SpawnNewCharacter`
+    plays the same "Sprout" animation on it as on you in The Carcass. `ColonyWatch` sends how far
+    through it is, every frame while it lasts, and `MycSporeBodies` poses that body with
+    `EmergePose`, the same dig-out as yours. Its speed isn't held at x1 as yours is
+    (`SproutWatch`): it follows the new spore's animator.
+  - **The cutscene shows no HUD or overlay** (`BirthCutscene.cs`, since 2026-11-03): while the
+    "GrowCamera" outranks the main camera (2.5 s), the "HUD" CanvasGroup's alpha is held at 0 and
+    Minecraft's overlay is off. Mycelium's "was born" notification has its own canvas and stays.
+  - **Swapping spores:** `MinecraftDriver` used to keep following the first spore. Now it sees
+    `PlayerController.rb` change, starts over as with a new player, and teleports Minecraft to the
+    new spore (about 0.1 s, in which the bodies and colony meter blink).
 - **Checked** in the stand-in (The Carcass): "colony: 2 spore(s), average 0.25: Cline (you) 0.00
   #E3DEFF, Gerf 0.50 #D7D378", and "colony meter hidden (HappinessSlider=True,
   ColonyHappinessText=True)". The footer itself only shows in real Minecraft.

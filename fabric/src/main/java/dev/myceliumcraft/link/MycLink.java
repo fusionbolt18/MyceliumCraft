@@ -274,6 +274,25 @@ public final class MycLink {
 		INT.setRelease(s, b + M_SEQ, seq + 2);
 	}
 
+	/** Seqlock write of one colony spore's body: data = 6 ints per vertex, all with one texture. 0 vertices: no body. */
+	public static void writeBody(int slot, int texture, int[] data, int vertices) {
+		MemorySegment s = shm;
+		if (s == null || slot < 0 || slot >= COL_MAX || vertices > BO_MAX_VERTICES) {
+			return;
+		}
+		long b = OFF_BODIES + slot * BODY_SLOT_BYTES;
+		int seq = s.get(JAVA_INT, b + BO_SEQ);
+		INT.setRelease(s, b + BO_SEQ, seq + 1);
+		VarHandle.storeStoreFence();
+		s.set(JAVA_INT, b + BO_TEXTURE, texture);
+		s.set(JAVA_INT, b + BO_VERTICES, vertices);
+		s.set(JAVA_LONG, b + BO_FRAME, s.get(JAVA_LONG, b + BO_FRAME) + 1);
+		if (vertices > 0) {
+			MemorySegment.copy(data, 0, s, JAVA_INT, b + BO_VERTEX_DATA, vertices * 6);
+		}
+		INT.setRelease(s, b + BO_SEQ, seq + 2);
+	}
+
 	/** Write texture id (1-based) once: pixels (RGBA, top row first) first, then its entry. */
 	public static boolean writeTexture(int id, int width, int height, long offset, byte[] rgba) {
 		MemorySegment s = shm;
@@ -496,6 +515,11 @@ public final class MycLink {
 		/** The spore you control (-1 = none). */
 		public int current = -1;
 		public final int[] colors = new int[COL_MAX];
+		public final int[] caps = new int[COL_MAX];
+		/** How fast each spore walks, blocks per second. */
+		public final float[] speeds = new float[COL_MAX];
+		/** How far through its sprout each spore is, 0..1 (-1 = none). */
+		public final float[] emerges = new float[COL_MAX];
 		public final float[] happiness = new float[COL_MAX];
 		public final String[] names = new String[COL_MAX];
 	}
@@ -519,6 +543,9 @@ public final class MycLink {
 			for (int i = 0; i < out.count; i++) {
 				long e = b + COL_LIST + COL_SIZE * i;
 				out.colors[i] = s.get(JAVA_INT, e + CE_COLOR);
+				out.caps[i] = s.get(JAVA_INT, e + CE_CAP);
+				out.speeds[i] = s.get(JAVA_FLOAT, e + CE_SPEED);
+				out.emerges[i] = s.get(JAVA_FLOAT, e + CE_EMERGE);
 				out.happiness[i] = s.get(JAVA_FLOAT, e + CE_HAPPINESS);
 				out.names[i] = utf8(s, e + CE_NAME, CE_NAME_BYTES);
 			}

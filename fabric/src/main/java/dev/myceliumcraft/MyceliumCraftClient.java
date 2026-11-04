@@ -225,6 +225,7 @@ public final class MyceliumCraftClient implements ClientModInitializer {
 		sendHitBoxes(minecraft);
 		// Third person: your Minecraft body, for Mycelium to draw instead of the spore.
 		MycPlayerModel.frame(minecraft, MycOverlay.active(), partial);
+		MycSporeBodies.frame(minecraft, MycOverlay.active(), partial);
 		logOncePerSecond(feet, player.getYRot(), flags);
 	}
 

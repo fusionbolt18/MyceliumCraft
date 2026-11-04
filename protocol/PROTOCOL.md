@@ -285,7 +285,8 @@ mapping grows by 0x400.
 ### Colony @ after Thrown (Mycelium → Minecraft, seqlock). Since version 42
 
 Every spore in your colony (`SwapCharacter.characters`), for Minecraft's player list
-(`ColonyWatch.cs`, `MycColony.java`). Written every 0.5 s. The mapping grows by 0x800.
+(`ColonyWatch.cs`, `MycColony.java`). Written every 0.1 s (0.5 s before version 43), and every
+frame while another spore is in its Sprout. The mapping grows by 0x800.
 
 | Off | Type | Field |
 |---|---|---|
@@ -293,7 +294,22 @@ Every spore in your colony (`SwapCharacter.characters`), for Minecraft's player 
 | 0x04 | u32 | count (at most 24) |
 | 0x08 | f32 | the colony's average happiness 0..1 (as `HappinessManager.GetAverageColonyHappiness`); −1 = no colony |
 | 0x0C | i32 | which entry is the spore you control; −1 = none |
-| 0x10 + 0x40·i | entry | u32 body colour `0xRRGGBB` (`DesignTracker.bodyColor`); f32 happiness 0..1 (`CharacterStats.sporeHappiness`); utf8[56] name |
+| 0x10 + 0x4C·i | entry | u32 body colour `0xRRGGBB` (`DesignTracker.bodyColor`); f32 happiness 0..1 (`CharacterStats.sporeHappiness`); utf8[56] name; since version 43, at 0x40 u32 cap colour `0xRRGGBB` (`DesignTracker.capColor`) and at 0x44 f32 walking speed in blocks per second (entries were 0x40 long before); since version 44, at 0x48 f32 how far through Mycelium's Sprout animation 0..1, −1 = not in it |
+
+### Bodies @ after Colony (Minecraft → Mycelium, a seqlock per slot). Since version 43
+
+The other spores' posed bodies (`MycSporeBodies.java`, `McColonyBodies.cs`). 24 slots of 0x4000
+bytes, slot = the spore's entry in Colony. The mapping grows by 0x60000. A body faces south, its
+feet at the origin; Mycelium stands it at the spore's feet and turns it. A slot is written again
+only while the spore walks, or when its colours change.
+
+| Off | Type | Field |
+|---|---|---|
+| 0x00 | u32 | seq |
+| 0x04 | u32 | texture id (Textures block) |
+| 0x08 | u32 | vertex count (at most 680; 0 = no body) |
+| 0x10 | u64 | frame: goes up with every write |
+| 0x40 | 24 bytes each | vertices, as in the Model block |
 
 ### GroundGrid @ 0x1000 (Mycelium → Minecraft, seqlock)
 

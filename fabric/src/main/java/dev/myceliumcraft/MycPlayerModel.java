@@ -100,6 +100,7 @@ public final class MycPlayerModel implements SubmitNodeCollector {
 		nextTextureId = 1;
 		nextTextureOffset = 0;
 		shown = false;
+		MycSporeBodies.reset();
 	}
 
 	/** After every frame: send the body (in every view; in first person it's only for its shadow). */
@@ -120,6 +121,40 @@ public final class MycPlayerModel implements SubmitNodeCollector {
 			return;
 		}
 		INSTANCE.capture(minecraft, camera, partialTick);
+	}
+
+	/** Take one colony spore's body from its render state and send it (slot = its place in the colony). False: nothing came out. */
+	static boolean sendBody(int slot, EntityRenderState state, Minecraft minecraft) {
+		return INSTANCE.captureBody(slot, state, minecraft);
+	}
+
+	private boolean captureBody(int slot, EntityRenderState state, Minecraft minecraft) {
+		for (Batch b : this.batches.values()) {
+			b.count = 0;
+		}
+		CameraRenderState cameraState = minecraft.gameRenderer.gameRenderState().levelRenderState.cameraRenderState;
+		minecraft.getEntityRenderDispatcher().submit(state, cameraState, 0.0, 0.0, 0.0, new PoseStack(), this);
+		this.capture.flush();
+		Batch skin = null;
+		for (Batch b : this.batches.values()) {
+			if (b.count >= 4 && (skin == null || b.count > skin.count)) {
+				skin = b; // a spore wears nothing: its skin is the only texture
+			}
+		}
+		if (skin == null || skin.count / 4 * 6 > Proto.BO_MAX_VERTICES) {
+			return false;
+		}
+		int vertices = skin.count / 4 * 6;
+		int[] data = new int[vertices * 6];
+		int f = 0;
+		for (int q = 0; q + 4 <= skin.count; q += 4) {
+			for (int k : new int[] { 0, 1, 2, 0, 2, 3 }) {
+				System.arraycopy(skin.data, (q + k) * 6, data, f, 6);
+				f += 6;
+			}
+		}
+		MycLink.writeBody(slot, skin.texture, data, vertices);
+		return true;
 	}
 
 	private void capture(Minecraft minecraft, Camera camera, float partialTick) {

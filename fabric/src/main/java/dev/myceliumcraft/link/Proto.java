@@ -74,13 +74,20 @@ public final class Proto {
 	public static final long COLONY_BYTES = 0x800;
 	public static final long COL_SEQ = 0x00, COL_COUNT = 0x04, COL_AVERAGE = 0x08, COL_CURRENT = 0x0C, COL_LIST = 0x10;
 	public static final int COL_MAX = 24;
-	public static final long COL_SIZE = 0x40; // u32 body colour 0xRRGGBB, f32 happiness 0..1, utf8[56] name
-	public static final long CE_COLOR = 0x00, CE_HAPPINESS = 0x04, CE_NAME = 0x08;
+	public static final long COL_SIZE = 0x4C; // u32 body colour 0xRRGGBB, f32 happiness 0..1, utf8[56] name, u32 cap colour, f32 walking speed (blocks/s), f32 sprout 0..1 (-1 = none)
+	public static final long CE_COLOR = 0x00, CE_HAPPINESS = 0x04, CE_NAME = 0x08, CE_CAP = 0x40, CE_SPEED = 0x44, CE_EMERGE = 0x48;
 	public static final int CE_NAME_BYTES = 0x38;
 
-	public static final long MAPPING_BYTES = OFF_COLONY + COLONY_BYTES;
+	// Bodies (Minecraft -> Mycelium, a seqlock per slot): the other spores' posed bodies, slot = colony index (since v43).
+	public static final long OFF_BODIES = OFF_COLONY + COLONY_BYTES;
+	public static final long BODY_SLOT_BYTES = 0x4000;
+	public static final long BODIES_BYTES = COL_MAX * BODY_SLOT_BYTES;
+	public static final long BO_SEQ = 0x00, BO_TEXTURE = 0x04, BO_VERTICES = 0x08, BO_FRAME = 0x10, BO_VERTEX_DATA = 0x40;
+	public static final int BO_MAX_VERTICES = (int) ((BODY_SLOT_BYTES - BO_VERTEX_DATA) / M_VERTEX_BYTES);
+
+	public static final long MAPPING_BYTES = OFF_BODIES + BODIES_BYTES;
 	public static final int MAGIC = 0x4343594D; // "MYCC"
-	public static final int VERSION = 42;
+	public static final int VERSION = 44;
 	/** A side is alive if its heartbeat is younger than this. */
 	public static final long HEARTBEAT_TIMEOUT_MS = 3000;
 

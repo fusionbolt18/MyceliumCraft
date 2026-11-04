@@ -82,12 +82,20 @@ namespace MyceliumCraft.Link
         public const int ColonyBytes = 0x800;
         public const int ColSeq = 0x00, ColCount = 0x04, ColAverage = 0x08, ColCurrent = 0x0C, ColList = 0x10;
         public const int ColMax = 24;
-        public const int ColSize = 0x40;           // u32 body colour 0xRRGGBB, f32 happiness 0..1, utf8[56] name
-        public const int CeColor = 0x00, CeHappiness = 0x04, CeName = 0x08, CeNameBytes = 0x38;
+        public const int ColSize = 0x4C;           // u32 body colour 0xRRGGBB, f32 happiness 0..1, utf8[56] name, u32 cap colour, f32 walking speed (blocks/s), f32 sprout 0..1 (-1 = none)
+        public const int CeColor = 0x00, CeHappiness = 0x04, CeName = 0x08, CeNameBytes = 0x38, CeCap = 0x40, CeSpeed = 0x44, CeEmerge = 0x48;
 
-        public const int MappingBytes = OffColony + ColonyBytes;
+        // Bodies (Minecraft -> Mycelium, a seqlock per slot): the other spores' posed bodies, slot =
+        // colony index (since v43). Vertices as in the Model block, all with one texture.
+        public const int OffBodies = OffColony + ColonyBytes;
+        public const int BodySlotBytes = 0x4000;
+        public const int BodiesBytes = ColMax * BodySlotBytes;
+        public const int BoSeq = 0x00, BoTexture = 0x04, BoVertices = 0x08, BoFrame = 0x10, BoVertexData = 0x40;
+        public const int BoMaxVertices = (BodySlotBytes - BoVertexData) / MVertexBytes;
+
+        public const int MappingBytes = OffBodies + BodiesBytes;
         public const uint Magic = 0x4343594D; // "MYCC"
-        public const uint Version = 42;
+        public const uint Version = 44;
         public const ulong HeartbeatTimeoutMs = 3000;
 
         // Header @0x000
