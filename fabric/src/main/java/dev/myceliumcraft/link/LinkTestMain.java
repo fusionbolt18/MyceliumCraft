@@ -407,7 +407,7 @@ public final class LinkTestMain {
 						c.append(i > 0 ? ", " : "").append(colony.names[i]).append(i == colony.current ? " (you)" : "")
 							.append(String.format(" %.2f body #%06X cap #%06X", colony.happiness[i], colony.colors[i], colony.caps[i]));
 					}
-					String seen = colony.count + " spore(s), average " + String.format("%.2f", colony.average) + ": " + c;
+					String seen = colony.count + " spore(s), average " + String.format("%.2f", colony.average) + ", nutrient bonus " + colony.nutrientBonus + ": " + c;
 					if (!seen.equals(colonySeen)) {
 						colonySeen = seen;
 						System.out.printf("t=%.2f colony: %s%n", t, seen);

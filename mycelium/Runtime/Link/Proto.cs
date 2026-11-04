@@ -82,6 +82,7 @@ namespace MyceliumCraft.Link
         public const int ColonyBytes = 0x800;
         public const int ColSeq = 0x00, ColCount = 0x04, ColAverage = 0x08, ColCurrent = 0x0C, ColList = 0x10;
         public const int ColMax = 24;
+        public const int ColNutrientBonus = 0x730; // i32, just after the list: Mycelium's nutrient bonus in percent; -1 = not in a run
         public const int ColSize = 0x4C;           // u32 body colour 0xRRGGBB, f32 happiness 0..1, utf8[56] name, u32 cap colour, f32 walking speed (blocks/s), f32 sprout 0..1 (-1 = none)
         public const int CeColor = 0x00, CeHappiness = 0x04, CeName = 0x08, CeNameBytes = 0x38, CeCap = 0x40, CeSpeed = 0x44, CeEmerge = 0x48;
 
@@ -95,7 +96,7 @@ namespace MyceliumCraft.Link
 
         public const int MappingBytes = OffBodies + BodiesBytes;
         public const uint Magic = 0x4343594D; // "MYCC"
-        public const uint Version = 44;
+        public const uint Version = 45;
         public const ulong HeartbeatTimeoutMs = 3000;
 
         // Header @0x000

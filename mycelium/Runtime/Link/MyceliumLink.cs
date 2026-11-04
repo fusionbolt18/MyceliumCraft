@@ -468,7 +468,7 @@ namespace MyceliumCraft.Link
 
         /// <summary>A string as UTF-8, cut to fit (whole characters) and zero-terminated.</summary>
         /// <summary>Seqlock write of the Colony block (average -1: no colony; current -1: none).</summary>
-        public void WriteColony(int count, uint[] colors, uint[] caps, float[] speeds, float[] emerges, float[] happiness, string[] names, float average, int current)
+        public void WriteColony(int count, uint[] colors, uint[] caps, float[] speeds, float[] emerges, float[] happiness, string[] names, float average, int current, int nutrientBonus)
         {
             int b = Proto.OffColony;
             count = Math.Max(0, Math.Min(count, Proto.ColMax));
@@ -478,6 +478,7 @@ namespace MyceliumCraft.Link
             WriteU32(view, b + Proto.ColCount, (uint)count);
             WriteF32(view, b + Proto.ColAverage, average);
             Marshal.WriteInt32(view, b + Proto.ColCurrent, current);
+            Marshal.WriteInt32(view, b + Proto.ColNutrientBonus, nutrientBonus);
             for (int i = 0; i < count; i++)
             {
                 int e = b + Proto.ColList + Proto.ColSize * i;

@@ -86,6 +86,10 @@ Single-player and offline only.
   The Mycelium half is tested with a fake Minecraft.
 - **Minecraft's experience level = Mycelium's nutrients: not tested in Minecraft.** XP orbs and
   enchanting don't change it (put back).
+- **Mycelium's nutrient panel is hidden while Minecraft drives,** and comes back when it stops.
+  Tested with a fake Minecraft; **not tested in Minecraft.**
+- **During a run the player list says "Nutrient Multiplier: +X%"** in place of Colony Happiness.
+  The number reaches a fake Minecraft; **the text itself is not tested in Minecraft.**
 - **Minecraft health follows Mycelium's: not tested in Minecraft.**
   - Every 5 Mycelium health is half a heart; Minecraft's max health follows Mycelium's max.
   - When max health changes (Vitality, a weapon's attribute), current health keeps the same share of

@@ -63,6 +63,7 @@ namespace MyceliumCraft
         readonly DashWatch dash = new DashWatch();
         readonly ColonyWatch colony = new ColonyWatch();
         readonly BirthCutscene birth = new BirthCutscene();
+        readonly NutrientPanel nutrientPanel = new NutrientPanel();
         readonly VanishWatch vanish = new VanishWatch();
         readonly KeyHints keyHints = new KeyHints();
         readonly SkillIconWatch skillIcons = new SkillIconWatch();
@@ -265,6 +266,13 @@ namespace MyceliumCraft
             if (Array.IndexOf(args, "-mcSwapTest") >= 0) StartCoroutine(SwapTest());
             // Test aid: "-mcSporeSwapTest" swaps to the next spore, then logs which spores are still drawn.
             if (Array.IndexOf(args, "-mcSporeSwapTest") >= 0) StartCoroutine(SporeSwapTest());
+            // Test aid: "-mcLoop <n>" starts on that loop, to see its nutrient bonus.
+            int loopArg = Array.IndexOf(args, "-mcLoop");
+            if (loopArg >= 0 && loopArg + 1 < args.Length && int.TryParse(args[loopArg + 1], out int loop))
+            {
+                Type.GetType("GlobalData, Assembly-CSharp")?.GetField("currentLoop")?.SetValue(null, loop);
+                McLog.Info($"loop test: on loop {loop}");
+            }
             // Test aid: "-mcGrowTest" grows a new spore as the shop does, 4 s into driving.
             if (Array.IndexOf(args, "-mcGrowTest") >= 0) StartCoroutine(GrowTest());
             // Test aid: "-mcPickupTest" puts a Cactus Mace on the ground in front of the spore 4 s into
@@ -353,6 +361,7 @@ namespace MyceliumCraft
                 resources.SceneLoaded(scene);
                 colony.SceneLoaded();
                 birth.SceneLoaded();
+                nutrientPanel.SceneLoaded();
                 SetPhase(Phase.Idle, "new scene");
             };
         }
@@ -401,11 +410,14 @@ namespace MyceliumCraft
                                dashX, dashZ, resourceCount, resources.Entries,
                                rb != null ? SporeName() : ""); // Minecraft's player goes by it (MycName.java)
 
+            // Your nutrients: Minecraft's experience level, on the overlay, instead of Mycelium's panel.
+            nutrientPanel.Update(McConfig.Overlay && rb != null && phase == Phase.Driving && link.MinecraftAlive);
+
             // Your colony: in Minecraft's player list instead of Mycelium's colony meter (ColonyWatch, MycColony.java).
             if (colony.Update(rb != null && phase == Phase.Driving && link.MinecraftAlive, (float)map.Scale))
             {
-                if (rb != null) link.WriteColony(colony.Count, colony.Colors, colony.Caps, colony.Speeds, colony.Emerges, colony.Happiness, colony.Names, colony.Average, colony.Current);
-                else link.WriteColony(0, colony.Colors, colony.Caps, colony.Speeds, colony.Emerges, colony.Happiness, colony.Names, -1f, -1);
+                if (rb != null) link.WriteColony(colony.Count, colony.Colors, colony.Caps, colony.Speeds, colony.Emerges, colony.Happiness, colony.Names, colony.Average, colony.Current, colony.NutrientBonus);
+                else link.WriteColony(0, colony.Colors, colony.Caps, colony.Speeds, colony.Emerges, colony.Happiness, colony.Names, -1f, -1, -1);
             }
 
             bool alive = link.MinecraftAlive;

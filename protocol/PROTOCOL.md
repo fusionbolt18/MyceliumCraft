@@ -295,6 +295,7 @@ frame while another spore is in its Sprout. The mapping grows by 0x800.
 | 0x08 | f32 | the colony's average happiness 0..1 (as `HappinessManager.GetAverageColonyHappiness`); −1 = no colony |
 | 0x0C | i32 | which entry is the spore you control; −1 = none |
 | 0x10 + 0x4C·i | entry | u32 body colour `0xRRGGBB` (`DesignTracker.bodyColor`); f32 happiness 0..1 (`CharacterStats.sporeHappiness`); utf8[56] name; since version 43, at 0x40 u32 cap colour `0xRRGGBB` (`DesignTracker.capColor`) and at 0x44 f32 walking speed in blocks per second (entries were 0x40 long before); since version 44, at 0x48 f32 how far through Mycelium's Sprout animation 0..1, −1 = not in it |
+| 0x730 | i32 | since version 45: Mycelium's nutrient bonus in percent, as its HUD shows it, `(GlobalData.currentLoop − 1) × 50`; −1 = not in a run (in The Carcass) |
 
 ### Bodies @ after Colony (Minecraft → Mycelium, a seqlock per slot). Since version 43
 

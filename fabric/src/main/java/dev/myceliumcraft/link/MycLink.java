@@ -518,6 +518,8 @@ public final class MycLink {
 		public final int[] caps = new int[COL_MAX];
 		/** How fast each spore walks, blocks per second. */
 		public final float[] speeds = new float[COL_MAX];
+		/** Mycelium's nutrient bonus in percent; -1 = not in a run. */
+		public int nutrientBonus = -1;
 		/** How far through its sprout each spore is, 0..1 (-1 = none). */
 		public final float[] emerges = new float[COL_MAX];
 		public final float[] happiness = new float[COL_MAX];
@@ -540,6 +542,7 @@ public final class MycLink {
 			out.count = Math.max(0, Math.min(COL_MAX, s.get(JAVA_INT, b + COL_COUNT)));
 			out.average = s.get(JAVA_FLOAT, b + COL_AVERAGE);
 			out.current = s.get(JAVA_INT, b + COL_CURRENT);
+			out.nutrientBonus = s.get(JAVA_INT, b + COL_NUTRIENT_BONUS);
 			for (int i = 0; i < out.count; i++) {
 				long e = b + COL_LIST + COL_SIZE * i;
 				out.colors[i] = s.get(JAVA_INT, e + CE_COLOR);

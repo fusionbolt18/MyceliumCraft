@@ -1,5 +1,37 @@
 # MODLOG
 
+## 2026-11-04 Nutrient Multiplier in the player list during a run (protocol v45)
+
+**Your request:** during a run, show "Nutrient Multiplier: X%" in the player list instead of Colony
+Happiness, with no bar.
+
+**Changed:**
+- `ColonyWatch.cs`: outside The Carcass, sends Mycelium's bonus, worked out as its HUD does.
+- `MycColony.java`: shows that one line in place of the bar. In The Carcass it's as before.
+- New test aid `-mcLoop <n>`. Protocol 44 -> 45: install the new jar.
+
+**Tested how:** stand-in, reading the number Minecraft receives.
+**Result:** The Carcass -1 (happiness stays), Daybreak Arboretum 0, Daybreak Arboretum with
+`-mcLoop 3` 100.
+**Not tested:** the footer text in real Minecraft, and the change when a run starts or ends.
+**Found:** Mycelium's own "+X%" is too high on even loops. It says +50% on loop 2, but the amounts
+are multiplied by (loop + 1) / 2 in whole numbers, which is x1 there, so no bonus. Loop 4 says +150%
+and gives +100%. The list shows the same figure as Mycelium's HUD.
+
+## 2026-11-04 Mycelium's nutrient panel is hidden
+
+**Your request:** get rid of Mycelium's nutrient count, since Minecraft's experience level shows it.
+
+**Changed:**
+- New `NutrientPanel.cs`: switches off `ResourcePanels/NutrientsPanel` on the HUD while Minecraft
+  drives and the overlay setting is on, and puts it back as it was otherwise.
+- `MinecraftDriver.cs`: calls it every frame, and on a new scene.
+
+**Tested how:** stand-in, The Carcass. Log: "panel hidden ... (on before: True)" once driving began,
+"panel back as it was (on: True)" when the stand-in left. The nutrient count was still read (411516).
+**Not tested:** how it looks in the real game, and going from one level to another with the panel hidden.
+**Side effect:** the "+50%" nutrient bonus of later loops is on the same panel, so it's hidden too.
+
 ## 2026-11-03 No flash at the cutscene's start; smoother new spore
 
 **Your report:** the UI and overlay showed for a split second as the cutscene started, and the new

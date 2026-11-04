@@ -395,6 +395,18 @@ Mycelium reads `NutrientTracker.currentNutrients` (found by name; on 'NutrientCo
 (`setExperienceLevels`, `setExperiencePoints(0)`). Mycelium is in charge: if Minecraft's level
 drifts (XP orbs, enchanting), it's put back within 0.25 s.
 
+Mycelium's own nutrient panel (`ResourcePanels/NutrientsPanel` on the HUD) is off meanwhile
+(`NutrientPanel.cs`, since 2026-11-04): while Minecraft drives and the overlay setting is on, since
+the overlay is what shows the level. It comes back as Mycelium had it otherwise. Only the panel goes:
+the count stays on `NutrientTracker`, and the shop's own nutrient text isn't touched. The "+50%" of
+later loops is on that panel, so it isn't shown there meanwhile.
+
+During a run (any level but The Carcass, the tutorial included) the player list's footer says
+"Nutrient Multiplier: +X%" in place of the happiness bar (`ColonyWatch.NutrientBonusNow`, Colony
+0x730, `MycColony.runFooter`). X is the figure Mycelium's HUD shows, 50 per loop after the first.
+What Mycelium really gives is whole-number maths, `amount × ((loop + 1) / 2)`, rounded down: ×1 on
+loop 2 and ×2 on loop 4, so the HUD's figure is too high on even loops. The list shows the HUD's.
+
 ### 5.0.3 Combat: your Minecraft attacks hit Mycelium's enemies (since 2026-10-19)
 
 Following SkyCraft's actor proxies.

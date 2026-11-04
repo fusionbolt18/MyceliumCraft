@@ -3,6 +3,7 @@ using System.Collections.Generic;
 using System.Reflection;
 using MyceliumCraft.Link;
 using UnityEngine;
+using UnityEngine.SceneManagement;
 
 namespace MyceliumCraft
 {
@@ -21,6 +22,9 @@ namespace MyceliumCraft
     /// (MycColony.java), and makes each one's skin and body (MycSkins.java, MycSporeBodies.java).
     /// A spore grown in the shop plays Mycelium's "Sprout" animation (SpawnCharacter): how far through
     /// goes too, every frame while it lasts, and its body digs out of the ground to match.
+    /// During a run (any level but The Carcass) Mycelium's nutrient bonus goes too, worked out as its
+    /// HUD does (HUDNutrients: 50% per loop after the first), and the list shows that in place of
+    /// the happiness bar.
     /// </summary>
     sealed class ColonyWatch
     {
@@ -36,6 +40,7 @@ namespace MyceliumCraft
         public int Count;
         public int Current = -1;
         public float Average = -1f;
+        public int NutrientBonus = -1; // percent; -1 = not in a run
 
         float nextLook;
         string lastLogged = "";
@@ -84,11 +89,20 @@ namespace MyceliumCraft
             return state.IsName("Sprout") && state.normalizedTime < 1f ? Mathf.Clamp01(state.normalizedTime) : -1f;
         }
 
+        /// <summary>Mycelium's nutrient bonus in percent, or -1 outside a run.</summary>
+        static int NutrientBonusNow()
+        {
+            if (SceneManager.GetActiveScene().name == "The Carcass") return -1;
+            object loop = Type.GetType("GlobalData, Assembly-CSharp")?.GetField("currentLoop")?.GetValue(null);
+            return loop is int n ? Mathf.Max(0, (n - 1) * 50) : -1;
+        }
+
         void Look(float scale)
         {
             Count = 0;
             Current = -1;
             Average = -1f;
+            NutrientBonus = NutrientBonusNow();
             int sproutingBefore = sprouting;
             sprouting = 0;
             GameObject parent = GameObject.FindWithTag("PlayerParent");
@@ -130,7 +144,7 @@ namespace MyceliumCraft
             if (sprouting != sproutingBefore) McLog.Info($"colony: {sprouting} other spore(s) in Mycelium's Sprout");
             var parts = new List<string>();
             for (int i = 0; i < Count; i++) parts.Add($"{Names[i]}{(i == Current ? " (you)" : "")} {Happiness[i]:F2} body #{Colors[i]:X6} cap #{Caps[i]:X6}");
-            LogOnce($"colony: {all} spore(s), average happiness {Average:F2}: {string.Join(", ", parts)}");
+            LogOnce($"colony: {all} spore(s), average happiness {Average:F2}, nutrient bonus {NutrientBonus}: {string.Join(", ", parts)}");
         }
 
         static uint Rgb(Color c) =>

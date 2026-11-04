@@ -74,6 +74,7 @@ public final class Proto {
 	public static final long COLONY_BYTES = 0x800;
 	public static final long COL_SEQ = 0x00, COL_COUNT = 0x04, COL_AVERAGE = 0x08, COL_CURRENT = 0x0C, COL_LIST = 0x10;
 	public static final int COL_MAX = 24;
+	public static final long COL_NUTRIENT_BONUS = 0x730; // i32, just after the list: Mycelium's nutrient bonus in percent; -1 = not in a run
 	public static final long COL_SIZE = 0x4C; // u32 body colour 0xRRGGBB, f32 happiness 0..1, utf8[56] name, u32 cap colour, f32 walking speed (blocks/s), f32 sprout 0..1 (-1 = none)
 	public static final long CE_COLOR = 0x00, CE_HAPPINESS = 0x04, CE_NAME = 0x08, CE_CAP = 0x40, CE_SPEED = 0x44, CE_EMERGE = 0x48;
 	public static final int CE_NAME_BYTES = 0x38;
@@ -87,7 +88,7 @@ public final class Proto {
 
 	public static final long MAPPING_BYTES = OFF_BODIES + BODIES_BYTES;
 	public static final int MAGIC = 0x4343594D; // "MYCC"
-	public static final int VERSION = 44;
+	public static final int VERSION = 45;
 	/** A side is alive if its heartbeat is younger than this. */
 	public static final long HEARTBEAT_TIMEOUT_MS = 3000;
 

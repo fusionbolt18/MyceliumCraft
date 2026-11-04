@@ -23,7 +23,8 @@ import net.minecraft.network.chat.Style;
  *   Mojang's skin servers). You are your own row already (MycName), in your spore's skin.
  * - The footer: a bar of text for the colony's average happiness that fills up or down toward
  *   it, as Mycelium's meter does, and Mycelium's word for it (Happy over half, Unhappy under,
- *   Content at half: where its stat bonus is above, below or at none).
+ *   Content at half: where its stat bonus is above, below or at none). During a run, one line
+ *   instead: Mycelium's nutrient bonus, which it shows as "+50%" (your request, 2026-11-04).
  */
 public final class MycColony {
 	private static final int SEGMENTS = 40;
@@ -76,7 +77,8 @@ public final class MycColony {
 			shown = Math.abs(target - shown) <= step ? target : shown + Math.signum(target - shown) * step;
 		}
 		int filled = Math.round(shown * SEGMENTS);
-		StringBuilder key = new StringBuilder().append(COLONY.current).append('|').append(word(target));
+		boolean inRun = COLONY.nutrientBonus >= 0;
+		StringBuilder key = new StringBuilder().append(COLONY.current).append('|').append(COLONY.nutrientBonus).append('|').append(inRun ? "" : word(target));
 		for (int i = 0; i < COLONY.count; i++) {
 			key.append('|').append(COLONY.names[i]).append('#').append(COLONY.colors[i]).append('#').append(COLONY.caps[i]);
 		}
@@ -85,16 +87,16 @@ public final class MycColony {
 		if (listChanged) {
 			updateRows();
 		}
-		if (!listChanged && filled == lastFilled) {
+		if (!listChanged && (inRun || filled == lastFilled)) {
 			return; // nothing changed on screen
 		}
 		lastList = list;
 		lastFilled = filled;
-		minecraft.gui.hud.getTabList().setFooter(footer(filled, target));
+		minecraft.gui.hud.getTabList().setFooter(inRun ? runFooter(COLONY.nutrientBonus) : footer(filled, target));
 		footerSet = true;
 		if (listChanged) {
-			MycLink.LOG.info("MyceliumCraft: colony: {} spore(s), {} other row(s) in the player list, average happiness {} ({}), bar {}/{}",
-				COLONY.count, rows.size(), String.format("%.2f", target), word(target), filled, SEGMENTS);
+			MycLink.LOG.info("MyceliumCraft: colony: {} spore(s), {} other row(s) in the player list, average happiness {} ({}), footer {}",
+				COLONY.count, rows.size(), String.format("%.2f", target), word(target), inRun ? "Nutrient Multiplier: +" + COLONY.nutrientBonus + "%" : "bar " + filled + "/" + SEGMENTS);
 		}
 	}
 
@@ -139,6 +141,10 @@ public final class MycColony {
 			made.add(info);
 		}
 		rows = List.copyOf(made);
+	}
+
+	private static Component runFooter(int nutrientBonus) {
+		return Component.literal("Nutrient Multiplier: +" + nutrientBonus + "%").withStyle(ChatFormatting.GRAY);
 	}
 
 	private static Component footer(int filled, float happiness) {
