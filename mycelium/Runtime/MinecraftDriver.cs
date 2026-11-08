@@ -67,6 +67,7 @@ namespace MyceliumCraft
         readonly ColonyPassThrough passThrough = new ColonyPassThrough();
         readonly ColonyPush colonyPush = new ColonyPush();
         readonly BossBar bossBar = new BossBar();
+        readonly ShopUndo shopUndo = new ShopUndo();
         readonly VanishWatch vanish = new VanishWatch();
         readonly KeyHints keyHints = new KeyHints();
         readonly SkillIconWatch skillIcons = new SkillIconWatch();
@@ -315,6 +316,10 @@ namespace MyceliumCraft
             // Vitality by 5 and takes it away again (max health up, then down), 1.5 s apart. Not in
             // The Carcass (Vitality there can earn achievements).
             if (Array.IndexOf(args, "-mcHealthTest") >= 0) StartCoroutine(HealthTest());
+            // Test aid: "-mcShopTest" (The Carcass, where the shop is) opens the level-up shop 4 s into
+            // driving, raises Vitality and closes it; then raises and lowers it and commits. Max health
+            // after each. Nothing is bought: nutrients are put back as they were.
+            if (Array.IndexOf(args, "-mcShopTest") >= 0) StartCoroutine(ShopTest());
             // Test aid: "-mcBlurCheck" logs how sharp Mycelium's finished screen is twice a second
             // (average difference between neighbouring pixels in the middle), to see the pause blur.
             if (Array.IndexOf(args, "-mcBlurCheck") >= 0) StartCoroutine(BlurCheck());
@@ -380,6 +385,7 @@ namespace MyceliumCraft
                 birth.SceneLoaded();
                 nutrientPanel.SceneLoaded();
                 bossBar.SceneLoaded();
+                shopUndo.SceneLoaded();
                 SetPhase(Phase.Idle, "new scene");
             };
         }
@@ -417,6 +423,7 @@ namespace MyceliumCraft
             if (rb != null && animator != null && animator.isActiveAndEnabled && animator.GetBool("Roll")) flags |= Proto.MycRoll;
             // Mycelium's health, which Minecraft's follows (/ 5).
             float health = 0f, maxHealth = 0f;
+            shopUndo.Update(); // the shop shut without committing: max health back (ShopUndo)
             if (rb != null) ReadHealth(out health, out maxHealth);
             dash.ForMinecraft(map, out float dashX, out float dashZ); // Blitz, the roll: Minecraft's player dashes (DashWatch)
             int nutrients = rb != null ? ReadNutrients() : -1;
@@ -2239,6 +2246,43 @@ namespace MyceliumCraft
             fresh.tag = "currentWeapon";
             yield return new WaitForSeconds(0.5f);
             McLog.Info($"swap test: after: dropped '{old.name}' drawn={Drawn(old)} (want True), held '{fresh.name}' drawn={Drawn(fresh)} (want {!playerModel.Shown})");
+        }
+
+        /// <summary>Test aid (-mcShopTest): LevelUpManagerNew's VitalityUP, VitalityDown, Close and Commit, as its buttons call them.</summary>
+        System.Collections.IEnumerator ShopTest()
+        {
+            while (phase != Phase.Driving || playerHealth == null) yield return null;
+            yield return new WaitForSeconds(4f);
+            Component shop = null;
+            for (int i = 0; i < 10 && (shop = shopUndo.Manager) == null; i++) yield return new WaitForSeconds(0.5f);
+            if (shop == null) { McLog.Info("shop test: no level-up shop"); yield break; }
+            Type st = shop.GetType();
+            var menu = st.GetField("UIenable").GetValue(shop) as GameObject;
+            Component tracker = GameObject.FindWithTag("Tracker")?.GetComponent(Type.GetType("NutrientTracker, Assembly-CSharp"));
+            FieldInfo nutrientsField = tracker?.GetType().GetField("currentNutrients");
+            if (nutrientsField == null) { McLog.Info("shop test: no NutrientTracker.currentNutrients"); yield break; }
+            int nutrientsBefore = (int)nutrientsField.GetValue(tracker);
+            nutrientsField.SetValue(tracker, nutrientsBefore + 100000);
+            float Max() => (float)maxHealthField.GetValue(playerHealth);
+            string Now() => $"max health {Max():F1}, current {(float)currentHealthField.GetValue(playerHealth):F1}";
+            void Call(string m) { McLog.Info($"shop test: {m}"); st.GetMethod(m).Invoke(shop, null); }
+            string[] rounds = { "up, close", "up, down, commit" };
+            foreach (string round in rounds)
+            {
+                McLog.Info($"shop test: {round}: before, {Now()}");
+                menu.SetActive(true);
+                if (!shop.gameObject.activeInHierarchy) shop.gameObject.SetActive(true);
+                yield return new WaitForSeconds(1f);
+                Call("VitalityUP");
+                yield return new WaitForSeconds(0.5f);
+                McLog.Info($"shop test: {round}: Vitality up, {Now()}");
+                if (round.Contains("down")) { Call("VitalityDown"); yield return new WaitForSeconds(0.5f); }
+                Call(round.EndsWith("close") ? "Close" : "Commit");
+                yield return new WaitForSeconds(1f);
+                McLog.Info($"shop test: {round}: after, {Now()}");
+            }
+            nutrientsField.SetValue(tracker, nutrientsBefore);
+            McLog.Info($"shop test: nutrients put back to {nutrientsBefore}");
         }
 
         /// <summary>Test aid (-mcHealthTest): max health changes with current health at half.</summary>

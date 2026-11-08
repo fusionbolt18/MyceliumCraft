@@ -1,5 +1,30 @@
 # MODLOG
 
+## 2026-11-08 Leaving the shop puts max health back
+
+**Your report:** changing the health stat in the shop without committing still changed your max health.
+
+**Why:** a bug in Mycelium's own shop (`LevelUpManagerNew`):
+- Raising a stat works out the new stats at once, and that sets max health and walking speed too.
+- Closing the shop puts back the levels and the base health, but not max health or walking speed.
+- Lowering a stat in the shop doesn't work anything out, so "up, then down, then commit" also kept
+  the higher health.
+
+It shows in Minecraft because max health is sent there.
+
+**Changed:** new `ShopUndo.cs`. When the shop closes (by Close or Commit), the stats are worked out
+again from the levels as they are then (`CharacterStats.StartCalculateAttributes`). Current health
+keeps its share of max health, as before. Test aid: `-mcShopTest`. It buys nothing and puts
+nutrients back.
+
+**Tested how:** stand-in, The Carcass, `-mcShopTest`. **Result:**
+- Vitality up took max health from 100 to 110. Close took it back to 100.
+- Vitality up then down, then Commit, also ended at 100.
+
+No exceptions. **Not tested:** buying a level for real (Commit after only raising), and the real shop
+in Minecraft. I also didn't run the test without the fix to see the bug in the stand-in; the cause
+above comes from reading Mycelium's code.
+
 ## 2026-11-07 Your Minecraft body in cutscenes
 
 **Your report:** the Minecraft player model still isn't visible during the boss's death cutscene.

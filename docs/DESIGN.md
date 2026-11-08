@@ -370,6 +370,11 @@ the first time one is held back. Advancements and recipes are still earned; only
   - `MinecraftDriver.KeepHealthRatio` sets current health to the share it had of the old max, then
     redraws Mycelium's bar (`displayHealth`, `UpdateHudHealthUI`). Minecraft follows as usual.
   - Not when Mycelium set current health to the new max itself (`ResetHealth`), and not while dead.
+  - **The level-up shop** (`ShopUndo.cs`, since 2026-11-08) previews a raised stat by working out
+    the stats, max health included. Its Close puts the levels back but not max health, and its
+    lowering arrow works nothing out. So whenever the shop closes, the stats are worked out again
+    from the levels (`CharacterStats.StartCalculateAttributes`). Max health is always the spore's
+    `baseHealth`, which only comes from its Vitality level, so working it out again loses nothing.
   - A lower max lowers current health, but that isn't a hit: Minecraft's red flash and the hurt
     tilt only react when max health didn't change.
   - **Checked** with `-mcHealthTest` in Daybreak Arboretum: at half health, Vitality +5 took max

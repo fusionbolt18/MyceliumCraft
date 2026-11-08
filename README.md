@@ -104,6 +104,8 @@ Single-player and offline only.
   - Every 5 Mycelium health is half a heart; Minecraft's max health follows Mycelium's max.
   - When max health changes (Vitality, a weapon's attribute), current health keeps the same share of
     it (tested in Mycelium).
+  - Leaving the level-up shop without committing puts max health back. Tested in Mycelium's shop
+    with a test aid; **not tested by hand.**
 - **Mycelium's Speed stat and speed effects change your walking speed in Minecraft:** tested in
   Mycelium, not in Minecraft. Since 2026-11-02 it's put back after a respawn (not tested).
   - Minecraft can't kill you while Mycelium's health is above 0.
