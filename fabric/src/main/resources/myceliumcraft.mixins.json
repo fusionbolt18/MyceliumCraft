@@ -13,6 +13,7 @@
   "client": [
     "CameraAccessor",
     "GameRendererAccessor",
+    "FovCapMixin",
     "FramerateLimitTrackerMixin",
     "GuiDeathScreenMixin",
     "HandLightMixin",

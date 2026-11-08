@@ -394,7 +394,9 @@ the first time one is held back. Advancements and recipes are still earned; only
   `ADD_MULTIPLIED_TOTAL` (factor − 1), on the integrated server when it changes by more than 1 %.
   It's taken off outside Mycelium's levels. Sprinting and Minecraft's own effects multiply on top.
   Minecraft widens its FOV with movement speed, as with a Speed potion, and Mycelium's camera
-  follows that.
+  follows that. Minecraft clamps that widening to x1.5, which your Speed stat and sprinting reach
+  on their own. So while Mycelium plays, `FovCapMixin` makes the limit x2.5 (your choice,
+  2026-11-08), and boosts such as Mycotoxins still widen it.
 - **Respawns** (since 2026-11-02): a respawn makes a new player without the modifier. The factor
   hadn't changed, so it was never put back: after a death and the trip to the Carcass, the boost
   was gone (your report; Minecraft set ×1.63 in the same second it respawned the player). So once
@@ -677,6 +679,21 @@ Mycelium's icon for it (`MycWeapons.attributeLine`). The icons form a font, `myc
 cuts from Mycelium's own icon sheet when the jar is built. It's read from the Mycelium install, and
 goes only into build output and the jar (AGENTS.md rule 1). Without the install the jar has no
 icons and the names stay.
+
+**Relentless Fury** (since 2026-11-08, protocol v50; `FuryWatch`, `MycFury`):
+- **What your game describes:** a frenzy with +30% attack speed, 5% of current health lost each
+  second, and attacks that heal a quarter of their damage.
+- **What Mycelium's code is:** a later version, a `Fury` effect on PlayerParent with damage stacks
+  per kill, whose first stack is worth 0%.
+- **While Minecraft drives:** the effect is kept for its length (8 s), sound, icon timer and
+  cooldown, and turned into the frenzy:
+  - its `Actions.EnemyKilled` and `SwappedWeapon` hooks are removed, and its modifiers cleared;
+  - `WeaponBag.AttackSpeedBonus` is 1.3 on every weapon's swings per second;
+  - `currentHealth` is lowered by 5% each second. The hurt tilt is told (`HurtTilt.IgnoreDrop`),
+    and Minecraft skips its red flash for a drop of exactly 5% while `FURY` is set;
+  - `isFrenzied` is on and `EnemyCombat.Frenzied` heals a quarter of each hit.
+- **Minecraft side:** gets MycState's `FURY` flag and spawns red `ENTITY_EFFECT` particles about the
+  body, which `QuadParticleGroupMixin` keeps for the overlay pass (`MycFury.ours`).
 
 **Weapon attributes work with Minecraft's attacks** (since 2026-10-21). Mycelium's attributes hook
 in three ways:
@@ -1789,6 +1806,19 @@ While Mycelium shows a level (and `overlay=1`), Mycelium sets `OVERLAY` in its s
     completely (your second test).
   - **Log** (every 10 s): frames the arms were drawn, how many came from the world's list and how
     many we posed, and the most things in that list.
+
+### 5.4.0 Skill effects on you stay drawn (since 2026-11-08)
+
+The spore's renderers are hidden while your Minecraft body stands in for it (`CameraSync.HideSpore`,
+`KeepHidden`). Effects that skills put under the spore would go with it, so `CameraSync.Shown` keeps
+some of them:
+- Defense Mechanism's green particles (`DefenseBuildup`, `DefenseBurst`, under the skill in
+  `SkillLoadout`) in every view;
+- its shield bubble (`DefenseParticles`, under the spore's model, made by `DefenseChange`) in both
+  third person views, but not in first person (the camera is inside it).
+
+They're matched by the object's name up the hierarchy, and looked at again every frame, so a view
+change shows or hides the bubble at once.
 
 ### 5.4.1 Your Minecraft body instead of the spore, in third person
 

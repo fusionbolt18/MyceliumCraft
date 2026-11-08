@@ -44,6 +44,9 @@ namespace MyceliumCraft
         /// <summary>Leaning now (for the trace).</summary>
         public bool Active => started >= 0f;
 
+        /// <summary>Health lost since the last Update that isn't a hit (Relentless Fury's drain, FuryWatch).</summary>
+        public float IgnoreDrop;
+
         /// <summary>
         /// Every frame, with Mycelium's health (0/0 when not known) and the spore. damageTilt is
         /// Minecraft's setting (0..1). Starts a tilt when health drops (not to 0: Minecraft shows its
@@ -56,7 +59,8 @@ namespace MyceliumCraft
                 McLog.Info($"hurt tilt: done, peak {peak:F1} degrees over {frames} frames");
                 started = -1f;
             }
-            bool hurt = spore != null && max > 0f && max == lastMax && health < lastHealth - 0.001f && health > 0f;
+            bool hurt = spore != null && max > 0f && max == lastMax && health < lastHealth - IgnoreDrop - 0.001f && health > 0f;
+            IgnoreDrop = 0f;
             if (hurt)
             {
                 strength = damageTilt >= 0f && damageTilt <= 1f ? damageTilt : 1f;

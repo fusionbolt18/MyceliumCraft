@@ -118,7 +118,7 @@ namespace MyceliumCraft.Link
 
         public const int MappingBytes = OffForge + ForgeBytes;
         public const uint Magic = 0x4343594D; // "MYCC"
-        public const uint Version = 49;
+        public const uint Version = 50;
         public const ulong HeartbeatTimeoutMs = 3000;
 
         // Header @0x000
@@ -164,6 +164,7 @@ namespace MyceliumCraft.Link
         public const uint MycOverlay = 1u << 2; // Mycelium shows Minecraft's overlay: Minecraft skips drawing its world
         public const uint MycVanished = 1u << 3; // the spore has vanished (Trophic Cascade): third person behind from first person; since v33
         public const uint MycCyclone = 1u << 4;  // Living Cyclone is spinning: third person behind from first person; since v34
+        public const uint MycFury = 1u << 6;     // Relentless Fury's frenzy is on: Minecraft shows red potion particles; since v50
         public const uint MycRoll = 1u << 5;     // the dodge roll is on (the spore's Animator "Roll"): Minecraft plays its roll animation; since v37
 
         // McState @0x200 (Minecraft -> Mycelium, seqlock)

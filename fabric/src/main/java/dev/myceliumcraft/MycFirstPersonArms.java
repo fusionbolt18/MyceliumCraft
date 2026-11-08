@@ -148,7 +148,8 @@ public final class MycFirstPersonArms {
 	 * (dust, crits) would float over it.
 	 */
 	public static boolean keepParticle(Object particle) {
-		boolean keep = particle.getClass().getName().startsWith("net.bettercombat.");
+		// Better Combat's swing trails, and Relentless Fury's red potion particles (MycFury).
+		boolean keep = particle.getClass().getName().startsWith("net.bettercombat.") || MycFury.ours(particle);
 		if (keep) {
 			keptParticles++;
 		}

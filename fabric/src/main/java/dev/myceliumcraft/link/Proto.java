@@ -109,7 +109,7 @@ public final class Proto {
 
 	public static final long MAPPING_BYTES = OFF_FORGE + FORGE_BYTES;
 	public static final int MAGIC = 0x4343594D; // "MYCC"
-	public static final int VERSION = 49;
+	public static final int VERSION = 50;
 	/** A side is alive if its heartbeat is younger than this. */
 	public static final long HEARTBEAT_TIMEOUT_MS = 3000;
 
@@ -154,6 +154,7 @@ public final class Proto {
 	public static final int MYC_OVERLAY = 1 << 2; // Mycelium shows Minecraft's overlay: Minecraft skips drawing its world
 	public static final int MYC_VANISHED = 1 << 3; // the spore has vanished (Trophic Cascade); since v33
 	public static final int MYC_CYCLONE = 1 << 4; // Living Cyclone is spinning; since v34
+	public static final int MYC_FURY = 1 << 6; // Relentless Fury's frenzy: red potion particles; since v50
 	public static final int MYC_ROLL = 1 << 5; // the dodge roll is on (Mycelium's Animator "Roll"); since v37
 
 	// McState @0x200 (Minecraft -> Mycelium, seqlock)

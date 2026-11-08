@@ -29,7 +29,7 @@ a block without locks.
 - **Reader:** read `seq`. If it's odd, try again. Read the fields, then read `seq` again. If it
   changed, try again.
 
-## Layout (version 49)
+## Layout (version 50)
 
 ### Header @ 0x000
 
@@ -47,7 +47,7 @@ a block without locks.
 | Off | Type | Field |
 |---|---|---|
 | 0x00 | u32 | seq |
-| 0x04 | u32 | flags: bit0 `IN_LEVEL` (a spore player exists), bit1 `PAUSED`, bit2 `OVERLAY` (Mycelium shows Minecraft's overlay, so Minecraft skips drawing its world; since version 10), bit3 `VANISHED` (the spore has vanished in Trophic Cascade: your Minecraft body isn't drawn, and Minecraft goes from first person to third person behind until it's back; since version 33), bit4 `CYCLONE` (Living Cyclone is spinning: Minecraft goes from first person to third person behind until it's over; since version 34), bit5 `ROLL` (the dodge roll is on, the spore's Animator "Roll": Minecraft plays its combat roll animation and turns the body to the roll's dash; since version 37) |
+| 0x04 | u32 | flags: bit0 `IN_LEVEL` (a spore player exists), bit1 `PAUSED`, bit2 `OVERLAY` (Mycelium shows Minecraft's overlay, so Minecraft skips drawing its world; since version 10), bit3 `VANISHED` (the spore has vanished in Trophic Cascade: your Minecraft body isn't drawn, and Minecraft goes from first person to third person behind until it's back; since version 33), bit4 `CYCLONE` (Living Cyclone is spinning: Minecraft goes from first person to third person behind until it's over; since version 34), bit5 `ROLL` (the dodge roll is on, the spore's Animator "Roll": Minecraft plays its combat roll animation and turns the body to the roll's dash; since version 37), bit6 `FURY` (Relentless Fury's frenzy is on: Minecraft shows red potion particles around the player, and a health drop of exactly 5% isn't a hit; since version 50) |
 | 0x08 | f64 | spore X (**Mycelium** coords) |
 | 0x10 | f64 | spore Y |
 | 0x18 | f64 | spore Z |

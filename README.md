@@ -187,6 +187,13 @@ Single-player and offline only.
   spores, and swaps work with a stand-in body in Mycelium. Minecraft's log shows the skins made and your player wearing one;
   you've seen the other spores as Minecraft characters. **Not tested in Minecraft:** their size
   matching yours, their walking, the cap's brightness.
+- **Defense Mechanism's shield bubble shows in third person, and its green particles in every
+  view.** Tested with a fake Minecraft; **not tested in Minecraft.**
+- **Speed boosts widen the view past Minecraft's x1.5 limit** (up to x2.5 while Mycelium plays), so
+  Mycotoxins shows while sprinting. **Not tested in Minecraft.**
+- **Relentless Fury is the frenzy its description says** (+30% attack speed, 5% of current health
+  lost each second, hits heal a quarter of their damage), with red potion particles on you. Tested
+  with a fake Minecraft; **the particles and faster swings are not tested in Minecraft.**
 - **Stat attributes say what they give** in a weapon's hover box ("Beefy: +3 [Primal icon], +3
   [Vitality icon]" with Mycelium's stat icons, "Golden: +2 All Stats"). Tested with a fake Minecraft; **not tested in Minecraft.**
 - **Blacksmith Ironspore opens a smithing screen in Minecraft** (first slot the weapon base, next

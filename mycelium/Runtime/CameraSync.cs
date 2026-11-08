@@ -271,6 +271,7 @@ namespace MyceliumCraft
             if (spore == null) return;
             foreach (Renderer r in spore.GetComponentsInChildren<Renderer>(true))
             {
+                if (Shown(r)) continue; // a skill's effect drawn on you (Defense Mechanism)
                 if (fully)
                 {
                     if (r.forceRenderingOff) continue;
@@ -289,6 +290,24 @@ namespace MyceliumCraft
                              : $"camera: first person, {hidden.Count} spore renderers drawn as shadow only");
         }
 
+        /// <summary>
+        /// Effects on you that stay drawn while the spore's own body is hidden (your request,
+        /// 2026-11-08). Defense Mechanism: its green particles (DefenseBuildup, then DefenseBurst,
+        /// which the skill puts under itself, in the spore's skills) in every view, and its shield
+        /// bubble (DefenseParticles, which DefenseChange puts under the spore's model) in both third
+        /// person views. Not the bubble in first person: the camera is inside it.
+        /// </summary>
+        bool Shown(Renderer r)
+        {
+            for (Transform t = r.transform; t != null && t != spore; t = t.parent)
+            {
+                string n = t.name;
+                if (n.StartsWith("DefenseBuildup") || n.StartsWith("DefenseBurst")) return true;
+                if (n.StartsWith("DefenseParticles")) return mode != FirstPerson || lastCutscene;
+            }
+            return false;
+        }
+
         readonly System.Collections.Generic.List<Renderer> under = new System.Collections.Generic.List<Renderer>();
         readonly System.Collections.Generic.HashSet<Renderer> hiddenSet = new System.Collections.Generic.HashSet<Renderer>();
 
@@ -304,12 +323,13 @@ namespace MyceliumCraft
             for (int i = hidden.Count - 1; i >= 0; i--)
             {
                 var (r, m, off) = hidden[i];
-                if (r != null && r.transform.IsChildOf(spore)) continue;
+                bool shownNow = r != null && Shown(r);
+                if (r != null && r.transform.IsChildOf(spore) && !shownNow) continue;
                 if (r != null)
                 {
                     if (off) r.forceRenderingOff = false;
                     else r.shadowCastingMode = m;
-                    McLog.Info($"camera: '{r.name}' left the spore; drawn again");
+                    McLog.Info(shownNow ? $"camera: '{r.name}' (a skill's effect on you) drawn in this view" : $"camera: '{r.name}' left the spore; drawn again");
                 }
                 hiddenSet.Remove(r);
                 hidden.RemoveAt(i);
@@ -317,7 +337,7 @@ namespace MyceliumCraft
             spore.GetComponentsInChildren(true, under);
             foreach (Renderer r in under)
             {
-                if (hiddenSet.Contains(r)) continue;
+                if (hiddenSet.Contains(r) || Shown(r)) continue;
                 if (fully)
                 {
                     if (r.forceRenderingOff) continue;

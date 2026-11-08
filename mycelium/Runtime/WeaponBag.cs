@@ -70,6 +70,8 @@ namespace MyceliumCraft
         const string Carcass = "The Carcass";
         const float FollowWaitSeconds = 3f;
         readonly List<Weapon> bag = new List<Weapon>();
+        /// <summary>A buff on your attack speed (Relentless Fury's frenzy: 1.3), on every weapon's swings per second.</summary>
+        public float AttackSpeedBonus = 1f;
         uint nextId = 1, heldId, version = 1;
         bool emptyHand; // the spore holds the invisible stand-in (heldId is 0 then)
         // Thrown weapons: Minecraft's Thrown table, and the real weapons flying with their items.
@@ -709,7 +711,7 @@ namespace MyceliumCraft
                 int speed = Mathf.Clamp(speedBase + w.SpeedAmount, 1, 99);
                 float damage = Mathf.RoundToInt(dmgBase + (primal - 1) * dmgInc) * fungal * w.DamageMult;
                 float animatorSpeed = spdBase + (speed - 1) * spdInc;
-                float perSecond = animatorSpeed * w.SpeedMod / (0.9f * ClipLength(w.Type));
+                float perSecond = animatorSpeed * w.SpeedMod / (0.9f * ClipLength(w.Type)) * AttackSpeedBonus;
                 if (w != preview && (Mathf.Abs(damage - w.Damage) > 0.01f || Mathf.Abs(perSecond - w.PerSecond) > 0.005f)) changed = true;
                 w.Damage = damage;
                 w.PerSecond = perSecond;
@@ -908,6 +910,13 @@ namespace MyceliumCraft
             foreach (Weapon w in bag)
                 if (n < ids.Length && Forgeable(w, out _)) ids[n++] = w.Id;
             return n;
+        }
+
+        /// <summary>For the log: the held weapon's numbers as sent to Minecraft.</summary>
+        public string HeldReport()
+        {
+            Weapon w = Find(heldId);
+            return w == null ? "no weapon of yours held" : $"#{w.Id} sent as {w.Damage:F1} dmg (x{w.DamageMult:F2}), {w.PerSecond:F2} swings/s";
         }
 
         /// <summary>For the log: each weapon and whether the Blacksmith takes it.</summary>

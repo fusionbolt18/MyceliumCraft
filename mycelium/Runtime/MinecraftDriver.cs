@@ -71,6 +71,7 @@ namespace MyceliumCraft
         readonly TraitLeaks traitLeaks = new TraitLeaks();
         // Blacksmith Ironspore opens Minecraft's smithing screen (ForgeWatch).
         readonly ForgeWatch forge = new ForgeWatch();
+        readonly FuryWatch furyWatch = new FuryWatch();
         bool forgeDriving, forgeScreenOpen; // as of this frame's Update, for the next frame's early catch
         // Test aid "-mcNoTraitFix": leave Mycelium's leftover trait hooks alone, as Mycelium does.
         static readonly bool NoTraitFix = Array.IndexOf(Environment.GetCommandLineArgs(), "-mcNoTraitFix") >= 0;
@@ -329,6 +330,12 @@ namespace MyceliumCraft
             // Test aid: "-mcRepickTest" picks up the nearest weapon lying in the world (tag "Weapon")
             // 8 s into driving, through WeaponInteraction.Interact (for thrown weapons).
             if (Array.IndexOf(args, "-mcRepickTest") >= 0) StartCoroutine(RepickTest());
+            // Test aid: "-mcDefenseTest" makes Defense Mechanism's bubble and green particles 4 s into driving
+            // and logs which of their parts are drawn (run with LINKTEST_VIEW=0, 1 or 2).
+            if (Array.IndexOf(args, "-mcDefenseTest") >= 0) StartCoroutine(DefenseTest());
+            // Test aid: "-mcFuryTest" switches Relentless Fury's effect on 4 s into driving, as the skill
+            // does, and logs its stacks and the held weapon's damage every 0.5 s (run with LINKTEST_HIT=1).
+            if (Array.IndexOf(args, "-mcFuryTest") >= 0) StartCoroutine(FuryTest());
             // Test aid: "-mcForgeTest" (the first level) picks up three weapons, brings the Blacksmith in
             // front of the spore and presses Mycelium's Interact key; run with LINKTEST_FORGE=1.
             if (Array.IndexOf(args, "-mcForgeTest") >= 0) StartCoroutine(ForgeTest());
@@ -456,6 +463,11 @@ namespace MyceliumCraft
             BlockSkillsWhileCycloning(cycloning);
             // The dodge roll: Minecraft plays its combat roll animation on your body (MycSkillAnimation.java).
             if (rb != null && animator != null && animator.isActiveAndEnabled && animator.GetBool("Roll")) flags |= Proto.MycRoll;
+            // Relentless Fury as its description says: the frenzy (FuryWatch); Minecraft shows red potion particles.
+            furyWatch.Update(forgeDriving, weapons);
+            if (furyWatch.On) flags |= Proto.MycFury;
+            combat.Frenzied = furyWatch.On;
+            hurtTilt.IgnoreDrop += furyWatch.TakeDrained(); // the frenzy's drain isn't a hit
             // Mycelium's health, which Minecraft's follows (/ 5).
             float health = 0f, maxHealth = 0f;
             shopUndo.Update(); // the shop shut without committing: max health back (ShopUndo)
@@ -2691,6 +2703,93 @@ namespace MyceliumCraft
                 }
                 McLog.Info($"reach test: {folders[type]}: {string.Join(", ", summary)} blocks");
                 summary.Clear();
+            }
+        }
+
+        /// <summary>Test aid (-mcFuryTest): Relentless Fury's effect switched on as its skill does, then watched.</summary>
+        System.Collections.IEnumerator FuryTest()
+        {
+            while (phase != Phase.Driving) yield return null;
+            yield return new WaitForSeconds(4f);
+            Type ft = Type.GetType("Fury, Assembly-CSharp");
+            Type ht = Type.GetType("PlayerHealth, Assembly-CSharp");
+            Type et = Type.GetType("EnemyHealth, Assembly-CSharp");
+            var health = ht != null ? FindObjectOfType(ht) as Component : null;
+            if (ft == null || health == null) { McLog.Info($"fury test: no Fury ({ft != null}) or PlayerHealth ({health != null})"); yield break; }
+            const BindingFlags any = BindingFlags.Public | BindingFlags.NonPublic | BindingFlags.Instance;
+            string Held()
+            {
+                GameObject w = GameObject.FindWithTag("currentWeapon");
+                Component stats = null;
+                if (w != null) foreach (Component c in w.GetComponents<Component>()) if (c != null && c.GetType().Name == "WeaponStats") stats = c;
+                object nums = stats?.GetType().GetField("statNums")?.GetValue(stats);
+                object adv = nums?.GetType().GetField("advDamage")?.GetValue(nums);
+                object mult = adv?.GetType().GetProperty("MultValue")?.GetValue(adv) ?? adv?.GetType().GetField("MultValue")?.GetValue(adv);
+                return $"held '{(w != null ? w.name : "none")}' damage x{mult}";
+            }
+            McLog.Info($"fury test: before: health {ht.GetField("currentHealth")?.GetValue(health)}; {Held()}; {weapons.HeldReport()}");
+            Component fury = health.gameObject.AddComponent(ft);
+            McLog.Info($"fury test: Fury added to '{health.gameObject.name}' as Relentless Fury does (still there: {fury != null})");
+            const BindingFlags inst = BindingFlags.Public | BindingFlags.NonPublic | BindingFlags.Instance;
+            MethodInfo take = et?.GetMethod("EnemyTakeDamage", inst, null, new[] { typeof(float), typeof(bool), typeof(bool) }, null);
+            for (int i = 1; i <= 24; i++)
+            {
+                yield return new WaitForSeconds(0.5f);
+                if ((i == 4 || i == 8) && take != null && rb != null)
+                {
+                    // A kill, as the mod's Minecraft hits do it (EnemyCombat: EnemyTakeDamage, from a weapon).
+                    Component nearest = null;
+                    float best = float.MaxValue;
+                    foreach (UnityEngine.Object o in FindObjectsOfType(et))
+                        if (o is Component c && c.gameObject.activeInHierarchy && Vector3.Distance(c.transform.position, rb.position) < best) { best = Vector3.Distance(c.transform.position, rb.position); nearest = c; }
+                    if (nearest != null)
+                    {
+                        McLog.Info($"fury test: killing '{nearest.gameObject.name}' {best:F1} units away with 9999 weapon damage, as a Minecraft hit does");
+                        try { take.Invoke(nearest, new object[] { 9999f, true, false }); }
+                        catch (Exception e) { McLog.Info("fury test: the hit failed: " + (e.InnerException ?? e).Message); }
+                    }
+                }
+                int alive = 0;
+                if (et != null) foreach (UnityEngine.Object o in FindObjectsOfType(et)) if (o is Component c && c.gameObject.activeInHierarchy) alive++;
+                string state = fury != null ? $"stacks {ft.GetField("currBonusNum", any)?.GetValue(fury)}, {ft.GetField("currTimer", any)?.GetValue(fury)} s" : "gone (timed out)";
+                McLog.Info($"fury test: +{i * 0.5f:F1} s: Fury {state}; frenzy {furyWatch.On}; health {ht.GetField("currentHealth")?.GetValue(health)}; {Held()}; {weapons.HeldReport()}; enemies alive {alive}");
+            }
+        }
+
+        /// <summary>Test aid (-mcDefenseTest): Defense Mechanism's effects, as its DoSkill makes them, and what's drawn.</summary>
+        System.Collections.IEnumerator DefenseTest()
+        {
+            while (phase != Phase.Driving) yield return null;
+            yield return new WaitForSeconds(4f);
+            GameObject parent = GameObject.Find("PlayerParent");
+            GameObject spore = GameObject.FindWithTag("currentPlayer");
+            Type dct = Type.GetType("DefenseChange, Assembly-CSharp");
+            Type pmt = Type.GetType("ParticleManager, Assembly-CSharp");
+            object pm = pmt?.GetField("Instance")?.GetValue(null);
+            Transform loadout = spore != null ? spore.transform.Find("SkillLoadout") : null;
+            if (parent == null || dct == null || pm == null || loadout == null) { McLog.Info($"defense test: PlayerParent {parent != null}, DefenseChange {dct != null}, ParticleManager {pm != null}, SkillLoadout {loadout != null}"); yield break; }
+            // As DefenseMechanism.DoSkill, 4 s long here (the skill's is 1 s) to look at it.
+            Component dc = parent.AddComponent(dct);
+            dct.GetMethod("InitializeDefenseChange")?.Invoke(dc, new object[] { 4f, 150f, false, null });
+            Transform skill = loadout.childCount > 0 ? loadout.GetChild(0) : loadout;
+            Vector3 at = skill.position + Vector3.up * 0.5f;
+            pmt.GetMethod("SpawnParticles")?.Invoke(pm, new object[] { "DefenseBuildup", at, Quaternion.identity, skill.gameObject, null });
+            McLog.Info($"defense test: Defense Mechanism's bubble (DefenseChange, 150%) and green build-up particles under '{skill.name}', in Minecraft's view {cameraSync.Mode}");
+            for (int i = 1; i <= 6; i++)
+            {
+                yield return new WaitForSeconds(0.5f);
+                if (i == 3) pmt.GetMethod("SpawnParticles")?.Invoke(pm, new object[] { "DefenseBurst", skill.position + Vector3.up * 0.5f, Quaternion.identity, skill.gameObject, null });
+                var parts = new System.Collections.Generic.List<string>();
+                foreach (Renderer r in spore.GetComponentsInChildren<Renderer>(true))
+                {
+                    string root = null;
+                    for (Transform t = r.transform; t != null && t != spore.transform; t = t.parent)
+                        if (t.name.StartsWith("Defense")) root = t.name;
+                    if (root == null) continue;
+                    bool drawn = r.enabled && r.gameObject.activeInHierarchy && !r.forceRenderingOff && r.shadowCastingMode != UnityEngine.Rendering.ShadowCastingMode.ShadowsOnly;
+                    parts.Add($"{root}/{r.name} {(drawn ? "DRAWN" : "not drawn")} (enabled {r.enabled}, off {r.forceRenderingOff}, {r.shadowCastingMode})");
+                }
+                McLog.Info($"defense test: +{i * 0.5f:F1} s, view {cameraSync.Mode}: {(parts.Count == 0 ? "no Defense parts on the spore" : string.Join("; ", parts))}");
             }
         }
 

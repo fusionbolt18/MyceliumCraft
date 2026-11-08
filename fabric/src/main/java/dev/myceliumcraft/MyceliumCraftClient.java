@@ -61,12 +61,18 @@ public final class MyceliumCraftClient implements ClientModInitializer {
 		MycLink.LOG.info("MyceliumCraft: rules: no fall damage for players, no natural health regeneration (always, while the mod is installed)");
 	}
 
+	/** Mycelium is running and in one of its levels (FovCapMixin). */
+	public static boolean myceliumPlaying() {
+		return MycLink.myceliumAlive() && MYC.inLevel();
+	}
+
 	/** Start of a client tick (MinecraftMixin): Mycelium's dash, if any, moves the player (MycDash). */
 	public static void beforeTick(Minecraft minecraft) {
 		boolean on = MycLink.myceliumAlive() && MYC.inLevel();
 		MycDash.tick(minecraft, on ? MYC.dashX : 0f, on ? MYC.dashZ : 0f);
 		MycDash.faceRoll(minecraft.player, on && (MYC.flags & Proto.MYC_ROLL) != 0, MYC.dashX, MYC.dashZ);
 		MycSkillAnimation.tick(minecraft, on && (MYC.flags & Proto.MYC_CYCLONE) != 0, on && (MYC.flags & Proto.MYC_ROLL) != 0);
+		MycFury.tick(minecraft, on && (MYC.flags & Proto.MYC_FURY) != 0); // Relentless Fury: red potion particles
 		blockAttackWhileCycloning(minecraft);
 	}
 
@@ -583,7 +589,12 @@ public final class MyceliumCraftClient implements ClientModInitializer {
 		// Mycelium's health dropped: Minecraft's red hurt flash on the body (its own animation; the
 		// captured player model shows it), as when Minecraft itself hurts you.
 		// (Not when max health changed too: Mycelium keeps the same share then, which isn't a hit.)
-		if (!Float.isNaN(lastMycHealth) && MYC.health < lastMycHealth - 0.01f && MYC.health > 0f && MYC.maxHealth == lastMycMax) {
+		// (Nor Relentless Fury's drain, exactly 5% of the health before it, while the frenzy is on: FuryWatch.cs.)
+		boolean furyDrain = (MYC.flags & Proto.MYC_FURY) != 0 && Math.abs((lastMycHealth - MYC.health) - lastMycHealth * 0.05f) < 0.02f;
+		if (furyDrain) {
+			MycLink.LOG.info("MyceliumCraft: health: Relentless Fury's drain ({}); no hurt flash", String.format("%.1f", lastMycHealth - MYC.health));
+		}
+		if (!furyDrain && !Float.isNaN(lastMycHealth) && MYC.health < lastMycHealth - 0.01f && MYC.health > 0f && MYC.maxHealth == lastMycMax) {
 			player.hurtDuration = 10;
 			player.hurtTime = 10;
 			MycLink.LOG.info("MyceliumCraft: health: Mycelium took {} damage; Minecraft's hurt flash", String.format("%.1f", lastMycHealth - MYC.health));

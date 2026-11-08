@@ -1,5 +1,130 @@
 # MODLOG
 
+## 2026-11-08 Defense Mechanism's bubble and green particles are drawn
+
+**Your request:** Defense Mechanism's shield bubble shows in both third person views, and its green
+particles show in every view.
+
+**Why they weren't:** the skill puts its green particles (`DefenseBuildup`, then `DefenseBurst` 1 s
+later) under itself, in the spore's skills. Its `DefenseChange` effect puts the bubble
+(`DefenseParticles`) under the spore's model. While your Minecraft body stands in for the spore, the
+mod hides everything under the spore (`CameraSync`), so these went with it.
+
+**Changed:** `CameraSync.Shown` leaves them out of the hiding:
+- the green particles in every view;
+- the bubble in third person behind and in front;
+- not the bubble in first person, where the camera is inside it.
+
+When you switch views it's put right within the frame. Test aid `-mcDefenseTest` makes the bubble
+(`DefenseChange`, 150%, 4 s long here) and both particle effects as the skill does, and logs which
+parts are drawn.
+
+**Tested how:** stand-in, Daybreak Arboretum, `-mcDefenseTest`, once per view (`LINKTEST_VIEW=0/1/2`,
+`LINKTEST_MODEL=1` so your Minecraft body stands in).
+
+**Result:**
+- Behind and in front: the build-up particles, the burst particles and the bubble were all drawn.
+- First person: both particle effects were drawn, and the bubble wasn't.
+- No errors.
+
+**Not tested:** in Minecraft (how it looks around your Minecraft body), and using the skill from its
+key (the test makes its effects directly).
+
+## 2026-11-08 Speed boosts widen the view past Minecraft's x1.5 limit
+
+**Your report:** using Mycotoxins while already sprinting doesn't change the FOV.
+
+**Why:**
+- Minecraft widens its view with movement speed, (speed ÷ walking speed + 1) ÷ 2, then clamps it to
+  at most x1.5 (`Camera.tickFov`). So it stops widening at twice walking speed.
+- In your last run your Speed stat already made you x1.84. Walking gave x1.42, and sprinting (x2.39
+  speed) would have been x1.70 but was cut to x1.5.
+- Mycotoxins (+50% for 3 s) couldn't widen it any further.
+
+**Changed** (your choice of three options, "raise the cap"): new `FovCapMixin`. While Mycelium is
+playing, the limit is x2.5 instead of x1.5. Outside its levels it stays Minecraft's own. Mycelium's
+camera follows the same number, as before (it allows a lens up to 179 degrees). The log says
+"fov: the speed view limit is x2.5 while Mycelium plays".
+
+**What to expect** with x1.84 from Speed, on Minecraft's default 70 degrees:
+- walking x1.42;
+- sprinting x1.70;
+- Mycotoxins walking x1.88;
+- Mycotoxins sprinting x2.29.
+
+Minecraft's "FOV Effects" setting scales all of these down.
+
+**Tested how:** the jar builds. I checked in Minecraft's code that 1.5 is the only such limit in
+that method.
+**Not tested:** in Minecraft. If the hook didn't fit, Minecraft would refuse to start with a mixin
+error naming `FovCapMixin`.
+
+## 2026-11-08 Relentless Fury does what its description says; red potion particles (protocol v50)
+
+**Your request:** make Relentless Fury do what your game's description says: "Go into a frenzy
+gaining 30% attack speed. While active lose 5% of current health every second. Attacks restore
+health equal to 25% of weapon damage." Red potion particles on you while it lasts.
+
+**Changed:**
+- New `FuryWatch.cs`. While Minecraft drives, Mycelium's Fury effect (what the skill adds) keeps its
+  8 s, sound, icon timer and cooldown, but:
+  - its kill stacks are off: its hooks are taken off, so no damage bonus, and kills don't change
+    its length;
+  - every weapon's swings per second are x1.3 (`WeaponBag.AttackSpeedBonus`), which is your
+    Minecraft attack speed;
+  - 5% of current health goes every second. This is taken straight from `currentHealth`, with the
+    bar sliding down: no hurt sound, blink, camera tilt or Minecraft red flash for it. A real hit
+    still does all of those;
+  - `RelentlessFury.isFrenzied` is on, and each Minecraft hit heals a quarter of its damage
+    (`EnemyCombat`).
+- New MycState flag `FURY` (protocol v50). New `MycFury.java`: red potion-effect particles around
+  your player, about 7 a second. They're drawn over Mycelium's picture like Better Combat's swing
+  trails. Mycelium's own red particles stay hidden with the spore.
+- `-mcFuryTest` now also logs health and swings per second.
+
+**Tested how:** stand-in, Daybreak Arboretum, `-mcFuryTest` with `LINKTEST_HIT=1 LINKTEST_HOLD=1`
+(the fake hits the nearest enemy for 2 points every 2 s). The test kills an enemy at 2 s and 4 s.
+
+**Result:**
+- Swings per second went from 1.95 to 2.53 while it was on, then back to 1.95.
+- Health went 240 → 228 → 220.9 … (5% of current each second), 7 drains in 8 s.
+- Each 10-damage hit healed 2.5.
+- The kills changed nothing: 1 stack, 8 s, damage still 45.0.
+- It was over at 8.0 s. No hurt tilt, no errors.
+
+**Not tested:**
+- In Minecraft: the particles, the faster swings, and that the drain doesn't flash red. The jar
+  builds.
+- Using the skill itself: the test adds Fury as the skill does.
+- While Mycelium plays without Minecraft, Mycelium's own Fury is left as it is.
+
+## 2026-11-08 Relentless Fury looked into (no game change yet)
+
+**Your report:** Relentless Fury seems to do nothing but play a sound.
+
+**What Mycelium does:** the skill adds a `Fury` effect to you for 8 s, with a sound, red particles
+and a timer on the skill icon. Each kill while it's on adds a stack, refreshes the timer and makes
+it shorter (x0.8). Each stack adds 10% damage, but the first stack, the one you get for using it,
+adds 0%: `Fury.AddBonus` multiplies by the stack count before counting it up. Its code comment ("so
+they have something") and the skill's description ("Fury increases damage by 10%") say it was meant
+to give 10% right away. So in Mycelium too, it does nothing until a kill.
+
+**What the mod changes:** the particles are made under the spore's model. The mod hides every
+renderer under the spore while it draws your Minecraft body (`CameraSync.KeepHidden`), so you don't
+see them.
+
+**Tested how:** stand-in, Daybreak Arboretum, new test aid `-mcFuryTest` (`LINKTEST_HOLD=1`). It
+adds Fury as the skill does, kills the nearest enemy 2 s in through `EnemyTakeDamage` (as the mod's
+Minecraft hits do), and logs every 0.5 s.
+
+**Result:**
+- Before the kill: 1 stack, the held Stick at x1.00, 45.0 damage sent to Minecraft.
+- After the kill: 2 stacks, timer 6.4 s, x1.10, 49.5 damage sent.
+- After 8 s: Fury gone, back to x1.00 and 45.0.
+- So kills by the mod's hits do count, and the bonus reaches your Minecraft weapon. No errors.
+
+**Not changed yet:** making the first stack count, and showing the particles. Asked you first.
+
 ## 2026-11-08 Stat icons in weapon tooltips; "+X All Stats"
 
 **Your request:** "All Stats +X" becomes "+X All Stats", and the stat names in item tooltips become

@@ -61,6 +61,8 @@ namespace MyceliumCraft
         public HurtFlash Hurt => hurt;
         /// <summary>The held weapon's knockback (WeaponBag), put on enemies Minecraft hits; NaN = none known.</summary>
         public float HeldKnockback = float.NaN;
+        /// <summary>Relentless Fury's frenzy is on (FuryWatch): each hit heals a quarter of its damage.</summary>
+        public bool Frenzied;
         MethodInfo knockback;
         bool knockbackLooked;
         readonly Dictionary<Component, float> lastHealth = new Dictionary<Component, float>();
@@ -407,11 +409,13 @@ namespace MyceliumCraft
             Component wc = HeldCollision();
             if (wc == null) return;
             object fury = wc.GetType().GetField("relentlessFury", BindingFlags.NonPublic | BindingFlags.Instance)?.GetValue(wc);
-            if (fury == null || !(fury.GetType().GetField("isFrenzied")?.GetValue(fury) is bool frenzied) || !frenzied) return;
+            bool frenzied = Frenzied || (fury != null && fury.GetType().GetField("isFrenzied")?.GetValue(fury) is bool f && f);
+            if (!frenzied) return;
             GameObject parent = GameObject.Find("PlayerParent");
             Type ht = Type.GetType("PlayerHealth, Assembly-CSharp");
             Component health = parent != null && ht != null ? parent.GetComponent(ht) : null;
             ht?.GetMethod("PlayerHeal")?.Invoke(health, new object[] { damage / 4f });
+            McLog.Info($"fury: the frenzy heals {damage / 4f:F1} (a quarter of the hit's {damage:F1})");
         }
 
         /// <summary>SoundEffectManager.Instance.PlaySound(name, at), as Mycelium's weapon does on a hit.</summary>
