@@ -1068,6 +1068,15 @@ separately, so it stayed visible.
 `WeaponCollision.isCycloning` from the start of the skill until its third spin ends. While that's
 on, MycState flag bit 4 (`CYCLONE`) is set, and Minecraft treats it as the vanish: from first
 person, third person behind until it's over. The body isn't hidden.
+- **With no weapon** (The Carcass; `UnarmedCyclone.cs`, since 2026-11-08): there is no
+  `isCycloning`, and Mycelium never starts the skill's cooldown (its `ActualCooldownStart` is only
+  called with a weapon), so the skill stayed off. Here, from the skill being used (`canSkill` off,
+  no `cooldownCoroutine`) until the spore's animator runs again after being stopped (speed 0 for the
+  spins) counts as cycloning. Then `ActualCooldownStart` is called. After 6 s it ends anyway.
+  It counts as cycloning only if the skill was seen ready while that spore was yours. The other
+  spores use their skills on their own as moves (`IdleWalking`, `SkillCurio`). Taking one over
+  mid-move in the shop otherwise counted as play and showed the overlay there. Such a move still
+  gets its cooldown started when it ends.
 - **Not a control takeover** (since 2026-11-01): Living Cyclone switches `canAct` off while it
   spins, which counted as Mycelium having the controls. After 0.3 s that hid the overlay (your
   hotbar, your report) and stopped the bridge. `MyceliumHasControls` now ignores "canAct off"
@@ -1888,6 +1897,29 @@ Like SkyCraft's `fake_skyrim.py`:
     scoreboard still know you by it.
 - **Checked:** the stand-in got "the spore you control is called 'Cline'" (Daybreak Arboretum).
   The mixins only run in real Minecraft.
+
+**Your Minecraft body in the shop's skill menu** (`MenuBody.cs`, since 2026-11-08, your request).
+Mycelium's skill menu (`SkillMenuManagerUpdated.InstantiateCurrentSpore`) shows a copy of your
+spore (`InstantiatedSpore`): bigger, turned to the menu's `UICamera`, on the "UI" layer. While it's
+there, its renderers get `forceRenderingOff`. A mesh of ours on the same layer draws
+`McPlayerModel`'s mesh and materials (the body as Minecraft last sent it) in its place. That body
+comes already turned the way you face, which is the way your spore faces. So it's turned by the copy's
+turn less your spore's, sized by the copy's size over your spore's, and stands at the copy's feet.
+Swapping spores in the menu (its buttons, so after our Update) makes a new copy in the middle of a
+frame. So a new copy is also hidden from `RenderPipelineManager.beginCameraRendering`, just before
+any camera draws. Otherwise it showed for one frame.
+
+**Traits only for your spore** (`TraitLeaks.cs`, since 2026-11-08, your report: no skill cooldowns).
+Mycelium's traits (`TraitBase` subclasses in `Assets/Resources/Traits`) hook onto the static events
+in `Actions` (`ActivatedSkill`, `ActivatedDodge`, ...) in `SporeSelected` and unhook in
+`SporeUnselected`. That leaks in two ways. `SmartyPantsTrait.SporeUnselected` hooks again (`+=`).
+And the skill menu's copy of your spore is still tagged "currentPlayer" while its traits wake up
+(`TraitBase.Awake`), so they select themselves.
+- After each swap, and once a second, each `Actions` event is rebuilt. Trait hooks stay only if the
+  trait exists, is on your spore, and isn't a repeat. Other hooks stay as they are.
+- `SwappedCharacter` keeps every living trait's hook (once each), because that's how a trait hears
+  its spore became yours.
+- `-mcNoTraitFix` switches this off.
 
 **Your colony in the player list** (since 2026-11-03, your request; protocol v42).
 - **Mycelium** (`ColonyWatch.cs`): every 0.5 s, every spore in `SwapCharacter.characters` on

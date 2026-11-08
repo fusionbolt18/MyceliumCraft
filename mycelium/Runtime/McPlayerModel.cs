@@ -32,6 +32,9 @@ namespace MyceliumCraft
         Bounds lastBounds;
 
         public bool Shown => shown;
+        /// <summary>The body as last sent (for the skill menu's copy, MenuBody); null before the first.</summary>
+        public Mesh BodyMesh => mesh != null && lastFrame >= 0 && mesh.vertexCount > 0 ? mesh : null;
+        public Material[] BodyMaterials => meshRenderer != null ? meshRenderer.sharedMaterials : null;
         /// <summary>Minecraft is in first person: only the body's shadow is drawn.</summary>
         public bool ShadowOnly => shadowOnly;
         bool shadowOnly;

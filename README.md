@@ -173,6 +173,10 @@ Single-player and offline only.
   your body loops our own Living Cyclone animation (a quicker wind-up and faster spins than Better
   Combat's two_handed_spin) (not tested in Minecraft; the view flag tested in
   Mycelium with a fake spin).
+  - With no weapon (The Carcass) it does the same, and can be used again after its cooldown.
+    A Living Cyclone that another spore was doing on its own when you picked it in the shop
+    doesn't count as yours, so the overlay stays off over the shop.
+    Tested in Mycelium with a fake Minecraft; **not tested by hand.**
 - **Trophic Cascade:** your Minecraft body vanishes and reappears with the spore, and from first
   person the view goes to third person behind meanwhile (not tested in Minecraft; tested in
   Mycelium with a fake vanish).
@@ -183,6 +187,11 @@ Single-player and offline only.
   spores, and swaps work with a stand-in body in Mycelium. Minecraft's log shows the skins made and your player wearing one;
   you've seen the other spores as Minecraft characters. **Not tested in Minecraft:** their size
   matching yours, their walking, the cap's brightness.
+- **Skills keep their cooldowns after many spore swaps.** Mycelium leaves traits hooked on (the Smarty
+  Pants trait piled up and cut every cooldown to almost nothing). Only your spore's traits act now.
+  Tested in Mycelium with a fake Minecraft; **not tested by hand.**
+- **The shop's skill menu shows your Minecraft player** instead of the spore, including right after
+  swapping spores there (no flash of the spore). Tested with a fake Minecraft's test body; **not tested in Minecraft.**
 - **A spore grown in the shop digs out of the ground** during its little cutscene, as you do in
   The Carcass. Mycelium's HUD and Minecraft's overlay are hidden for the cutscene. Mycelium's side reaches a fake Minecraft; **not tested in Minecraft.**
 - **Your colony is in Minecraft's player list** (Tab): the other spores are rows like other

@@ -68,6 +68,11 @@ namespace MyceliumCraft
         readonly ColonyPush colonyPush = new ColonyPush();
         readonly BossBar bossBar = new BossBar();
         readonly ShopUndo shopUndo = new ShopUndo();
+        readonly TraitLeaks traitLeaks = new TraitLeaks();
+        // Test aid "-mcNoTraitFix": leave Mycelium's leftover trait hooks alone, as Mycelium does.
+        static readonly bool NoTraitFix = Array.IndexOf(Environment.GetCommandLineArgs(), "-mcNoTraitFix") >= 0;
+        readonly UnarmedCyclone unarmedCyclone = new UnarmedCyclone();
+        readonly MenuBody menuBody = new MenuBody();
         readonly VanishWatch vanish = new VanishWatch();
         readonly KeyHints keyHints = new KeyHints();
         readonly SkillIconWatch skillIcons = new SkillIconWatch();
@@ -247,6 +252,19 @@ namespace MyceliumCraft
             // Test aid: "-mcCycloneTest" sets the held weapon's isCycloning for 2 s, as Living Cyclone
             // does while it spins, 4 s into driving.
             if (Array.IndexOf(args, "-mcCycloneTest") >= 0) StartCoroutine(CycloneTest());
+            // Test aid: "-mcUnarmedCycloneTest" uses Living Cyclone (if equipped) 4 s into driving, as its
+            // key does, then logs every second whether it can be used again. For The Carcass (no weapon).
+            if (Array.IndexOf(args, "-mcUnarmedCycloneTest") >= 0) StartCoroutine(UnarmedCycloneTest());
+            // Test aid: "-mcSporeMoveTest" (The Carcass) has another spore use Living Cyclone on its own,
+            // then, with the controls off as the shop has them, makes that spore yours as the shop's
+            // spore list does, and logs whether the overlay would show.
+            if (Array.IndexOf(args, "-mcSporeMoveTest") >= 0) StartCoroutine(SporeMoveTest());
+            // Test aid: "-mcSkillCooldownTest" uses each of your spore's skills, as its key does, and logs
+            // their cooldowns.
+            if (Array.IndexOf(args, "-mcSkillCooldownTest") >= 0) StartCoroutine(SkillCooldownTest());
+            // Test aid: "-mcTraitLeakTest" (The Carcass) swaps spores 20 times in the shop's skill menu,
+            // then counts the trait hooks on Mycelium's events and uses a skill 10 times, logging its cooldown.
+            if (Array.IndexOf(args, "-mcTraitLeakTest") >= 0) StartCoroutine(TraitLeakTest());
             // Test aid: "-mcLevelEndTest" walks the spore into the level's end 4 s into driving
             // (LevelEnd's own trigger), then, 1.5 s later, switches its controls back on as a hit's
             // knockback ending does.
@@ -320,6 +338,8 @@ namespace MyceliumCraft
             // driving, raises Vitality and closes it; then raises and lowers it and commits. Max health
             // after each. Nothing is bought: nutrients are put back as they were.
             if (Array.IndexOf(args, "-mcShopTest") >= 0) StartCoroutine(ShopTest());
+            // Test aid: "-mcSkillMenuTest" (The Carcass) opens the shop's skill menu 4 s into driving for 3 s.
+            if (Array.IndexOf(args, "-mcSkillMenuTest") >= 0) StartCoroutine(SkillMenuTest());
             // Test aid: "-mcBlurCheck" logs how sharp Mycelium's finished screen is twice a second
             // (average difference between neighbouring pixels in the middle), to see the pause blur.
             if (Array.IndexOf(args, "-mcBlurCheck") >= 0) StartCoroutine(BlurCheck());
@@ -386,6 +406,7 @@ namespace MyceliumCraft
                 nutrientPanel.SceneLoaded();
                 bossBar.SceneLoaded();
                 shopUndo.SceneLoaded();
+                menuBody.SceneLoaded();
                 SetPhase(Phase.Idle, "new scene");
             };
         }
@@ -416,6 +437,7 @@ namespace MyceliumCraft
             vanished = rb != null && vanish.Update();
             if (vanished) flags |= Proto.MycVanished;
             // Living Cyclone: the same view change while it spins, and no other skill meanwhile.
+            if (rb != null) unarmedCyclone.Update(); // no weapon (The Carcass): its cooldown, and it counts as spinning
             bool cycloning = rb != null && Cycloning();
             if (cycloning) flags |= Proto.MycCyclone;
             BlockSkillsWhileCycloning(cycloning);
@@ -424,6 +446,7 @@ namespace MyceliumCraft
             // Mycelium's health, which Minecraft's follows (/ 5).
             float health = 0f, maxHealth = 0f;
             shopUndo.Update(); // the shop shut without committing: max health back (ShopUndo)
+            if (!NoTraitFix) traitLeaks.Update(); // traits act only for the spore that's yours (TraitLeaks)
             if (rb != null) ReadHealth(out health, out maxHealth);
             dash.ForMinecraft(map, out float dashX, out float dashZ); // Blitz, the roll: Minecraft's player dashes (DashWatch)
             int nutrients = rb != null ? ReadNutrients() : -1;
@@ -540,6 +563,7 @@ namespace MyceliumCraft
             // Third person: your Minecraft body at the spore's feet, instead of the spore.
             bool bodyWanted = McConfig.Overlay && alive && phase != Phase.Idle && rb != null && cameraSync.Controlling;
             playerModel.Update(link, bodyWanted, rb != null ? rb.transform.position - Vector3.up * feetOffset : Vector3.zero, (float)map.Scale);
+            if (McConfig.Overlay && alive && phase != Phase.Idle) menuBody.Update(playerModel, feetOffset); // the skill menu's spore: your Minecraft body
             playerModel.SetVanished(vanished);
             cameraSync.ReplaceSpore = playerModel.Shown;
             playerModel.Cutscene = cameraSync.CutsceneLive; // your whole body in a cutscene's view
@@ -1431,7 +1455,7 @@ namespace MyceliumCraft
             GameObject weapon = GameObject.FindWithTag("currentWeapon");
             Type t = Type.GetType("WeaponCollision, Assembly-CSharp");
             Component wc = weapon != null && t != null ? weapon.GetComponent(t) : null;
-            bool now = wc != null && t.GetField("isCycloning")?.GetValue(wc) is bool c && c;
+            bool now = (wc != null && t.GetField("isCycloning")?.GetValue(wc) is bool c && c) || unarmedCyclone.Spinning;
             if (now != wasCycloning)
             {
                 wasCycloning = now;
@@ -1440,6 +1464,167 @@ namespace MyceliumCraft
                                : $"cyclone: Living Cyclone over after {Time.time - cycloneSince:F2} s");
             }
             return now;
+        }
+
+        /// <summary>Test aid: see "-mcUnarmedCycloneTest" in Awake.</summary>
+        System.Collections.IEnumerator UnarmedCycloneTest()
+        {
+            while (phase != Phase.Driving) yield return null;
+            yield return new WaitForSeconds(4f);
+            Component skill = unarmedCyclone.Skill;
+            if (skill == null) { McLog.Info("cyclone test: Living Cyclone isn't equipped"); yield break; }
+            FieldInfo canSkill = skill.GetType().GetField("canSkill");
+            McLog.Info($"cyclone test: using Living Cyclone; weapon held: {GameObject.FindWithTag("currentWeapon") != null}, canSkill {canSkill.GetValue(skill)}");
+            skill.GetType().GetMethod("ActivateSkill").Invoke(skill, new object[] { 2, false });
+            for (int i = 1; i <= 20; i++)
+            {
+                yield return new WaitForSeconds(0.5f);
+                McLog.Info($"cyclone test: +{i * 0.5f:F1} s: canSkill {canSkill.GetValue(skill)}, cycloning {wasCycloning}, animator speed {GameObject.FindWithTag("currentPlayer")?.GetComponent<Animator>()?.speed}");
+            }
+        }
+
+        /// <summary>Test aid: see "-mcTraitLeakTest" in Awake.</summary>
+        System.Collections.IEnumerator TraitLeakTest()
+        {
+            while (phase != Phase.Driving) yield return null;
+            yield return new WaitForSeconds(4f);
+            Type actions = Type.GetType("Actions, Assembly-CSharp");
+            Type traitType = Type.GetType("TraitBase, Assembly-CSharp");
+            Type skillType = Type.GetType("Skill, Assembly-CSharp");
+            string Hooks()
+            {
+                var counts = new System.Collections.Generic.SortedDictionary<string, int>();
+                foreach (FieldInfo f in actions.GetFields(BindingFlags.Public | BindingFlags.Static))
+                    if (f.GetValue(null) is Delegate d)
+                        foreach (Delegate h in d.GetInvocationList())
+                            if (h.Target != null && traitType.IsInstanceOfType(h.Target))
+                            {
+                                string k = $"{f.Name}<-{h.Target.GetType().Name}";
+                                counts[k] = counts.TryGetValue(k, out int c) ? c + 1 : 1;
+                            }
+                var parts = new System.Collections.Generic.List<string>();
+                foreach (var kv in counts) parts.Add($"{kv.Key} x{kv.Value}");
+                return parts.Count == 0 ? "none" : string.Join(", ", parts);
+            }
+            McLog.Info($"trait leak test: trait hooks at the start: {Hooks()}");
+            Component shop = null;
+            for (int i = 0; i < 10 && (shop = shopUndo.Manager) == null; i++) yield return new WaitForSeconds(0.5f);
+            var skillMenu = shop != null ? shop.GetType().GetField("SkillMenu").GetValue(shop) as GameObject : null;
+            if (skillMenu == null) { McLog.Info("trait leak test: no skill menu"); yield break; }
+            skillMenu.SetActive(true);
+            yield return new WaitForSeconds(0.5f);
+            Component menu = menuBody.Menu;
+            if (menu == null) { McLog.Info("trait leak test: no skill menu manager"); skillMenu.SetActive(false); yield break; }
+            for (int i = 0; i < 20; i++)
+            {
+                menu.GetType().GetMethod("SwapNext").Invoke(menu, null);
+                yield return new WaitForSeconds(0.15f);
+            }
+            skillMenu.SetActive(false);
+            yield return new WaitForSeconds(1.5f);
+            GameObject spore = GameObject.FindWithTag("currentPlayer");
+            McLog.Info($"trait leak test: after 20 swaps, yours is '{spore?.name}' (trait {spore?.GetComponent(traitType)?.GetType().Name}); trait hooks: {Hooks()}; removed by the fix so far: {traitLeaks.TotalRemoved}{(NoTraitFix ? " (fix off)" : "")}");
+            Transform loadout = spore != null ? spore.transform.Find("SkillLoadout") : null;
+            Component skill = loadout != null && loadout.childCount > 0 ? loadout.GetChild(0).GetComponent(skillType) : null;
+            if (skill == null) { McLog.Info("trait leak test: no skill in slot 0"); yield break; }
+            FieldInfo canSkill = skillType.GetField("canSkill");
+            FieldInfo cooling = skillType.GetField("cooldownCoroutine");
+            FieldInfo final = skillType.GetField("finalSkillCooldown", BindingFlags.Public | BindingFlags.NonPublic | BindingFlags.Instance);
+            float normal = (float)skillType.GetMethod("GetFinalCooldown").Invoke(skill, null);
+            var cds = new System.Collections.Generic.List<string>();
+            // A probe on the end of ActivatedSkill: the cooldown after every trait hook has had its go.
+            FieldInfo activated = actions.GetField("ActivatedSkill");
+            probeFinal = final;
+            probeCooldowns = cds;
+            Delegate probe = Delegate.CreateDelegate(activated.FieldType, this, GetType().GetMethod(nameof(TraitLeakProbe), BindingFlags.NonPublic | BindingFlags.Instance));
+            activated.SetValue(null, Delegate.Combine(activated.GetValue(null) as Delegate, probe));
+            for (int i = 0; i < 10; i++)
+            {
+                // Stop any cooldown so each use goes through, as the key would once it's over.
+                if (cooling.GetValue(skill) is Coroutine c) ((MonoBehaviour)skill).StopCoroutine(c);
+                cooling.SetValue(skill, null);
+                canSkill.SetValue(skill, true);
+                skillType.GetMethod("ActivateSkill").Invoke(skill, new object[] { 0, false });
+                yield return new WaitForSeconds(0.3f);
+            }
+            activated.SetValue(null, Delegate.Remove(activated.GetValue(null) as Delegate, probe));
+            if (cooling.GetValue(skill) is Coroutine c2) ((MonoBehaviour)skill).StopCoroutine(c2);
+            cooling.SetValue(skill, null);
+            canSkill.SetValue(skill, true);
+            McLog.Info($"trait leak test: {skill.GetType().Name} used 10 times; its normal cooldown {normal:F2} s; the cooldowns it got: {string.Join(", ", cds)} s");
+        }
+
+        FieldInfo probeFinal;
+        System.Collections.Generic.List<string> probeCooldowns;
+        void TraitLeakProbe(Component skill) => probeCooldowns?.Add($"{(float)probeFinal.GetValue(skill):F2}");
+
+        /// <summary>Test aid: see "-mcSkillCooldownTest" in Awake.</summary>
+        System.Collections.IEnumerator SkillCooldownTest()
+        {
+            while (phase != Phase.Driving) yield return null;
+            yield return new WaitForSeconds(6f);
+            GameObject spore = GameObject.FindWithTag("currentPlayer");
+            Transform loadout = spore != null ? spore.transform.Find("SkillLoadout") : null;
+            Type skillType = Type.GetType("Skill, Assembly-CSharp");
+            if (loadout == null || skillType == null) { McLog.Info("skill cooldown test: no loadout"); yield break; }
+            FieldInfo canSkill = skillType.GetField("canSkill"), cooling = skillType.GetField("cooldownCoroutine");
+            FieldInfo final = skillType.GetField("finalSkillCooldown", BindingFlags.Public | BindingFlags.NonPublic | BindingFlags.Instance);
+            for (int slot = 0; slot < loadout.childCount; slot++)
+            {
+                Component s = loadout.GetChild(slot).GetComponent(skillType);
+                if (s == null) continue;
+                string State() => $"canSkill {canSkill.GetValue(s)}, cooling {cooling.GetValue(s) != null}, cooldown {final?.GetValue(s)} s, active {s.gameObject.activeInHierarchy}, enabled {((Behaviour)s).enabled}";
+                McLog.Info($"skill cooldown test: '{spore.name}' slot {slot} {s.GetType().Name}: before: {State()}");
+                if (!(bool)canSkill.GetValue(s)) continue;
+                s.GetType().GetMethod("ActivateSkill").Invoke(s, new object[] { slot, false });
+                McLog.Info($"skill cooldown test: slot {slot}: just used: {State()}");
+                for (int i = 1; i <= 8; i++)
+                {
+                    yield return new WaitForSeconds(0.5f);
+                    McLog.Info($"skill cooldown test: slot {slot}: +{i * 0.5f:F1} s: {State()}");
+                }
+            }
+        }
+
+        /// <summary>Test aid: see "-mcSporeMoveTest" in Awake.</summary>
+        System.Collections.IEnumerator SporeMoveTest()
+        {
+            while (phase != Phase.Driving) yield return null;
+            yield return new WaitForSeconds(4f);
+            GameObject parent = GameObject.FindWithTag("PlayerParent");
+            Type swapType = Type.GetType("SwapCharacter, Assembly-CSharp");
+            Type cycType = Type.GetType("LivingCyclone, Assembly-CSharp");
+            Component swap = parent != null && swapType != null ? parent.GetComponent(swapType) : null;
+            var list = swap != null ? swapType.GetField("characters")?.GetValue(swap) as System.Collections.IList : null;
+            if (list == null || cycType == null) { McLog.Info("spore move test: no SwapCharacter list"); yield break; }
+            GameObject mine = GameObject.FindWithTag("currentPlayer");
+            int index = -1;
+            Component skill = null;
+            for (int i = 0; i < list.Count; i++)
+            {
+                var s = list[i] as GameObject;
+                if (s == null || s == mine) continue;
+                skill = s.GetComponentInChildren(cycType, true);
+                if (skill != null) { index = i; break; }
+            }
+            if (skill == null) { McLog.Info("spore move test: no other spore has Living Cyclone"); yield break; }
+            GameObject other = (GameObject)list[index];
+            McLog.Info($"spore move test: '{other.name}' (#{index}) uses Living Cyclone on its own, as its moves do");
+            skill.GetType().GetMethod("ActivateSkill").Invoke(skill, new object[] { skill.transform.GetSiblingIndex(), false });
+            yield return new WaitForSeconds(0.3f);
+            MethodInfo disable = controller?.GetType().GetMethod("DisableController");
+            disable?.Invoke(controller, new object[] { null });
+            McLog.Info("spore move test: controls off, as the shop has them; making that spore yours, as the shop's spore list does");
+            swapType.GetMethod("SwitchCharacterGrowMenu").Invoke(swap, new object[] { index });
+            for (int i = 1; i <= 16; i++)
+            {
+                yield return new WaitForSeconds(0.5f);
+                bool controls = MyceliumHasControls(out string why);
+                McLog.Info($"spore move test: +{i * 0.5f:F1} s: counted as your spin {unarmedCyclone.Spinning}, Mycelium has the controls {controls} ({why}), overlay visible {overlay.Visible}, canSkill {skill.GetType().GetField("canSkill").GetValue(skill)}, cooling {skill.GetType().GetField("cooldownCoroutine").GetValue(skill) != null}");
+                disable?.Invoke(controller, new object[] { null }); // the skill's end turns them on again (Skill.EndSkill); the shop would still be open
+            }
+            controller?.GetType().GetMethod("EnableController", Type.EmptyTypes)?.Invoke(controller, null);
+            McLog.Info("spore move test: controls back on");
         }
 
         /// <summary>Test aid: see "-mcCycloneTest" in Awake.</summary>
@@ -2246,6 +2431,37 @@ namespace MyceliumCraft
             fresh.tag = "currentWeapon";
             yield return new WaitForSeconds(0.5f);
             McLog.Info($"swap test: after: dropped '{old.name}' drawn={Drawn(old)} (want True), held '{fresh.name}' drawn={Drawn(fresh)} (want {!playerModel.Shown})");
+        }
+
+        /// <summary>Test aid (-mcSkillMenuTest): LevelUpManagerNew's SkillMenu switched on, as its menu swap does, then off.</summary>
+        System.Collections.IEnumerator SkillMenuTest()
+        {
+            while (phase != Phase.Driving) yield return null;
+            yield return new WaitForSeconds(4f);
+            Component shop = null;
+            for (int i = 0; i < 10 && (shop = shopUndo.Manager) == null; i++) yield return new WaitForSeconds(0.5f);
+            var skillMenu = shop != null ? shop.GetType().GetField("SkillMenu").GetValue(shop) as GameObject : null;
+            if (skillMenu == null) { McLog.Info("skill menu test: no skill menu"); yield break; }
+            McLog.Info($"skill menu test: opening '{skillMenu.name}'");
+            skillMenu.SetActive(true);
+            for (int i = 1; i <= 6; i++)
+            {
+                yield return new WaitForSeconds(0.5f);
+                McLog.Info($"skill menu test: +{i * 0.5f:F1} s: your body shown there {menuBody.Showing}");
+            }
+            // Swap spores as the menu's arrow buttons do (after this frame's Update, as a click is).
+            Component menu = menuBody.Menu;
+            for (int i = 0; i < 2 && menu != null; i++)
+            {
+                int caught = menuBody.CaughtBeforeDrawing;
+                McLog.Info($"skill menu test: swapping spores ({(i == 0 ? "SwapNext" : "SwapLast")}) at frame {Time.frameCount}");
+                menu.GetType().GetMethod(i == 0 ? "SwapNext" : "SwapLast").Invoke(menu, null);
+                yield return new WaitForSeconds(1f);
+                McLog.Info($"skill menu test: after the swap: new copy hidden before drawing {menuBody.CaughtBeforeDrawing - caught} time(s), your body shown there {menuBody.Showing}");
+            }
+            skillMenu.SetActive(false);
+            yield return new WaitForSeconds(0.5f);
+            McLog.Info($"skill menu test: closed; your body shown there {menuBody.Showing}");
         }
 
         /// <summary>Test aid (-mcShopTest): LevelUpManagerNew's VitalityUP, VitalityDown, Close and Commit, as its buttons call them.</summary>

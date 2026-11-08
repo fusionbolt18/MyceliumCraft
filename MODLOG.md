@@ -1,5 +1,144 @@
 # MODLOG
 
+## 2026-11-08 Skills go into cooldown again after lots of spore swaps
+
+**Your report:** in a run with a different spore (Nala), your skills weren't going into cooldown.
+Your log shows Death Blossom used about 40 times in 10 seconds.
+
+**Why:** two of Mycelium's own bugs, made much worse by swapping spores many times (about 100 swaps
+in The Carcass before that run).
+- A trait hooks itself onto Mycelium's events (the `Actions` class) when its spore becomes yours,
+  and should unhook when it stops. The Smarty Pants trait (Bub has it) hooks on again instead of
+  unhooking. Each hook gives a 15% chance to cut a skill's cooldown to a quarter.
+- The skill menu makes a copy of your spore every time it shows one. That copy's traits also hook on
+  as if the copy were yours, and some never unhook. A destroyed Clumsy trait copy threw an error on
+  every dodge in your run.
+- So dozens of Smarty Pants hooks were on, for whichever spore was yours. Together they cut every
+  cooldown to almost nothing.
+
+**Changed:** new `TraitLeaks.cs`. After each swap (and once a second), trait hooks on Mycelium's
+events stay only if their trait still exists, is on your spore, and isn't a repeat. Every spore's
+traits stay hooked to `SwappedCharacter`, because that's how a trait hears its spore became yours.
+A first version removed those too, and no trait came on after a swap (seen in the test, fixed before
+this entry). Test aids: `-mcTraitLeakTest`, `-mcSkillCooldownTest`, `-mcNoTraitFix` (switches the fix
+off).
+
+**Tested how:** stand-in (`LINKTEST_MODEL=1`). In The Carcass, `-mcTraitLeakTest` swaps 20 times in
+the skill menu, then uses the spore's first skill 10 times. It reads each cooldown after every trait
+has had its go. `-mcSkillCooldownTest` in Daybreak checks Nala's three skills without swapping.
+**Result:**
+- **Fix off:** 29 Smarty Pants hooks after 20 swaps. Zombify (normally 10 s) got 0.00 to 0.63 s.
+  This is your bug.
+- **Fix on:** 36 leftover hooks were removed, and exactly 1 Smarty Pants hook was left (the spore
+  that was yours has it). The cooldowns were 10 s, or 2.5 s now and then (that trait's own 15%
+  chance).
+- **No swaps:** Nala's Death Blossom, Blitz and Living Cyclone all cooled down normally (3.5 s,
+  3.5 s, 7.0 s).
+- The only errors were Mycelium's own, from its spore copies (`ComboTrait`, `EnduringTrait`), as
+  before.
+
+**Not tested:** in Minecraft by hand. Only events in `Actions` are cleaned. A trait that hooks onto
+something else (ComboTrait hooks onto your attacks) can still be left behind, and isn't handled.
+
+## 2026-11-08 A spore's own Living Cyclone no longer shows the overlay over the shop
+
+**Your report:** if a spore did a move and you then picked it in the shop, the Minecraft overlay
+showed until the move ended.
+
+**Why:** the other spores use their skills on their own as moves (Mycelium's `IdleWalking` and
+`SkillCurio`). If you take one over while its Living Cyclone is still going, the no-weapon fix from
+earlier today (`UnarmedCyclone`) took that for your own spin. A spin counts as play, not Mycelium
+taking the controls, so the overlay showed over the shop until the spin was over.
+
+**Changed:** `UnarmedCyclone.cs`. A use counts as your spin only if the mod saw the skill ready
+while that spore was yours. A move that was already going when the spore became yours doesn't count.
+Its cooldown is still started when it ends, so the skill isn't stuck. New test aid:
+`-mcSporeMoveTest`.
+
+**Tested how:** stand-in (`LINKTEST_MODEL=1`), The Carcass.
+- `-mcSporeMoveTest`: another spore uses Living Cyclone, then the controls go off as the shop has
+  them, and that spore becomes yours as the shop's spore list does.
+- `-mcUnarmedCycloneTest`, to check your own spin still counts.
+
+**Result:**
+- The move wasn't counted as your spin, and the overlay stayed off for all 8 s. Its cooldown started
+  6 s in (no spins were seen), and no exceptions.
+- Your own spin still counted: 1.25 s, then its cooldown.
+
+**Not sure:** when that spore's move ends, Mycelium itself switches your controls back on
+(`Skill.EndSkill` calls `EnableController` for whichever spore is yours now). The test switched them
+off again, as the shop has them. Whether the real shop does the same is **not tested**. If the
+overlay flashes when the move ends, that's the cause.
+
+## 2026-11-08 No flash of the Mycelium spore when swapping in the skill menu
+
+**Your report:** swapping spores in the shop's skill menu showed the Mycelium spore for a split
+second.
+
+**Why:** the menu's swap buttons (`SwapNext` / `SwapLast`) make a new copy of the spore. They run
+later in the frame than `MenuBody.Update`, so the new copy was drawn for one frame before it was
+hidden.
+
+**Changed:** `MenuBody.cs`. Just before any camera draws (`RenderPipelineManager.beginCameraRendering`),
+a copy the menu made since Update gets its renderers off. This only happens while your body is being
+shown there. `-mcSkillMenuTest` now also swaps spores twice while the menu is open.
+
+**Tested how:** stand-in (`LINKTEST_MODEL=1`), The Carcass, `-mcSkillMenuTest`.
+**Result:**
+- On both swaps (and on opening the menu), the new copy still had its 3 renderers on just before
+  drawing. It was hidden in that same frame, so it was never drawn. Your body was shown again next
+  frame.
+- There was 1 exception, from Mycelium's own code (`EnduringTrait.SporeSelected`, while Mycelium makes
+  the copy). Not from this mod.
+
+**Not tested:** in Minecraft by eye. Your body may lag one frame behind the swap, at the same spot.
+
+## 2026-11-08 Your Minecraft player in the shop's skill menu
+
+**Your request:** in the shop's skill menu, show the display spore as your Minecraft player.
+
+**Changed:** new `MenuBody.cs`, plus `McPlayerModel.BodyMesh` and `BodyMaterials`.
+- Mycelium's skill menu shows a bigger copy of your spore to its own camera. While it's there, the
+  copy isn't drawn, and your Minecraft body is drawn in its place.
+- It's the same body Minecraft sends for third person, so it wears what you wear.
+- It's sized as the copy is, turned as the copy is, and stands at its feet.
+- Test aid: `-mcSkillMenuTest`.
+
+**Tested how:** stand-in with its fake body (`LINKTEST_MODEL=1`), The Carcass, `-mcSkillMenuTest`.
+**Result:**
+- The body was shown as the menu opened, at 2.65x, facing the menu's camera (0° off), with the
+  copy's 5 renderers off.
+- It was hidden once the menu closed. No exceptions.
+
+**Not tested:** in Minecraft with your real body, and how it looks. The facing assumes your Minecraft
+body faces the way your spore does, which is true while Minecraft drives.
+
+## 2026-11-08 Living Cyclone with no weapon (The Carcass)
+
+**Your report:** Living Cyclone in The Carcass didn't do what it does in a run, and it couldn't be
+used again while you stayed there.
+
+**Why:** you hold no weapon in The Carcass.
+- Mycelium's Living Cyclone holds its cooldown back while it spins, and starts it after the third
+  spin, but only when you hold a weapon. With none, it stays switched off until the scene changes.
+  That's Mycelium's own bug.
+- This mod knew a cyclone spins only from the weapon (`WeaponCollision.isCycloning`). So with no
+  weapon, Minecraft didn't go to third person or play the spin. Your log shows no "cyclone" lines.
+
+**Changed:** new `UnarmedCyclone.cs`. With no weapon, the skill counts as spinning from being used
+until the spore's animator starts again (Living Cyclone stops it for the spins). Then its cooldown is
+started, as it would be with a weapon. `MinecraftDriver.Cycloning` includes it. Test aid:
+`-mcUnarmedCycloneTest`.
+
+A first try used `PlayerController.looking` for the spins' end. It went on and off during the
+spins, so it was dropped.
+
+**Tested how:** stand-in, The Carcass, `-mcUnarmedCycloneTest`. **Result:**
+- Spinning for 1.26 s, and the fake Minecraft saw the spin start and end.
+- The cooldown started, and the skill could be used again 8.5 s after it was used.
+
+No exceptions. **Not tested:** in Minecraft, by hand.
+
 ## 2026-11-08 The player list in 2 columns
 
 **Your request:** split the players in the player list into 2 columns.
