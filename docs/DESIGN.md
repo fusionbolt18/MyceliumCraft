@@ -1905,6 +1905,9 @@ Like SkyCraft's `fake_skyrim.py`:
     set through `PlayerInfoAccessor`), because Minecraft's own lookup can ask Mojang's skin
     servers. You are your own row (named by MycName).
     Made again only when the colony or the spore you control changes.
+  - **2 columns** (since 2026-11-08, your request): `PlayerTabColumnsMixin` changes Minecraft's
+    "at most 20 rows a column" to half the rows (rounded up, never above 20) in
+    `PlayerTabOverlay.extractRenderState`, so the rows split into 2 columns.
   - The footer (under the rows): "Colony Happiness", then a bar of 40 `|`: filled ones in the happiness colour, the rest dark grey. It moves toward
     the average at 0.6 of its length per second, so it fills up or down as it changes.
   - Mycelium's word under it: Happy over 0.5, Unhappy under, Content at 0.5 (that's where

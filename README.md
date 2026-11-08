@@ -98,6 +98,7 @@ Single-player and offline only.
   **not tested in Minecraft, nor in a real fight.**
 - **The Stickbug Spear shoots its projectile on each swing,** where you look. Tested with a fake
   Minecraft and another weapon named as the spear; **not tested with the real spear.**
+- **The player list is in 2 columns** (you and your colony's spores). **Not tested in Minecraft.**
 - **During a run the player list says "Nutrient Multiplier: +X%"** in place of Colony Happiness.
   The number reaches a fake Minecraft; **the text itself is not tested in Minecraft.**
 - **Minecraft health follows Mycelium's: not tested in Minecraft.**

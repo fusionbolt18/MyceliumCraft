@@ -1,5 +1,17 @@
 # MODLOG
 
+## 2026-11-08 The player list in 2 columns
+
+**Your request:** split the players in the player list into 2 columns.
+
+**Changed:** new `PlayerTabColumnsMixin.java`. Minecraft adds a column to the list only when one
+column would hold more than 20 rows. Now that limit is half the rows, rounded up, so 2 or more rows
+always make 2 columns. A list longer than 40 still gets a third column, as before. A single row
+(you alone) stays 1 column.
+
+**Tested how:** the mod jar builds. **Not tested:** in Minecraft (I can't run it). The log line
+"player list: N rows in 2 column(s)" will show whether it worked.
+
 ## 2026-11-08 Leaving the shop puts max health back
 
 **Your report:** changing the health stat in the shop without committing still changed your max health.

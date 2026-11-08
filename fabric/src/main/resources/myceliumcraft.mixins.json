@@ -26,6 +26,7 @@
     "PlayerInfoAccessor",
     "PlayerCombatKillMixin",
     "PlayerInfoSkinMixin",
+    "PlayerTabColumnsMixin",
     "PlayerTabNameMixin",
     "PlayerTabRowsMixin",
     "QuadParticleGroupMixin",
