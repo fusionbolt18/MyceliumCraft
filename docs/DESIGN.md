@@ -151,6 +151,19 @@ superflat world's own ground at y −60.
 
    A new Minecraft world or a new Mycelium scene also starts over.
 
+   The other spores of your colony used to be such a thing: solid in Mycelium, unknown to Minecraft,
+   so you got held against one. Since 2026-11-04 Mycelium's physics ignores them while Minecraft
+   drives (`ColonyPassThrough.cs`: `Physics.IgnoreCollision` on solid colliders, triggers untouched),
+   and you collide in Minecraft instead:
+   - Each other spore has an invisible creature standing in for it (`SporeProxy`, `SporeProxies`),
+     sized like your player, put on the spore every server tick (`ColonyPush.cs`, SporeMoves block).
+   - Minecraft's collision between a player and a creature is its own: a soft shove each way, as
+     with a cow, not a wall. So you're slowed and turned aside, and you can squeeze past.
+   - The stand-in never moves itself. Its shoves become a speed that fades as on ordinary ground,
+     half of it is sent to Mycelium (`SHARE`), and the real spore moves by that. A standing spore
+     weighs 10000 in Mycelium, so it's moved directly. Spores at a curio or digging out stay put.
+   - Stand-ins can't be aimed at or hurt, and don't shove each other.
+
    **Resyncs only move you; they never turn you** (since 2026-10-20, protocol v21). Only the
    first teleport, when Minecraft starts driving, sets where Minecraft's player faces. Resyncs send
    a NaN yaw ("keep"). The spore faces where Minecraft's *body* points, which lags up to about 50°
@@ -388,6 +401,42 @@ the first time one is held back. Advancements and recipes are still earned; only
     ×1.
   - Both stand-ins pass the 0x60 check (1.25).
 
+### 5.0.2.0 Lighting of your normal hand in the overlay (since 2026-11-04)
+
+Two things decide how bright Minecraft's normal hand and held items are (not Better Combat's arms,
+which `MycFirstPersonArms` lights itself):
+- **The lighting directions:** Minecraft sets the world's in `LevelRenderer.render`, which the overlay
+  skips, so the hand got whatever was set last: the HUD items' lighting, or the world's just after
+  `MycFirstPersonArms` drew. `HandLightMixin` now sets the world's before the hand. Those two lights
+  are fixed in the world and the hand turns with your view, so one side went dark looking straight
+  up. So for the hand they're turned with your view too (`LightingAccessor`), and put back after.
+- **The light level:** where your player stands, in a world of invisible blocks and with Minecraft's
+  own day and night. `MycHandLight` holds it at full, so the hand doesn't follow Mycelium's lighting.
+
+### 5.0.2.2 The final boss's health is Minecraft's boss bar (since 2026-11-07)
+
+Only on the final level, Impact Barrens. Mycelium's bar there is `HUDBoss` on the HUD:
+`bossHealthHolder` grows open when you meet the boss and shrinks shut once it's beaten, and
+`bossHealthBar.fillAmount` is its health.
+- **Mycelium** (`BossBar.cs`): while Minecraft drives with the overlay on, the holder is switched
+  off and put back as it was after. What it would show goes to Minecraft (Boss block): shown while
+  it's open more than half way, the name without its colour tags, and the fill. Only once the fight
+  is on: Mycelium opens its bar when you come near (`BossHealth`'s trigger), 8 s before the intro in
+  your log, and switches the boss's attacks (`MonsterBossAttack`) on only at the intro's end. Not
+  while Mycelium has the controls for anything but a knockback (its death takes them).
+- **Minecraft** (`MycBossBar.java`): one red boss bar on the integrated server, shown to the players
+  while Mycelium says so. Minecraft's client eases it to new health itself.
+- Mycelium's minibosses on other levels use the same `HUDBoss`; they keep Mycelium's bar.
+- **Its death cutscene has the controls** (since 2026-11-07): once the final boss's health is 0 or
+  less, `MinecraftDriver.FinalBossBeaten` counts as Mycelium having the controls until the level
+  ends, so the overlay hides and the input bridge stops. Mycelium's own sign, its "Player" input map
+  switched off, came back on 0.2 s after the death in your game.
+- **You're drawn in cutscenes:** in first person `CameraSync` hides the spore, as the camera is inside
+  it. Since 2026-11-07 only while its own camera is the live one (`CinemachineBrain.ActiveVirtualCamera`):
+  a cutscene's camera (the boss's death or intro, a spore's birth) looks at you, and you were invisible.
+  The same for your Minecraft body (`McPlayerModel.Cutscene`): in first person only its shadow is
+  drawn, and while a cutscene's camera is live the whole body is.
+
 ### 5.0.2.1 Experience level = nutrients (since 2026-10-19)
 
 Mycelium reads `NutrientTracker.currentNutrients` (found by name; on 'NutrientCounter') and sends it
@@ -624,6 +673,10 @@ in three ways:
 | `Hit`: the weapon's `WeaponCollision.HitEnemy` | Critical, Repulsive, Nasty, Hazardous, Sticky, Feline, Vampiric, Fragile, Nimble, Enigmatic, Flourishing | **now:** every Minecraft hit goes through the held weapon |
 | `StartAttack`/`StopAttack`: `PlayerAttack.StartedAttack`/`FinishedAttack` | Fragile, Nimble, Enigmatic, Flourishing; skill procs (Bursting, Erupting, Toxicating, Undergrown, Mycelic) roll in `WeaponStats` after a swing that hit | **now:** raised for every Minecraft swing |
 
+- **The Stickbug Spear's projectile** (since 2026-11-04): Mycelium shoots it inside
+  `PlayerAttack.Attack`, which Minecraft's swings don't use. `EnemyCombat.ShootSpear` does the same
+  when a swing's wind-up is over, except that it flies down the middle of the screen (up and down
+  too), starting 4 units past the spore, not from beside the spore where its body faces. Whether a weapon is the spear goes by its object's name, as in Mycelium.
 - **Swings:** Minecraft counts melee attacks that go ahead (`MinecraftMixin.startAttack`) and
   sends the count (McState 0x94, protocol v25). For each new one, Mycelium raises
   `StartedAttack`, then `FinishedAttack` 0.35 s later, or at the next swing (`EnemyCombat`).
@@ -723,6 +776,11 @@ Mycelium's pop-up slides the stat panel in (`HUDStats.ShowStats`). It slides it 
 pop-up closes, but not when the pop-up closes because you picked the weapon up
 (`DestroyTooltip(..., isFromInteracting)`). In Mycelium the weapon you let go of then lies there and
 hides it when you walk away. Here it goes into the bag, so the panel stayed (your report).
+**A pop-up whose thing is gone goes too** (since 2026-11-07). Throwing a weapon and salvaging it
+34 ms later left its pop-up up for good; how it outlived the weapon isn't known. Every frame
+`WeaponBag.DropOrphanPopUp` takes Mycelium's pop-up away when the thing it was made for
+(`TooltipManager.currentParent`) has been destroyed.
+
 `WeaponBag.HideStatsAfterPickup`: 1 s after a pickup where the old or new weapon changes stats,
 `HUDStats.HideStats` (Mycelium's), unless another weapon's pop-up is open (that one hides it when it
 closes). `-mcPickupTest <Type/Prefab>` picks up a chosen weapon and logs where the panel is.

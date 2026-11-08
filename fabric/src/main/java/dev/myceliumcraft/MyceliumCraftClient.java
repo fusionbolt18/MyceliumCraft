@@ -45,6 +45,9 @@ public final class MyceliumCraftClient implements ClientModInitializer {
 		MyceliumKeys.init();
 		// Combat: invisible stand-ins for Mycelium's enemies, drawn by nothing.
 		dev.myceliumcraft.combat.EnemyProxies.init();
+		// The other spores: invisible creatures, so you collide with them by Minecraft's rules.
+		dev.myceliumcraft.combat.SporeProxies.init();
+		MycBossBar.init(); // the final boss's health: Minecraft's boss bar
 		// Diagnostic: what stalls Minecraft's server (late hits, 2026-10-21).
 		ServerStallWatch.init();
 		MycWeapons.init(); // thrown weapons: no pickup, removed once landed
@@ -53,6 +56,7 @@ public final class MyceliumCraftClient implements ClientModInitializer {
 		MycBetterCombat.init(); // Better Combat's attack starts count as Mycelium swings
 		MycSkillAnimation.init(); // Living Cyclone: Better Combat's two_handed_spin, looped
 		net.fabricmc.fabric.api.client.rendering.v1.EntityRendererRegistry.register(dev.myceliumcraft.combat.EnemyProxies.TYPE, net.minecraft.client.renderer.entity.NoopRenderer::new);
+		net.fabricmc.fabric.api.client.rendering.v1.EntityRendererRegistry.register(dev.myceliumcraft.combat.SporeProxies.TYPE, net.minecraft.client.renderer.entity.NoopRenderer::new);
 		MycLink.LOG.info("MyceliumCraft: rules: no fall damage for players, no natural health regeneration (always, while the mod is installed)");
 	}
 

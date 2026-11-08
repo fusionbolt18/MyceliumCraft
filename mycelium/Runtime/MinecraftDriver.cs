@@ -64,6 +64,9 @@ namespace MyceliumCraft
         readonly ColonyWatch colony = new ColonyWatch();
         readonly BirthCutscene birth = new BirthCutscene();
         readonly NutrientPanel nutrientPanel = new NutrientPanel();
+        readonly ColonyPassThrough passThrough = new ColonyPassThrough();
+        readonly ColonyPush colonyPush = new ColonyPush();
+        readonly BossBar bossBar = new BossBar();
         readonly VanishWatch vanish = new VanishWatch();
         readonly KeyHints keyHints = new KeyHints();
         readonly SkillIconWatch skillIcons = new SkillIconWatch();
@@ -266,6 +269,20 @@ namespace MyceliumCraft
             if (Array.IndexOf(args, "-mcSwapTest") >= 0) StartCoroutine(SwapTest());
             // Test aid: "-mcSporeSwapTest" swaps to the next spore, then logs which spores are still drawn.
             if (Array.IndexOf(args, "-mcSporeSwapTest") >= 0) StartCoroutine(SporeSwapTest());
+            // Test aid: "-mcBumpTest" stands another spore in your way; "-mcBumpTestSolid" the same, with spores solid as before.
+            bool solid = Array.IndexOf(args, "-mcBumpTestSolid") >= 0;
+            passThrough.Off = solid;
+            if (solid || Array.IndexOf(args, "-mcBumpTest") >= 0) StartCoroutine(BumpTest());
+            // Test aid: "-mcSpearTest" calls the held weapon the Stickbug Spear, to see its shots from swings (LINKTEST_FUNGAL=1).
+            if (Array.IndexOf(args, "-mcSpearTest") >= 0) StartCoroutine(SpearTest());
+            // Test aid: "-mcBossBarTest" opens Mycelium's boss bar 3 s into driving, then takes health off, as meeting and hitting the boss does.
+            if (Array.IndexOf(args, "-mcBossBarTest") >= 0) StartCoroutine(BossBarTest());
+            // Test aid: "-mcBossDeathTest" beats the final boss 4 s into driving, with damage as a hit's.
+            if (Array.IndexOf(args, "-mcBossDeathTest") >= 0) StartCoroutine(BossDeathTest());
+            // Test aid: "-mcPopUpTest" gives a thing a pop-up, then destroys the thing without taking the pop-up away.
+            if (Array.IndexOf(args, "-mcPopUpTest") >= 0) StartCoroutine(PopUpTest());
+            // Test aid: "-mcBossIntroTest" walks you into the final boss's trigger 3 s into driving, as reaching it does.
+            if (Array.IndexOf(args, "-mcBossIntroTest") >= 0) StartCoroutine(BossIntroTest());
             // Test aid: "-mcLoop <n>" starts on that loop, to see its nutrient bonus.
             int loopArg = Array.IndexOf(args, "-mcLoop");
             if (loopArg >= 0 && loopArg + 1 < args.Length && int.TryParse(args[loopArg + 1], out int loop))
@@ -362,6 +379,7 @@ namespace MyceliumCraft
                 colony.SceneLoaded();
                 birth.SceneLoaded();
                 nutrientPanel.SceneLoaded();
+                bossBar.SceneLoaded();
                 SetPhase(Phase.Idle, "new scene");
             };
         }
@@ -412,6 +430,9 @@ namespace MyceliumCraft
 
             // Your nutrients: Minecraft's experience level, on the overlay, instead of Mycelium's panel.
             nutrientPanel.Update(McConfig.Overlay && rb != null && phase == Phase.Driving && link.MinecraftAlive);
+            // The final boss's health: Minecraft's boss bar instead of Mycelium's (BossBar, MycBossBar.java).
+            bossBar.Update(link, McConfig.Overlay && rb != null && phase != Phase.Idle && link.MinecraftAlive,
+                           heldByMycelium && !this.controlsWhy.EndsWith("knockback"));
 
             // Your colony: in Minecraft's player list instead of Mycelium's colony meter (ColonyWatch, MycColony.java).
             if (colony.Update(rb != null && phase == Phase.Driving && link.MinecraftAlive, (float)map.Scale))
@@ -419,6 +440,10 @@ namespace MyceliumCraft
                 if (rb != null) link.WriteColony(colony.Count, colony.Colors, colony.Caps, colony.Speeds, colony.Emerges, colony.Happiness, colony.Names, colony.Average, colony.Current, colony.NutrientBonus);
                 else link.WriteColony(0, colony.Colors, colony.Caps, colony.Speeds, colony.Emerges, colony.Happiness, colony.Names, -1f, -1, -1);
             }
+
+            // You and the other spores collide in Minecraft (ColonyPush), not in Mycelium's physics (ColonyPassThrough).
+            passThrough.Update(link.MinecraftAlive && phase != Phase.Idle ? rb : null, colony);
+            colonyPush.Update(link, link.MinecraftAlive && phase != Phase.Idle ? rb : null, colony, map, feetOffset);
 
             bool alive = link.MinecraftAlive;
             if (alive != mcWasAlive)
@@ -510,6 +535,7 @@ namespace MyceliumCraft
             playerModel.Update(link, bodyWanted, rb != null ? rb.transform.position - Vector3.up * feetOffset : Vector3.zero, (float)map.Scale);
             playerModel.SetVanished(vanished);
             cameraSync.ReplaceSpore = playerModel.Shown;
+            playerModel.Cutscene = cameraSync.CutsceneLive; // your whole body in a cutscene's view
             // The other spores as Minecraft characters too, while yours is one.
             colonyBodies.Update(link, playerModel.Shown, colony, playerModel, feetOffset, (float)map.Scale);
             // Which game owns which key, while Minecraft drives the spore.
@@ -518,6 +544,7 @@ namespace MyceliumCraft
             keys.Update(alive && phase != Phase.Idle, mcScreenOpen);
             // Combat: Mycelium's enemies to Minecraft's stand-ins, and their hits back.
             // Your weapons: the bag, Minecraft's carrots, the one Minecraft's hand holds.
+            WeaponBag.DropOrphanPopUp(); // a pop-up for something salvaged or gone
             if (rb != null) weapons.Update(this, link, alive && phase == Phase.Driving && camFresh2, camFresh2 ? lastCamMc.HandWeapon : 0u, map);
             combat.HeldKnockback = weapons.HeldKnockback;
             // Mycelium's attack events for Minecraft's swings (weapon attributes).
@@ -795,6 +822,7 @@ namespace MyceliumCraft
             {
                 resyncs++;
                 stuckSince = -1f;
+                McLog.Info($"held back: {BlockedBy(error)}");
                 SendTeleport($"spore {lastError:F1} units from Minecraft's player (Mycelium collision?)");
                 return;
             }
@@ -1041,6 +1069,7 @@ namespace MyceliumCraft
             why = "";
             if (IsPaused()) { why = "paused"; return true; }
             if (EndOfLevelMenu()) { why = "end-of-level menu"; return true; }
+            if (FinalBossBeaten()) { why = "boss death cutscene"; return true; }
             if (controller == null) return false;
             try
             {
@@ -1084,6 +1113,33 @@ namespace MyceliumCraft
         /// play: the overlay came back and Minecraft moved the spore (your report, 2026-11-02; at
         /// 127.22 s in that log). So the menu itself counts as Mycelium having the controls.
         /// </summary>
+        /// <summary>
+        /// The final boss is beaten: its death cutscene plays until the level ends. Mycelium switches
+        /// its "Player" input map off at the death (BossHealth.BossDeath), but something of Mycelium's
+        /// (PlayerController.EnableController) switched it back on 0.2 s later, so the overlay stayed
+        /// and you could swing through the cutscene (your report, 2026-11-07; 19:27:23.76 to 23.96 in
+        /// that log). So the beaten boss itself counts as Mycelium having the controls.
+        /// </summary>
+        bool FinalBossBeaten()
+        {
+            if (finalBoss == null)
+            {
+                if (Time.realtimeSinceStartup < nextBossLook) return false;
+                nextBossLook = Time.realtimeSinceStartup + 1f;
+                if (SceneManager.GetActiveScene().name != "Impact Barrens") return false;
+                GameObject boss = GameObject.Find("Rival Sporemother");
+                Type t = Type.GetType("EnemyHealth, Assembly-CSharp");
+                finalBoss = boss != null && t != null ? boss.GetComponent(t) : null;
+                bossHealthField = t?.GetField("currentHealth", BindingFlags.Public | BindingFlags.Instance);
+                if (finalBoss == null) return false;
+                McLog.Info("boss: found the final boss, Rival Sporemother; its death cutscene will have the controls");
+            }
+            return bossHealthField != null && bossHealthField.GetValue(finalBoss) is float health && health <= 0f;
+        }
+        Component finalBoss;
+        FieldInfo bossHealthField;
+        float nextBossLook;
+
         bool EndOfLevelMenu()
         {
             if (!endLooked)
@@ -1951,6 +2007,162 @@ namespace MyceliumCraft
             catch (Exception e)
             {
                 McLog.Info("hit test: Knockback failed: " + (e.InnerException?.Message ?? e.Message));
+            }
+        }
+
+        /// <summary>For the log: the solid thing your spore runs into going this way.</summary>
+        string BlockedBy(Vector3 way)
+        {
+            if (!rb.SweepTest(way.normalized, out RaycastHit hit, 1f, QueryTriggerInteraction.Ignore))
+            {
+                // Already touching doesn't show in a sweep: name what's close instead.
+                var near = new System.Collections.Generic.List<string>();
+                foreach (Collider c in Physics.OverlapSphere(rb.position, 1.5f, ~0, QueryTriggerInteraction.Ignore))
+                    if (!c.transform.IsChildOf(rb.transform))
+                        near.Add($"'{c.name}' {c.GetType().Name} (under '{c.transform.root.name}', layer {LayerMask.LayerToName(c.gameObject.layer)}, closest point {c.ClosestPoint(rb.position):F2})");
+                return $"no sweep hit; rb kinematic={rb.isKinematic} constraints={rb.constraints} velocity={rb.velocity:F2}; solid within 1.5: {string.Join("; ", near)}";
+            }
+            Transform top = hit.collider.transform.root;
+            return $"'{hit.collider.name}' {hit.collider.GetType().Name} (under '{top.name}', layer {LayerMask.LayerToName(hit.collider.gameObject.layer)}, tag {hit.collider.tag}) {hit.distance:F2} units ahead at {hit.point:F2}";
+        }
+
+        /// <summary>Test aid (-mcBumpTest): once you're walking, stand another spore 2 units ahead of you for 3 s, and log how far your spore falls behind and how far that spore went. Solid: it's held there.</summary>
+        System.Collections.IEnumerator BumpTest()
+        {
+            while (phase != Phase.Driving) yield return null;
+            yield return new WaitForSeconds(1f);
+            while (new Vector3(mcVel.x, 0f, mcVel.z).magnitude < 1f) yield return new WaitForFixedUpdate();
+            GameObject other = null;
+            for (int i = 0; i < colony.Count && other == null; i++)
+                if (colony.Spores[i] != null && colony.Spores[i] != rb.gameObject) other = colony.Spores[i];
+            if (other == null) { McLog.Info("bump test: no other spore"); yield break; }
+            Vector3 spot = rb.position + new Vector3(mcVel.x, 0f, mcVel.z).normalized * 2f;
+            Rigidbody body = other.GetComponent<Rigidbody>();
+            bool held = passThrough.Off;
+            if (body != null) body.isKinematic = held;
+            var wander = other.GetComponent(Type.GetType("WanderingSpore, Assembly-CSharp")) as Behaviour;
+            if (wander != null) wander.enabled = false; // only your push moves it
+            other.transform.position = spot;
+            McLog.Info($"bump test: {other.name} stands at {spot:F2}, in the way of your spore at {rb.position:F2}");
+            float end = Time.time + 3f, worst = 0f;
+            int resyncsBefore = resyncs;
+            while (Time.time < end)
+            {
+                if (held) other.transform.position = spot;
+                if (lastError > 1f && worst <= 1f) McLog.Info($"bump test: falling behind at {rb.position:F2}, {other.name} at {other.transform.position:F2}; running into {BlockedBy(lastTarget - rb.position)}");
+                worst = Mathf.Max(worst, lastError);
+                yield return new WaitForFixedUpdate();
+            }
+            Vector3 went = other.transform.position - spot;
+            went.y = 0f;
+            McLog.Info($"bump test: done, your spore fell at most {worst:F2} units behind, {resyncs - resyncsBefore} re-sync teleport(s); {other.name} went {went.magnitude:F2} units");
+            if (body != null) body.isKinematic = false;
+            if (wander != null) wander.enabled = true;
+        }
+
+        /// <summary>Test aid (-mcSpearTest): the held weapon goes by the spear's name; 1.5 s after a shot, says where projectiles are.</summary>
+        System.Collections.IEnumerator SpearTest()
+        {
+            while (phase != Phase.Driving) yield return null;
+            GameObject weapon = GameObject.FindWithTag("currentWeapon");
+            if (weapon == null) { McLog.Info("spear test: no weapon"); yield break; }
+            weapon.name = "Stickbug Spear";
+            McLog.Info("spear test: the held weapon is called Stickbug Spear now");
+            for (int i = 0; i < 12; i++)
+            {
+                yield return new WaitForSeconds(1f);
+                foreach (GameObject shot in GameObject.FindGameObjectsWithTag("ReversedProjectile"))
+                    McLog.Info($"spear test: projectile at {shot.transform.position:F2}, velocity {shot.GetComponent<Rigidbody>()?.velocity:F2}");
+            }
+        }
+
+        /// <summary>Test aid (-mcBossBarTest): HUDBoss.EncounterBoss, then UpdateBossHealthUI twice.</summary>
+        System.Collections.IEnumerator BossBarTest()
+        {
+            while (phase != Phase.Driving) yield return null;
+            yield return new WaitForSeconds(3f);
+            Type t = Type.GetType("HUDBoss, Assembly-CSharp");
+            Component hudBoss = t != null ? GameObject.Find("HUD")?.GetComponent(t) : null;
+            if (hudBoss == null) { McLog.Info("boss bar test: no HUDBoss"); yield break; }
+            McLog.Info("boss bar test: meeting 'Rival Sporemother' (1000/1000)");
+            t.GetMethod("EncounterBoss", new[] { typeof(string), typeof(float), typeof(float) }).Invoke(hudBoss, new object[] { "Rival Sporemother", 1000f, 1000f });
+            yield return new WaitForSeconds(2f);
+            McLog.Info("boss bar test: the fight begins (the boss's attacks on, as the intro's end does)");
+            var attacks = GameObject.Find("Rival Sporemother")?.GetComponent(Type.GetType("MonsterBossAttack, Assembly-CSharp")) as Behaviour;
+            if (attacks != null) attacks.enabled = true;
+            yield return new WaitForSeconds(1f);
+            McLog.Info("boss bar test: 600/1000");
+            t.GetMethod("UpdateBossHealthUI").Invoke(hudBoss, new object[] { 600f, 1000f });
+            yield return new WaitForSeconds(2f);
+            McLog.Info("boss bar test: beaten (0/1000)");
+            t.GetMethod("UpdateBossHealthUI").Invoke(hudBoss, new object[] { 0f, 1000f });
+        }
+
+        /// <summary>Test aid (-mcBossDeathTest): BossHealth.EnemyTakeDamage with more than its health, then the hold and overlay every second.</summary>
+        System.Collections.IEnumerator BossDeathTest()
+        {
+            while (phase != Phase.Driving) yield return null;
+            yield return new WaitForSeconds(4f);
+            GameObject boss = GameObject.Find("Rival Sporemother");
+            Type t = Type.GetType("BossHealth, Assembly-CSharp");
+            Component health = boss != null && t != null ? boss.GetComponent(t) : null;
+            if (health == null) { McLog.Info("boss death test: no Rival Sporemother"); yield break; }
+            McLog.Info("boss death test: beating Rival Sporemother");
+            t.GetMethod("EnemyTakeDamage").Invoke(health, new object[] { 1e7f, false, true });
+            for (int i = 0; i < 10; i++)
+            {
+                yield return new WaitForSeconds(1f);
+                var brain = Camera.main != null ? Camera.main.GetComponent<Cinemachine.CinemachineBrain>() : null;
+                int off = 0, all = 0;
+                if (rb != null) foreach (Renderer r in rb.GetComponentsInChildren<Renderer>()) { all++; if (r.forceRenderingOff) off++; }
+                McLog.Info($"boss death test: +{i + 1} s: Mycelium has the controls {heldByMycelium} ({controlsWhy}), overlay shown {overlay.Visible}, live camera '{brain?.ActiveVirtualCamera?.Name}', spore renderers not drawn {off}/{all}, boss animator in Death {boss.GetComponent<Animator>()?.GetCurrentAnimatorStateInfo(0).IsName("Death")}");
+            }
+        }
+
+        /// <summary>Test aid (-mcPopUpTest): TooltipManager.CreateTooltip for a made-up thing, Destroy it, then whether the pop-up is there.</summary>
+        System.Collections.IEnumerator PopUpTest()
+        {
+            while (phase != Phase.Driving) yield return null;
+            yield return new WaitForSeconds(2f);
+            Type tm = Type.GetType("TooltipManager, Assembly-CSharp");
+            object manager = tm?.GetField("Instance", BindingFlags.Public | BindingFlags.Static)?.GetValue(null);
+            MethodInfo create = null;
+            if (tm != null)
+                foreach (MethodInfo m in tm.GetMethods())
+                    if (m.Name == "CreateTooltip" && m.GetParameters().Length >= 4 && m.GetParameters()[0].ParameterType == typeof(GameObject)) create = m;
+            if (manager == null || create == null) { McLog.Info("pop-up test: no TooltipManager"); yield break; }
+            var thing = new GameObject("pop-up test thing");
+            thing.transform.position = rb.position + rb.transform.forward * 2f;
+            ParameterInfo[] ps = create.GetParameters();
+            var callArgs = new object[ps.Length];
+            object[] given = { thing, "Test", "test pop-up", "" };
+            for (int i = 0; i < ps.Length; i++) callArgs[i] = i < given.Length ? given[i] : ps[i].DefaultValue;
+            create.Invoke(manager, callArgs);
+            McLog.Info($"pop-up test: made, there: {tm.GetField("currentTooltip")?.GetValue(manager) as GameObject != null}");
+            Destroy(thing);
+            yield return new WaitForSeconds(0.5f);
+            McLog.Info($"pop-up test: 0.5 s after its thing was destroyed, there: {tm.GetField("currentTooltip")?.GetValue(manager) as GameObject != null}");
+        }
+
+        /// <summary>Test aid (-mcBossIntroTest): BossHealth.OnTriggerEnter with your spore's collider, then the intro camera and boss bar every 0.5 s.</summary>
+        System.Collections.IEnumerator BossIntroTest()
+        {
+            while (phase != Phase.Driving) yield return null;
+            yield return new WaitForSeconds(3f);
+            GameObject boss = GameObject.Find("Rival Sporemother");
+            Type t = Type.GetType("BossHealth, Assembly-CSharp");
+            Component health = boss != null && t != null ? boss.GetComponent(t) : null;
+            Collider mine = rb != null ? rb.GetComponent<Collider>() : null;
+            if (health == null || mine == null) { McLog.Info("boss intro test: no boss or no collider"); yield break; }
+            McLog.Info("boss intro test: into the boss's trigger");
+            t.GetMethod("OnTriggerEnter", BindingFlags.NonPublic | BindingFlags.Instance)?.Invoke(health, new object[] { mine });
+            Type bc = Type.GetType("BossCam, Assembly-CSharp");
+            for (int i = 0; i < 40; i++)
+            {
+                yield return new WaitForSeconds(0.5f);
+                var cam = bc?.GetField("Instance", BindingFlags.Public | BindingFlags.Static)?.GetValue(null) as Component;
+                var intro = cam != null ? bc.GetField("introVCam", BindingFlags.NonPublic | BindingFlags.Instance)?.GetValue(cam) as Behaviour : null;
+                McLog.Info($"boss intro test: +{(i + 1) * 0.5f:F1} s: intro camera {(intro != null && intro.enabled ? "on" : "off")}, Mycelium has the controls {heldByMycelium} ({controlsWhy})");
             }
         }
 

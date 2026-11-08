@@ -53,6 +53,11 @@ public final class LinkTestMain {
 	private static String resourceSeen = "";
 	private static String sporeNameSeen = "";
 	private static String colonySeen = "";
+	/** LINKTEST_PUSH=1: from 3 s, the first other spore is pushed 1 block east over 1 s, as Minecraft's collision would. */
+	private static final boolean PUSH = "1".equals(System.getenv("LINKTEST_PUSH"));
+	private static final float[] sporePositions = new float[Proto.COL_MAX * 3];
+	private static final MycLink.Boss boss = new MycLink.Boss();
+	private static String bossSeen = "";
 	private static double nextSproutPrint;
 	private static final MycLink.Colony colony = new MycLink.Colony();
 	// LINKTEST_THROW_RESOURCE=1: once Mycelium lists 3 resources, the first is thrown 1 s later, flying
@@ -394,6 +399,27 @@ public final class LinkTestMain {
 				StringBuilder list = new StringBuilder();
 				for (int i = 0; i < myc.resourceCount; i++) {
 					list.append(i > 0 ? ", " : "").append("type ").append(myc.resourceTypes[i]).append(" #").append(myc.resourceIds[i]);
+				}
+				if (MycLink.readBoss(boss)) {
+					String seen = boss.shown ? "'" + boss.name + "' at " + Math.round(boss.progress * 100) + "%" : "none";
+					if (!seen.equals(bossSeen)) {
+						bossSeen = seen;
+						System.out.printf("t=%.2f boss bar: %s%n", t, seen);
+					}
+				}
+				if (PUSH && t >= 3 && t <= 4.5) {
+					int n = MycLink.readSporePositions(sporePositions);
+					for (int i = 0; i < n; i++) {
+						if (!Float.isNaN(sporePositions[i * 3 + 1])) {
+							float total = (float) Math.min(1.0, t - 3);
+							MycLink.writeSporePush(i, total, 0f);
+							if (t >= nextSproutPrint) {
+								nextSproutPrint = t + 0.5;
+								System.out.printf("t=%.2f push: %d stand-in slots, slot %d at (%.2f, %.2f, %.2f), pushed %.2f blocks%n", t, n, i, sporePositions[i * 3], sporePositions[i * 3 + 1], sporePositions[i * 3 + 2], total);
+							}
+							break;
+						}
+					}
 				}
 				if (MycLink.readColony(colony)) {
 					for (int i = 0; i < colony.count; i++) {

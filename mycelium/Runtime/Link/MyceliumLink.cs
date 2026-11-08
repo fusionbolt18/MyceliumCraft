@@ -358,6 +358,41 @@ namespace MyceliumCraft.Link
         }
 
         /// <summary>Seqlock read of one colony spore's body into data (one batch: Texture[0]). False if Minecraft kept interrupting.</summary>
+        /// <summary>Where the other spores stand: x, y, z per slot (y NaN = no stand-in).</summary>
+        public void WriteSporePositions(int count, float[] positions)
+        {
+            int b = Proto.OffSporeMoves;
+            uint seq = ReadU32(view, b + Proto.SmSeq);
+            WriteU32(view, b + Proto.SmSeq, seq + 1);
+            Thread.MemoryBarrier();
+            WriteU32(view, b + Proto.SmCount, (uint)count);
+            for (int i = 0; i < count * 3; i++) WriteF32(view, b + Proto.SmPositions + i * 4, positions[i]);
+            Thread.MemoryBarrier();
+            WriteU32(view, b + Proto.SmSeq, seq + 2);
+        }
+
+        /// <summary>The final boss's bar, as Mycelium would show it.</summary>
+        public void WriteBoss(bool shown, string name, float progress)
+        {
+            int b = Proto.OffBoss;
+            uint seq = ReadU32(view, b + Proto.BsSeq);
+            WriteU32(view, b + Proto.BsSeq, seq + 1);
+            Thread.MemoryBarrier();
+            WriteU32(view, b + Proto.BsShown, shown ? 1u : 0u);
+            WriteF32(view, b + Proto.BsProgress, progress);
+            WriteUtf8(view, b + Proto.BsName, Proto.BsNameBytes, name ?? "");
+            Thread.MemoryBarrier();
+            WriteU32(view, b + Proto.BsSeq, seq + 2);
+        }
+
+        /// <summary>How far Minecraft's collision has pushed this spore in all, in blocks.</summary>
+        public void ReadSporePush(int slot, out float totalX, out float totalZ)
+        {
+            int e = Proto.OffSporeMoves + Proto.SmPushes + slot * 8;
+            totalX = BitConverter.ToSingle(BitConverter.GetBytes(Marshal.ReadInt32(view, e)), 0);
+            totalZ = BitConverter.ToSingle(BitConverter.GetBytes(Marshal.ReadInt32(view, e + 4)), 0);
+        }
+
         public bool TryReadBody(int slot, ModelData data)
         {
             int b = Proto.OffBodies + slot * Proto.BodySlotBytes;

@@ -1,5 +1,238 @@
 # MODLOG
 
+## 2026-11-07 Your Minecraft body in cutscenes
+
+**Your report:** the Minecraft player model still isn't visible during the boss's death cutscene.
+
+**Why:** your log shows the fix below working ("a cutscene's camera is live; the spore is drawn" at
+21:08:59), but in first person your Minecraft body stands in for the spore and is drawn as shadow
+only, so nothing showed.
+
+**Changed:** `McPlayerModel.cs`: the whole body is drawn while a cutscene's camera is live
+(`CameraSync.CutsceneLive`, set each frame by `MinecraftDriver.cs`).
+
+**Tested how:** stand-in, first person, `-mcGrowTest` (the new spore's cutscene; the stand-in can't
+start the boss's). **Result:** "your whole Minecraft body is drawn (a cutscene's camera)" as the
+cutscene's camera came on, and back to shadow only 2.49 s later as it ended. No exceptions.
+**Not tested:** the boss's death cutscene itself.
+
+## 2026-11-07 The boss bar waits for the fight
+
+**Your report:** the boss bar shows up before the cutscene is even triggered.
+
+**Why:** Mycelium opens its bar when you come near the boss (`BossHealth`'s trigger). In your log
+that was at 20:31:17, and the intro took the controls at 20:31:25. My intro-camera check from the
+entry below didn't cover the 8 s before the intro.
+
+**Changed:** `BossBar.cs`: shown only once the boss's attacks are on (`MonsterBossAttack.enabled`).
+`StartBoss` switches them off at the level's start, and `BossCam` switches them on at the intro's end.
+The intro-camera check is gone. `-mcBossBarTest` now starts the fight 2 s after the meeting.
+
+**Tested how:** stand-in, Impact Barrens, `-mcBossBarTest`. **Result:** nothing in Minecraft for the 2 s
+after the meeting, then "'Rival Sporemother' at 100%" as the attacks came on, 60%, 0%, gone. No exceptions.
+**Not tested:** a real intro.
+
+## 2026-11-07 Stuck pop-up, boss bar after the intro, you're drawn in cutscenes
+
+**Your report:** after throwing a weapon and salvaging it quickly the pop-up never went; the boss bar
+showed a bit too early; you were invisible in the boss's death cutscene.
+
+**Why:**
+- Pop-up: your log has the salvage 34 ms after the throw, and no error. How the pop-up outlived the
+  weapon isn't known, so the fix catches the result rather than the cause.
+- Boss bar: your log has the intro taking the controls one frame after Mycelium opened its bar
+  (19:26:55.024 and .040); the overlay only hides 0.3 s later.
+- Invisible: in first person the spore is hidden (the camera is inside it), and that stayed while
+  the cutscene's own camera looked at you.
+
+**Changed:**
+- `WeaponBag.cs`: `DropOrphanPopUp`, every frame: a pop-up whose thing has been destroyed goes.
+- `BossBar.cs`: not shown while the intro camera is on or Mycelium has the controls (not for a
+  knockback).
+- `CameraSync.cs`: in first person the spore is hidden only while its own camera is the live one.
+- Test aids `-mcPopUpTest`, `-mcBossIntroTest`; `-mcBossDeathTest` logs the live camera.
+
+**Tested how:** stand-in.
+**Result:**
+- `-mcPopUpTest`: pop-up made, its thing destroyed, the pop-up taken away within 0.5 s.
+- `-mcBossDeathTest`: the Minecraft bar went 0.01 s after the kill (one frame at 0% first).
+- **Didn't test what it should:** `-mcBossIntroTest` walked into the boss's trigger but the intro camera
+  never came on, so the bar showed at once there. In `-mcBossDeathTest` the boss never reached its
+  "Death" animation, so the death camera never came on and the spore stayed hidden (the main camera
+  was live, as it should be then). Both need a real fight.
+
+## 2026-11-07 The overlay goes during the final boss's death cutscene
+
+**Your report:** the overlay stayed during the boss death cutscene, and you could swing your weapon.
+
+**Why:** your log at 19:27:23.76 shows the boss's death switching Mycelium's "Player" input map off
+(the hold began), then at 23.96 it was on again (`PlayerController.EnableController`, by the look
+of it), so the hold ended and the overlay never went.
+
+**Changed:** `MinecraftDriver.cs`: on Impact Barrens, a beaten Rival Sporemother counts as Mycelium
+having the controls until the level ends. New test aid `-mcBossDeathTest`.
+
+**Tested how:** stand-in, Impact Barrens, `-mcBossDeathTest` (the real BossHealth.EnemyTakeDamage).
+**Result:** the hold began 0.02 s after the kill and lasted all 10 s checked; the overlay hid
+0.3 s after the kill and stayed hidden. No exceptions.
+**Not tested:** a real fight to the end of the cutscene and the level change after it.
+
+## 2026-11-07 The final boss's health is Minecraft's boss bar (protocol v47)
+
+**Your request:** on the final level, use a Minecraft boss bar instead of Mycelium's boss health UI.
+
+**Changed:**
+- New `BossBar.cs`: in Impact Barrens while Minecraft drives, Mycelium's bar (`HUDBoss`'s holder) is
+  switched off, and its name and fill go to Minecraft. Put back as it was otherwise.
+- New `MycBossBar.java`: one red Minecraft boss bar, shown while Mycelium's would be.
+- New Boss block, test aid `-mcBossBarTest` (meets the boss, then 600/1000, then beaten).
+  Protocol 46 -> 47: install the new jar.
+
+**Tested how:** stand-in, Impact Barrens, `-mcBossBarTest`.
+**Result:** Mycelium's bar hidden once driving began; the stand-in read none, then "'Rival
+Sporemother' at 100%", 60%, 0%, then none 0.08 s later as Mycelium's shrank shut. No exceptions.
+**Not tested:** Minecraft's bar on screen, and a real fight (the boss's own trigger and damage).
+Minibosses on other levels keep Mycelium's bar.
+
+## 2026-11-04 The Stickbug Spear's shot starts on the crosshair line
+
+**Your report:** the hand lighting is good now; the spear's shot looks a little off-centre.
+
+**Why:** I kept Mycelium's spot, 1 up and 1 right of the spore, and the shot flew parallel to your aim
+from there, so it never met the middle of the screen.
+
+**Changed:** `EnemyCombat.cs`: the shot starts on the line through the middle of the screen, 4 units
+past the spore.
+
+**Tested how:** stand-in with `-mcSpearTest`, 2 swings. **Result:** both shots logged 0.000 units off
+the screen's middle at the start, no exceptions. The upward one kept its line sideways.
+**Still off:** the shot sinks slowly, about 0.5 units/s of speed lost per second upward, as Mycelium's
+own projectile does, so it drops a little under the crosshair at long range. Looking steeply down,
+the shot can start under the ground (y -0.25 in the test) and vanish at once.
+**Not tested:** the real spear in Minecraft's first person.
+
+## 2026-11-04 The Stickbug Spear shoots; your hand's light turns with your view
+
+**Your report:** one side of your hand goes dark looking straight up, and the Stickbug Spear doesn't
+shoot.
+
+**Why the spear:** Mycelium shoots it inside `PlayerAttack.Attack`, which Minecraft's swings don't use.
+**Why the hand:** Minecraft's two lights are fixed in the world, and the hand turns with your view.
+
+**Changed:**
+- `EnemyCombat.cs`: `ShootSpear`, on each swing of the spear when its wind-up is over. Same projectile,
+  material, tag, spot and speed as Mycelium's, but it goes where you look, not where the body faces.
+- `HandLightMixin.java`, new `LightingAccessor.java`: for the normal hand the lights turn with your
+  view, and are put back after.
+- New test aid `-mcSpearTest`: the held weapon goes by the spear's name.
+
+**Tested how:** stand-in, Daybreak Arboretum, `-mcSpearTest`, `LINKTEST_FUNGAL=1` (2 swings).
+**Result:** 2 shots. One aimed downward stopped at the ground straight away. One aimed up flew from
+(3.24, 1.29, 272.36) to (3.24, 17.75, 229.11) in 5 s at about 10 units/s, rising less as it went. No
+exceptions in the log.
+**Not tested:** the real spear (its object's name is assumed to start with "Stickbug Spear"), a shot
+hitting an enemy, and the hand lighting, which the stand-in can't run at all. If the new mixin is
+wrong, Minecraft may not start.
+
+## 2026-11-04 The real lighting of your normal hand
+
+**Your report:** you meant your normal hand, not Better Combat's arms, and it looks the same.
+
+**My first fix was aimed wrongly.** Your log showed "block 0 sky 15": your hand wasn't in shade, so
+the light level wasn't the cause in that session.
+
+**Likely cause:** Minecraft sets the world's lighting directions in the level drawing, which the
+overlay skips, so the hand used what was left from the HUD's items. Only frames where Better Combat's
+arms or swing trails were drawn set the world's. That's read from Minecraft's code, not measured.
+
+**Changed:**
+- `HandLightMixin.java`: sets the world's lighting before the normal hand.
+- `MycFirstPersonArms.java`: my change is taken back out; Better Combat's arms are as they were.
+- `MycHandLight.java` stays, for the normal hand only: full light level, which also covers
+  Minecraft's night.
+
+**Tested how:** the jar builds. **Not tested:** whether the hand now looks right.
+
+## 2026-11-04 Your hand is always fully lit in the overlay
+
+**Your report:** your hand and held items in the overlay look too dark at times.
+
+**Why (likely, not confirmed):** Minecraft lights them from the light level where your player
+stands, and the invisible ground blocks can shade that spot. The new log line will show it.
+
+**Changed:**
+- New `MycHandLight.java`, `HandLightMixin.java`: full light while the overlay is on.
+- `MycFirstPersonArms.java`: the same for Better Combat's arms.
+
+**Tested how:** the jar builds. **Not tested:** all of it. The stand-in has no Minecraft renderer,
+so the new mixin hasn't run at all yet.
+**Also seen:** your Minecraft log from 09:22 shows the spore collision working: "shoved your player
+13 time(s)" and "you pushed spores 0.26 blocks".
+
+## 2026-11-04 You collide with the other spores by Minecraft's rules (protocol v46)
+
+**Your request:** you could still just walk through them; use Minecraft's collision system.
+
+**Changed:**
+- New `SporeProxy.java`, `SporeProxies.java`: an invisible creature per other spore, sized like your
+  player, on that spore every server tick. Minecraft's own creature collision shoves it and you.
+- New `ColonyPush.cs`: sends the spores' feet, and moves a real spore by what its stand-in was shoved.
+- `ColonyPassThrough.cs`: the push of the entry below is gone. Mycelium's physics still ignores the
+  spores, or they'd pin you again.
+- New SporeMoves block, and `LINKTEST_PUSH=1`. Protocol 45 -> 46: install the new jar.
+
+**Tested how:** stand-in, The Carcass, `LINKTEST_PUSH=1`: a fake push of 1 block on one spore.
+**Result:** 10 slots reached the stand-in, and Mycelium logged "Pudd pushed 1.40 units", which is 1
+block at this scale. Its position was also changing as it wandered, so that line is the evidence
+rather than the position.
+**Not tested:** everything in real Minecraft: that the jar loads with the new creature, that the
+creature shoves you and you shove it, and how strong that feels. The stand-in has no creatures.
+**Failed along the way:** one edit stopped when `MinecraftDriver.cs` couldn't be written ("Invalid
+argument", cause not known), and the build started on the half-done code ran past 10 minutes and was
+stopped. Writing the file again worked, and so did the next build.
+
+## 2026-11-04 You nudge the spores you walk through
+
+**Your request:** you'd still like to push the other spores around a little.
+
+**Changed:**
+- `ColonyPassThrough.cs`: within 1.3 units, a spore you walk toward slides away at half your speed,
+  6 units/s at most. It's moved directly, because a standing spore weighs 10000 in Mycelium. Spores
+  at a curio or digging out stay put. The collision switch is now set again on every look, since a
+  collider switched off and on can forget it.
+- `MinecraftDriver.cs`: calls the push every physics step. New log line `held back:` names what's
+  near your spore when a 6-unit re-sync fires.
+- `-mcBumpTest` no longer holds the spore in place, so it can be pushed.
+
+**Tested how:** stand-in walking in The Carcass, 14 runs of `-mcBumpTest` with the push in.
+**Result:** with open ground ahead, you fell 0.24 and 0.51 units behind, and the spore went 1.26 and
+0.98 units. In the other runs your spore passed or overlapped the test spore, then stopped against
+the Carcass's Terrain or Carcass_RibCage: the stand-in walks a fixed path, blind to scenery. Named by
+the log in most of those runs; 3 earlier runs stopped at the same spots before the log could name it.
+**Not explained:** in one run the test spore went 4.66 units, more than a push should give. It was
+placed beside the rib cage, so physics may have shoved it out. Not checked.
+**Not tested:** how the push feels in real play, and pushing a walking spore off a ledge.
+
+## 2026-11-04 You walk through the other spores
+
+**Your report:** you can get stuck when bumping into other spores.
+
+**Why:** your log at 08:30:15 shows your spore frozen at (5.95, 0.22, 0.63) with Bub 1.3 units away,
+while Minecraft's player walked on. Minecraft doesn't know about the spores. The gap reached 6.1
+units, then a re-sync teleport put your player back.
+
+**Changed:**
+- New `ColonyPassThrough.cs`: your spore's solid colliders ignore the other spores' while Minecraft
+  drives. Put back when it stops, or when you swap spores.
+- `MinecraftDriver.cs`: calls it every frame. New test aids `-mcBumpTest` and `-mcBumpTestSolid`
+  (the same with spores solid, to compare).
+
+**Tested how:** stand-in walking in The Carcass, another spore held 2 units ahead for 3 s.
+**Result:** spores solid (`-mcBumpTestSolid`): fell 6.03 units behind, 1 re-sync teleport. With the
+fix (`-mcBumpTest`): at most 0.20 units behind, 0 re-sync teleports, 9 collider pairs off.
+**Not tested:** real play in Minecraft, swapping spores with this on, and whether anything in
+Mycelium relied on spores bumping into yours.
+
 ## 2026-11-04 Nutrient Multiplier in the player list during a run (protocol v45)
 
 **Your request:** during a run, show "Nutrient Multiplier: X%" in the player list instead of Colony

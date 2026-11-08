@@ -86,9 +86,20 @@ public final class Proto {
 	public static final long BO_SEQ = 0x00, BO_TEXTURE = 0x04, BO_VERTICES = 0x08, BO_FRAME = 0x10, BO_VERTEX_DATA = 0x40;
 	public static final int BO_MAX_VERTICES = (int) ((BODY_SLOT_BYTES - BO_VERTEX_DATA) / M_VERTEX_BYTES);
 
-	public static final long MAPPING_BYTES = OFF_BODIES + BODIES_BYTES;
+	// SporeMoves: where the other spores stand (Mycelium -> Minecraft, seqlock), and how far Minecraft's collision has pushed each (Minecraft -> Mycelium), since v46.
+	public static final long OFF_SPORE_MOVES = OFF_BODIES + BODIES_BYTES;
+	public static final long SPORE_MOVES_BYTES = 0x400;
+	public static final long SM_SEQ = 0x00, SM_COUNT = 0x04, SM_POSITIONS = 0x10, SM_PUSHES = 0x200; // f32 x, y, z feet (y NaN = no stand-in); f32 total x, z in blocks
+
+	// Boss (Mycelium -> Minecraft, seqlock): the final boss's bar, since v47.
+	public static final long OFF_BOSS = OFF_SPORE_MOVES + SPORE_MOVES_BYTES;
+	public static final long BOSS_BYTES = 0x100;
+	public static final long BS_SEQ = 0x00, BS_SHOWN = 0x04, BS_PROGRESS = 0x08, BS_NAME = 0x10;
+	public static final int BS_NAME_BYTES = 0x80;
+
+	public static final long MAPPING_BYTES = OFF_BOSS + BOSS_BYTES;
 	public static final int MAGIC = 0x4343594D; // "MYCC"
-	public static final int VERSION = 45;
+	public static final int VERSION = 47;
 	/** A side is alive if its heartbeat is younger than this. */
 	public static final long HEARTBEAT_TIMEOUT_MS = 3000;
 

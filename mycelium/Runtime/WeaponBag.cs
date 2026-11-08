@@ -552,6 +552,31 @@ namespace MyceliumCraft
         int popUpMoves;
         Vector3 popUpAt;
 
+        /// <summary>
+        /// Every frame: Mycelium's pop-up goes when the thing it's for has been destroyed. Throwing a
+        /// weapon and salvaging it at once left its pop-up up for good (your report, 2026-11-07: the
+        /// salvage came 34 ms after the throw); how exactly it outlived the weapon isn't known.
+        /// </summary>
+        internal static void DropOrphanPopUp()
+        {
+            if (tooltipType == null)
+            {
+                tooltipType = Type.GetType("TooltipManager, Assembly-CSharp");
+                if (tooltipType == null) return;
+                tooltipInstance = tooltipType.GetField("Instance", BindingFlags.Public | BindingFlags.Static);
+                tooltipParent = tooltipType.GetField("currentParent", BindingFlags.NonPublic | BindingFlags.Instance);
+                tooltipCurrent = tooltipType.GetField("currentTooltip", BindingFlags.Public | BindingFlags.Instance);
+            }
+            object manager = tooltipInstance?.GetValue(null);
+            if (manager == null || !(tooltipCurrent?.GetValue(manager) is GameObject popUp) || popUp == null) return;
+            // Destroyed things still compare equal to null in Unity; a pop-up never given one is left alone.
+            if (!(tooltipParent?.GetValue(manager) is UnityEngine.Object parent) || parent != null) return;
+            tooltipType.GetMethod("DestroyTooltip", Type.EmptyTypes)?.Invoke(manager, null);
+            McLog.Info("weapons: a pop-up outlived the thing it was for (salvaged or picked up); taken away");
+        }
+        static Type tooltipType;
+        static FieldInfo tooltipInstance, tooltipParent, tooltipCurrent;
+
         /// <summary>A weapon of yours leaves the bag for the world, as Mycelium drops one: tag and layer
         /// "Weapon", collider on (WeaponInteraction.Interact does the same to the weapon you let go).</summary>
         GameObject ThrowOut(MonoBehaviour host, Weapon w)

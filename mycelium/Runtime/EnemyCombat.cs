@@ -237,6 +237,7 @@ namespace MyceliumCraft
         uint swingsSeen;
         bool swingsKnown;
         float swingEnds = -1f;
+        float spearShotAt = -1f; // when the Stickbug Spear's swing lets its projectile go
         int swingsRaised, hitsThroughWeapon;
         float nextSwingLog;
 
@@ -251,6 +252,11 @@ namespace MyceliumCraft
                     swingsSeen = count;
                     StartSwing();
                 }
+            }
+            if (spearShotAt >= 0f && Time.time >= spearShotAt)
+            {
+                spearShotAt = -1f;
+                ShootSpear();
             }
             if (swingEnds >= 0f && Time.time >= swingEnds) FinishSwing();
             if (swingsRaised > 0 && Time.realtimeSinceStartup >= nextSwingLog)
@@ -271,6 +277,46 @@ namespace MyceliumCraft
             RaiseAttack("StartedAttack");
             swingEnds = Time.time + SwingSeconds;
             swingsRaised++;
+            Component held = HeldCollision();
+            if (held != null && held.name.StartsWith(StickbugSpear))
+            {
+                // Where Mycelium's swing lets it go: when the wind-up is over.
+                Component stats = held.GetComponent(Type.GetType("WeaponStats, Assembly-CSharp"));
+                float windup = stats != null ? Num(stats.GetType().GetField("percentUntilWindupDone")?.GetValue(stats)) : 0f;
+                spearShotAt = Time.time + SwingSeconds * Mathf.Clamp01(windup);
+            }
+        }
+
+        const string StickbugSpear = "Stickbug Spear";
+
+        /// <summary>
+        /// The Stickbug Spear shoots on every swing. In Mycelium that's inside PlayerAttack.Attack,
+        /// which Minecraft's swings don't go through (your report, 2026-11-04). The same as its
+        /// InstantiateRangedProjectile: same projectile, material, tag and speed, except that it
+        /// flies down the middle of the screen, not from beside the spore where its body faces.
+        /// </summary>
+        void ShootSpear()
+        {
+            GameObject parent = GameObject.Find("PlayerParent");
+            GameObject spore = GameObject.FindWithTag("currentPlayer");
+            Type t = Type.GetType("PlayerAttack, Assembly-CSharp");
+            Component attack = parent != null && t != null ? parent.GetComponent(t) : null;
+            Camera camera = Camera.main;
+            var prefab = attack != null ? t.GetField("rangedEnemyProjectilePrefab")?.GetValue(attack) as GameObject : null;
+            if (prefab == null || spore == null || camera == null) { McLog.Info("combat: Stickbug Spear: no projectile to shoot"); return; }
+            Vector3 aim = camera.transform.forward;
+            // On the line through the middle of the screen, 4 units past the spore (Mycelium's own
+            // spot, up 1 and right 1, flew parallel to that line and stayed off-centre: your report).
+            Vector3 eye = camera.transform.position;
+            Vector3 spot = eye + aim * (Vector3.Dot(spore.transform.position - eye, aim) + 4f);
+            GameObject projectile = UnityEngine.Object.Instantiate(prefab, spot, Quaternion.identity);
+            projectile.tag = "ReversedProjectile";
+            var material = t.GetField("negativeVelocityMaterial")?.GetValue(attack) as Material;
+            Renderer renderer = projectile.GetComponent<Renderer>();
+            if (renderer != null && material != null) renderer.material = material;
+            Rigidbody body = projectile.GetComponent<Rigidbody>();
+            if (body != null) body.velocity = aim * 10f;
+            McLog.Info($"combat: Stickbug Spear shot a projectile from {spot:F2} along {aim:F2}, {Vector3.Distance(spot, eye):F2} units from the camera, {Vector3.Cross(spot - eye, aim).magnitude:F3} off the screen's middle");
         }
 
         void FinishSwing()

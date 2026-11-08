@@ -293,6 +293,70 @@ public final class MycLink {
 		INT.setRelease(s, b + BO_SEQ, seq + 2);
 	}
 
+	/** Where the other spores stand: x, y, z per slot (y NaN = no stand-in). Returns how many slots, or -1 if unreadable. */
+	public static int readSporePositions(float[] out) {
+		MemorySegment s = shm;
+		if (s == null) {
+			return 0;
+		}
+		long b = OFF_SPORE_MOVES;
+		for (int attempt = 0; attempt < 16; attempt++) {
+			int seq1 = (int) INT.getAcquire(s, b + SM_SEQ);
+			if ((seq1 & 1) != 0) {
+				Thread.onSpinWait();
+				continue;
+			}
+			int count = Math.max(0, Math.min(COL_MAX, s.get(JAVA_INT, b + SM_COUNT)));
+			MemorySegment.copy(s, JAVA_FLOAT, b + SM_POSITIONS, out, 0, count * 3);
+			VarHandle.loadLoadFence();
+			if (seq1 == (int) INT.getVolatile(s, b + SM_SEQ)) {
+				return count;
+			}
+		}
+		return -1;
+	}
+
+	/** The final boss's bar, as Mycelium would show it. */
+	public static final class Boss {
+		public boolean shown;
+		public float progress;
+		public String name = "";
+	}
+
+	public static boolean readBoss(Boss out) {
+		MemorySegment s = shm;
+		if (s == null) {
+			return false;
+		}
+		long b = OFF_BOSS;
+		for (int attempt = 0; attempt < 16; attempt++) {
+			int seq1 = (int) INT.getAcquire(s, b + BS_SEQ);
+			if ((seq1 & 1) != 0) {
+				Thread.onSpinWait();
+				continue;
+			}
+			out.shown = s.get(JAVA_INT, b + BS_SHOWN) != 0;
+			out.progress = s.get(JAVA_FLOAT, b + BS_PROGRESS);
+			out.name = utf8(s, b + BS_NAME, BS_NAME_BYTES);
+			VarHandle.loadLoadFence();
+			if (seq1 == (int) INT.getVolatile(s, b + BS_SEQ)) {
+				return true;
+			}
+		}
+		return false;
+	}
+
+	/** How far Minecraft's collision has pushed this spore in all, in blocks. */
+	public static void writeSporePush(int slot, float totalX, float totalZ) {
+		MemorySegment s = shm;
+		if (s == null || slot < 0 || slot >= COL_MAX) {
+			return;
+		}
+		long e = OFF_SPORE_MOVES + SM_PUSHES + slot * 8L;
+		s.set(JAVA_FLOAT, e, totalX);
+		s.set(JAVA_FLOAT, e + 4, totalZ);
+	}
+
 	/** Write texture id (1-based) once: pixels (RGBA, top row first) first, then its entry. */
 	public static boolean writeTexture(int id, int width, int height, long offset, byte[] rgba) {
 		MemorySegment s = shm;

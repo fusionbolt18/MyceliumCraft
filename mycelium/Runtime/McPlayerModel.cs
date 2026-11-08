@@ -35,6 +35,23 @@ namespace MyceliumCraft
         /// <summary>Minecraft is in first person: only the body's shadow is drawn.</summary>
         public bool ShadowOnly => shadowOnly;
         bool shadowOnly;
+        bool mcFirstPerson; // as Minecraft says
+
+        /// <summary>
+        /// A cutscene's camera is live (CameraSync): the whole body is drawn even in first person, as
+        /// that camera looks at you from outside (your report, 2026-11-07: invisible in the boss's
+        /// death cutscene).
+        /// </summary>
+        public bool Cutscene
+        {
+            set
+            {
+                if (value == cutscene) return;
+                cutscene = value;
+                SetShadowOnly(mcFirstPerson && !cutscene);
+            }
+        }
+        bool cutscene;
         bool castsShadow = true; // test aid can switch the shadow off
         bool vanished; // Trophic Cascade: nothing drawn, not even the shadow (as Mycelium does to the spore)
 
@@ -44,6 +61,14 @@ namespace MyceliumCraft
             if (on == vanished) return;
             vanished = on;
             ApplyRenderMode();
+        }
+
+        void SetShadowOnly(bool on)
+        {
+            if (on == shadowOnly) return;
+            shadowOnly = on;
+            ApplyRenderMode();
+            McLog.Info(on ? "player model: only your Minecraft body's shadow is drawn (first person)" : $"player model: your whole Minecraft body is drawn ({(cutscene ? "a cutscene's camera" : "third person")})");
         }
 
         /// <summary>Third person: body and shadow. First person: only the shadow (the camera is inside the body).</summary>
@@ -101,9 +126,10 @@ namespace MyceliumCraft
             {
                 lastFrame = data.Frame;
                 if (data.Visible && data.Batches > 0) Rebuild(link, scale);
-                if (data.FirstPerson != shadowOnly)
+                mcFirstPerson = data.FirstPerson;
+                if ((data.FirstPerson && !cutscene) != shadowOnly)
                 {
-                    shadowOnly = data.FirstPerson;
+                    shadowOnly = data.FirstPerson && !cutscene;
                     ApplyRenderMode();
                     McLog.Info(shadowOnly ? "player model: first person, only your Minecraft body's shadow is drawn" : "player model: third person, your Minecraft body and its shadow are drawn");
                 }

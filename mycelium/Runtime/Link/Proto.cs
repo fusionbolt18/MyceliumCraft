@@ -94,9 +94,20 @@ namespace MyceliumCraft.Link
         public const int BoSeq = 0x00, BoTexture = 0x04, BoVertices = 0x08, BoFrame = 0x10, BoVertexData = 0x40;
         public const int BoMaxVertices = (BodySlotBytes - BoVertexData) / MVertexBytes;
 
-        public const int MappingBytes = OffBodies + BodiesBytes;
+        // SporeMoves: where the other spores stand (Mycelium -> Minecraft, seqlock), and how far
+        // Minecraft's collision has pushed each (Minecraft -> Mycelium), since v46.
+        public const int OffSporeMoves = OffBodies + BodiesBytes;
+        public const int SporeMovesBytes = 0x400;
+        public const int SmSeq = 0x00, SmCount = 0x04, SmPositions = 0x10, SmPushes = 0x200; // f32 x, y, z feet (y NaN = no stand-in); f32 total x, z in blocks
+
+        // Boss (Mycelium -> Minecraft, seqlock): the final boss's bar, since v47.
+        public const int OffBoss = OffSporeMoves + SporeMovesBytes;
+        public const int BossBytes = 0x100;
+        public const int BsSeq = 0x00, BsShown = 0x04, BsProgress = 0x08, BsName = 0x10, BsNameBytes = 0x80;
+
+        public const int MappingBytes = OffBoss + BossBytes;
         public const uint Magic = 0x4343594D; // "MYCC"
-        public const uint Version = 45;
+        public const uint Version = 47;
         public const ulong HeartbeatTimeoutMs = 3000;
 
         // Header @0x000

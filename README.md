@@ -88,6 +88,16 @@ Single-player and offline only.
   enchanting don't change it (put back).
 - **Mycelium's nutrient panel is hidden while Minecraft drives,** and comes back when it stops.
   Tested with a fake Minecraft; **not tested in Minecraft.**
+- **You bump into the other spores by Minecraft's creature collision,** shoving each other. Your
+  log showed shoves both ways in real Minecraft.
+- **Your normal hand and held items in the overlay have steady lighting,** wherever you look:
+  **not tested in Minecraft.**
+- **The final boss's death cutscene hides the overlay** and stops your keys reaching Minecraft.
+  Tested with a fake Minecraft; **not tested in a real fight.**
+- **On the final level the boss's health is Minecraft's boss bar.** Tested with a fake Minecraft;
+  **not tested in Minecraft, nor in a real fight.**
+- **The Stickbug Spear shoots its projectile on each swing,** where you look. Tested with a fake
+  Minecraft and another weapon named as the spear; **not tested with the real spear.**
 - **During a run the player list says "Nutrient Multiplier: +X%"** in place of Colony Happiness.
   The number reaches a fake Minecraft; **the text itself is not tested in Minecraft.**
 - **Minecraft health follows Mycelium's: not tested in Minecraft.**

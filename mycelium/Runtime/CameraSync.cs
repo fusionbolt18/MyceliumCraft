@@ -99,10 +99,24 @@ namespace MyceliumCraft
         public HurtTilt Hurt;
         int sporeHidden; // 0 drawn, 1 shadow only, 2 not drawn at all
 
+        bool lastCutscene;
+        CinemachineBrain brain;
+        /// <summary>A cutscene's camera was live at the last update.</summary>
+        public bool CutsceneLive => lastCutscene;
+
+        /// <summary>Another virtual camera than the one Minecraft's look drives is live.</summary>
+        bool CutsceneCamera()
+        {
+            if (brain == null) brain = Camera.main != null ? Camera.main.GetComponent<CinemachineBrain>() : null;
+            ICinemachineCamera live = brain != null ? brain.ActiveVirtualCamera : null;
+            return live != null && freeLook != null && !ReferenceEquals(live, freeLook);
+        }
+
         /// <summary>Forget the camera (new scene; the old one is gone with its scene).</summary>
         public void Reset()
         {
             freeLook = null;
+            brain = null;
             controlling = false;
             hidden.Clear();
             sporeHidden = 0;
@@ -163,7 +177,16 @@ namespace MyceliumCraft
             // The spore's body: not drawn at all while your Minecraft body stands in for it (that
             // body casts the shadow, in first person too); otherwise shadow only in first person
             // (the camera is inside it).
-            int hide = ReplaceSpore ? 2 : mode == FirstPerson ? 1 : 0;
+            // In first person, only while this camera is the one shown: a cutscene's own camera (the
+            // boss's death, its intro, a spore's birth) looks at you, and you were invisible in it
+            // (your report, 2026-11-07).
+            bool cutscene = CutsceneCamera();
+            if (cutscene != lastCutscene)
+            {
+                lastCutscene = cutscene;
+                McLog.Info(cutscene ? "camera: a cutscene's camera is live; the spore is drawn" : "camera: this camera is live again");
+            }
+            int hide = ReplaceSpore ? 2 : mode == FirstPerson && !cutscene ? 1 : 0;
             if (hide != sporeHidden)
             {
                 sporeHidden = hide;

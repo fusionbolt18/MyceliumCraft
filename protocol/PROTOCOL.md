@@ -297,6 +297,29 @@ frame while another spore is in its Sprout. The mapping grows by 0x800.
 | 0x10 + 0x4C·i | entry | u32 body colour `0xRRGGBB` (`DesignTracker.bodyColor`); f32 happiness 0..1 (`CharacterStats.sporeHappiness`); utf8[56] name; since version 43, at 0x40 u32 cap colour `0xRRGGBB` (`DesignTracker.capColor`) and at 0x44 f32 walking speed in blocks per second (entries were 0x40 long before); since version 44, at 0x48 f32 how far through Mycelium's Sprout animation 0..1, −1 = not in it |
 | 0x730 | i32 | since version 45: Mycelium's nutrient bonus in percent, as its HUD shows it, `(GlobalData.currentLoop − 1) × 50`; −1 = not in a run (in The Carcass) |
 
+### Boss @ after SporeMoves (Mycelium → Minecraft, seqlock). Since version 47
+
+The final boss's bar (`BossBar.cs`, `MycBossBar.java`). The mapping grows by 0x100.
+
+| Off | Type | Field |
+|---|---|---|
+| 0x00 | u32 | seq |
+| 0x04 | u32 | 1 = show the bar |
+| 0x08 | f32 | health 0..1 (`HUDBoss.bossHealthBar.fillAmount`) |
+| 0x10 | utf8[128] | the boss's name, colour tags taken out |
+
+### SporeMoves @ after Bodies. Since version 46
+
+You and the other spores collide by Minecraft's rules (`ColonyPush.cs`, `SporeProxies.java`). The
+mapping grows by 0x400. Slot = the spore's entry in Colony.
+
+| Off | Type | Field |
+|---|---|---|
+| 0x00 | u32 | seq, for count and positions (Mycelium writes) |
+| 0x04 | u32 | count |
+| 0x10 + 12·i | f32 ×3 | a spore's feet in Minecraft's blocks; y NaN = no stand-in (you, or gone) |
+| 0x200 + 8·i | f32 ×2 | Minecraft writes: how far its collision has pushed this spore in all, x and z in blocks. Mycelium moves the spore by what's new |
+
 ### Bodies @ after Colony (Minecraft → Mycelium, a seqlock per slot). Since version 43
 
 The other spores' posed bodies (`MycSporeBodies.java`, `McColonyBodies.cs`). 24 slots of 0x4000
