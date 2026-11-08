@@ -93,8 +93,89 @@ tasks.register('weaponResources') {
 	}
 }
 
+// Mycelium's stat icons for weapon tooltips (your request, 2026-11-08): cut at build time from
+// Mycelium's own icon sheet (2DArt/UI/TextIconSpriteSheet.png in the Mycelium install, only read),
+// into build/ and the jar, never into the repository (AGENTS.md rule 1). Which picture is which stat
+// is Mycelium's: its tooltips write <sprite=0> Primal, 1 Speed, 2 Sentience, 3 Vitality, the
+// indexes of TextIconSpriteSheet.asset's character table, whose names give each picture's rectangle
+// in the sheet's .meta (Unity's rectangles start at the bottom left). Each becomes a glyph of the
+// font myceliumcraft:stat_icons, U+E000 Primal, U+E001 Sentience, U+E002 Speed, U+E003 Vitality.
+// No Mycelium install: no font, and the tooltips keep the stat names (MycWeapons checks).
+def statIconsDir = layout.buildDirectory.dir('generated/stat-icons')
+def myceliumDir = file(findProperty('myceliumDir') ?: 'C:/Users/Ryan/Documents/ClonedGithubRepos/Mycelium')
+tasks.register('statIcons') {
+	def sheet = new File(myceliumDir, 'Assets/2DArt/UI/TextIconSpriteSheet.png')
+	def meta = new File(myceliumDir, 'Assets/2DArt/UI/TextIconSpriteSheet.png.meta')
+	def asset = new File(myceliumDir, 'Assets/2DArt/UI/TextIconSpriteSheet.asset')
+	if (sheet.exists() && meta.exists() && asset.exists()) {
+		inputs.files sheet, meta, asset
+	}
+	outputs.dir statIconsDir
+	doLast {
+		def out = statIconsDir.get().asFile
+		out.deleteDir()
+		out.mkdirs()
+		if (!(sheet.exists() && meta.exists() && asset.exists())) {
+			logger.lifecycle("statIcons: no Mycelium icon sheet at ${sheet}; tooltips keep the stat names")
+			return
+		}
+		// Sprite rectangles by name, from the .meta.
+		def rects = [:]
+		String name = null
+		def r = [:]
+		meta.eachLine { line ->
+			def t = line.trim()
+			if (t.startsWith('name: ')) { name = t.substring(6).trim(); r = [:] }
+			else if (name != null && t ==~ /(x|y|width|height): -?[0-9.]+/) {
+				def (k, v) = t.split(': ')
+				r[k] = Math.round(Float.parseFloat(v)) as int
+				if (r.size() == 4) { rects[name] = r; name = null }
+			}
+		}
+		// <sprite=N> = the Nth entry of the character table, by name.
+		def order = []
+		boolean inTable = false
+		asset.eachLine { line ->
+			def t = line.trim()
+			if (t.startsWith('m_SpriteCharacterTable:')) inTable = true
+			else if (inTable && t.startsWith('m_SpriteGlyphTable:')) inTable = false
+			else if (inTable && t.startsWith('m_Name: ')) order << t.substring(8).trim()
+		}
+		def image = javax.imageio.ImageIO.read(sheet)
+		def stats = [[0, 'primal', '\uE000'], [2, 'sentience', '\uE001'], [1, 'speed', '\uE002'], [3, 'vitality', '\uE003']]
+		def providers = []
+		def made = []
+		stats.each { s ->
+			int index = s[0]
+			def spriteName = index < order.size() ? order[index] : null
+			def rect = spriteName != null ? rects[spriteName] : null
+			if (rect == null) { logger.lifecycle("statIcons: no picture for ${s[1]} (<sprite=${index}>)"); return }
+			int x = rect.x, w = rect.width, h = rect.height
+			int y = image.height - rect.y - h // Unity's rectangles start at the bottom
+			def part = image.getSubimage(x, y, w, h)
+			int size = 64, side = Math.max(w, h)
+			def icon = new java.awt.image.BufferedImage(size, size, java.awt.image.BufferedImage.TYPE_INT_ARGB)
+			def g = icon.createGraphics()
+			g.setRenderingHint(java.awt.RenderingHints.KEY_INTERPOLATION, java.awt.RenderingHints.VALUE_INTERPOLATION_BICUBIC)
+			int dw = Math.round(w * size / (float) side), dh = Math.round(h * size / (float) side)
+			g.drawImage(part, (int) ((size - dw) / 2), (int) ((size - dh) / 2), dw, dh, null)
+			g.dispose()
+			def png = new File(out, "assets/myceliumcraft/textures/font/stat_${s[1]}.png")
+			png.parentFile.mkdirs()
+			javax.imageio.ImageIO.write(icon, 'png', png)
+			providers << [type: 'bitmap', file: "myceliumcraft:font/stat_${s[1]}.png".toString(), ascent: 7, height: 8, chars: [s[2]]]
+			made << "${s[1]} = ${spriteName} (${w}x${h} at ${x},${y})"
+		}
+		def font = new File(out, 'assets/myceliumcraft/font/stat_icons.json')
+		font.parentFile.mkdirs()
+		font.text = groovy.json.JsonOutput.prettyPrint(groovy.json.JsonOutput.toJson([providers: providers]))
+		logger.lifecycle("statIcons: ${made.size()} of 4 stat icons from Mycelium's sheet: ${made.join(', ')}")
+	}
+}
+
 processResources {
 	from(tasks.named('weaponResources'))
+	from(tasks.named('statIcons'))
 	// Your two spore skin parts (MycSkins.java colours and combines them while the game runs).
 	from(rootProject.file('../dist/skin')) {
 		into 'assets/myceliumcraft/textures/spore_skin'

@@ -64,6 +64,7 @@ namespace MyceliumCraft
             public float Damage, PerSecond;
             public float Reach;          // blocks, from MeasureReach; 0 = not measured yet
             public GameObject ReachFrom; // the held object it was measured on
+            public bool Forged;          // made by the Blacksmith: only its own attributes, none of its prefab's (ForgeShroom destroys those)
         }
 
         const string Carcass = "The Carcass";
@@ -303,10 +304,32 @@ namespace MyceliumCraft
                 w.SpeedAmount += I(Get(c, "speedAmount"));
                 string name = Get(c, "attName") as string;
                 string desc = Get(c, "attDesc") as string;
+                string gives = StatText(c);
+                if (gives.Length > 0) desc = string.IsNullOrEmpty(desc) ? gives : $"{desc}, {gives}";
                 if (!string.IsNullOrEmpty(name)) text.Add(string.IsNullOrEmpty(desc) ? name : $"{name}: {desc}");
             }
-            w.AttText = string.Join("; ", text);
+            string now = string.Join("; ", text);
+            if (w.Id != 0 && now != (w.AttText ?? "")) McLog.Info($"weapons: #{w.Id}'s attributes now: {now}");
+            w.AttText = now;
         }
+
+        /// <summary>
+        /// What a stat attribute gives while the weapon is held (AttributeBase.primalAmount,
+        /// sentienceAmount, speedAmount, vitalityAmount; your request, 2026-11-08): "+3 Primal,
+        /// +3 Vitality", or "+2 All Stats" when it gives all four the same. "" for none.
+        /// </summary>
+        static string StatText(Component att)
+        {
+            int[] amounts = { I(Get(att, "primalAmount")), I(Get(att, "sentienceAmount")), I(Get(att, "speedAmount")), I(Get(att, "vitalityAmount")) };
+            string[] names = { "Primal", "Sentience", "Speed", "Vitality" };
+            if (amounts[0] != 0 && amounts[0] == amounts[1] && amounts[0] == amounts[2] && amounts[0] == amounts[3])
+                return $"{Signed(amounts[0])} All Stats";
+            var parts = new List<string>();
+            for (int i = 0; i < 4; i++) if (amounts[i] != 0) parts.Add($"{Signed(amounts[i])} {names[i]}");
+            return string.Join(", ", parts);
+        }
+
+        static string Signed(int n) => n > 0 ? "+" + n : n.ToString();
 
         /// <summary>
         /// Save a weapon into the bag the way LevelEnd.GoToNextLevel saves the held one: its attributes
@@ -413,6 +436,7 @@ namespace MyceliumCraft
                 if (rating != null) Set(att, "rating", rating);
                 added.Add(att);
             }
+            if (want.Forged) foreach (Component c in builtIn) if (c != null) UnityEngine.Object.Destroy(c); // the Blacksmith took the prefab's own away
             yield return new WaitForSeconds(0.1f);
             if (o != null)
             {
@@ -645,6 +669,7 @@ namespace MyceliumCraft
                 Set(att, "specialAttNum", value);
                 if (rating != null) Set(att, "rating", rating);
             }
+            if (w.Forged) foreach (Component c in builtIn) if (c != null) UnityEngine.Object.Destroy(c);
         }
 
         /// <summary>The empty hand's stand-in is never drawn (Renderer.enabled, which the camera's hiding doesn't touch).</summary>
@@ -652,6 +677,14 @@ namespace MyceliumCraft
         {
             if (o == null) return;
             foreach (Renderer r in o.GetComponentsInChildren<Renderer>(true)) r.enabled = false;
+        }
+
+        /// <summary>One weapon's numbers now (a weapon not in the bag: the Blacksmith's preview).</summary>
+        void ComputeOne(Weapon w, Weapon held)
+        {
+            bag.Add(w);
+            try { Compute(held); }
+            finally { bag.Remove(w); }
         }
 
         /// <summary>Each weapon's swing with the spore as it is now. True if any number changed.</summary>
@@ -668,14 +701,16 @@ namespace MyceliumCraft
             int primalBase = primalNow - (held != null && held.Live != null ? held.PrimalAmount : 0);
             int speedBase = speedNow - (held != null && held.Live != null ? held.SpeedAmount : 0);
             bool changed = false;
-            foreach (Weapon w in bag)
+            var all = new List<Weapon>(bag);
+            if (preview != null) all.Add(preview); // the Blacksmith's result, as it would be
+            foreach (Weapon w in all)
             {
                 int primal = Mathf.Clamp(primalBase + w.PrimalAmount, 1, 99);
                 int speed = Mathf.Clamp(speedBase + w.SpeedAmount, 1, 99);
                 float damage = Mathf.RoundToInt(dmgBase + (primal - 1) * dmgInc) * fungal * w.DamageMult;
                 float animatorSpeed = spdBase + (speed - 1) * spdInc;
                 float perSecond = animatorSpeed * w.SpeedMod / (0.9f * ClipLength(w.Type));
-                if (Mathf.Abs(damage - w.Damage) > 0.01f || Mathf.Abs(perSecond - w.PerSecond) > 0.005f) changed = true;
+                if (w != preview && (Mathf.Abs(damage - w.Damage) > 0.01f || Mathf.Abs(perSecond - w.PerSecond) > 0.005f)) changed = true;
                 w.Damage = damage;
                 w.PerSecond = perSecond;
             }
@@ -850,17 +885,207 @@ namespace MyceliumCraft
         MyceliumLink.WeaponEntry[] Table()
         {
             var t = new MyceliumLink.WeaponEntry[bag.Count];
-            for (int i = 0; i < bag.Count; i++)
-            {
-                Weapon w = bag[i];
-                t[i] = new MyceliumLink.WeaponEntry
-                {
-                    Id = w.Id, Type = (uint)w.Type, Damage = w.Damage, PerSecond = w.PerSecond, Knockback = w.Knockback,
-                    DamageMult = w.DamageMult, SpeedMod = w.SpeedMod, Reach = w.Reach, Name = w.Name ?? "?", Attributes = w.AttText ?? "",
-                    Key = w.Path != null ? w.Path.Substring(w.Path.LastIndexOf('/') + 1) : "" // its prefab: two weapons share "Rose Mace"
-                };
-            }
+            for (int i = 0; i < bag.Count; i++) t[i] = Entry(bag[i]);
             return t;
+        }
+
+        static MyceliumLink.WeaponEntry Entry(Weapon w) => new MyceliumLink.WeaponEntry
+        {
+            Id = w.Id, Type = (uint)w.Type, Damage = w.Damage, PerSecond = w.PerSecond, Knockback = w.Knockback,
+            DamageMult = w.DamageMult, SpeedMod = w.SpeedMod, Reach = w.Reach, Name = w.Name ?? "?", Attributes = w.AttText ?? "",
+            Key = w.Path != null ? w.Path.Substring(w.Path.LastIndexOf('/') + 1) : "" // its prefab: two weapons share "Rose Mace"
+        };
+
+        // --- Blacksmith Ironspore (ForgeWatch, MycForge.java) ---
+
+        /// <summary>
+        /// The weapons the Blacksmith takes, as ForgeShroom.HandleForgeShroomInteraction: not a Stick,
+        /// and its best attribute is Common, Rare or Legendary (not Forged, not none). Not one flying.
+        /// </summary>
+        public int Forgeable(uint[] ids)
+        {
+            int n = 0;
+            foreach (Weapon w in bag)
+                if (n < ids.Length && Forgeable(w, out _)) ids[n++] = w.Id;
+            return n;
+        }
+
+        /// <summary>For the log: each weapon and whether the Blacksmith takes it.</summary>
+        public string ForgeReport()
+        {
+            var parts = new List<string>();
+            foreach (Weapon w in bag) parts.Add(Forgeable(w, out string why) ? $"#{w.Id} yes" : $"#{w.Id} no ({why})");
+            return string.Join(", ", parts);
+        }
+
+        bool Forgeable(Weapon w, out string why)
+        {
+            why = "";
+            if (w.Name == "Stick") { why = $"'{w.Name}' is a Stick"; return false; }
+            if (flying.ContainsKey(w.Id)) { why = $"'{w.Name}' is thrown"; return false; }
+            int best = 0; // AttributeAssigner.Rarity: None, Common, Rare, Legendary, Forged
+            if (w.Live != null)
+            {
+                foreach (Component c in w.Live.GetComponents<Component>())
+                    if (c != null && IsA(c.GetType(), "AttributeBase") && Get(c, "rating") is object r) best = Math.Max(best, Convert.ToInt32(r));
+            }
+            else foreach (var a in w.Atts) if (a.rating != null) best = Math.Max(best, Convert.ToInt32(a.rating));
+            if (best == 0) { why = $"'{w.Name}' has no attribute"; return false; }
+            if (best >= 4) { why = $"'{w.Name}' is forged already"; return false; }
+            return true;
+        }
+
+        /// <summary>A weapon's first attribute (what the Blacksmith takes from a donor: GetComponents of AttributeBase, the first).</summary>
+        string FirstAttribute(Weapon w)
+        {
+            if (w.Live != null)
+            {
+                foreach (Component c in w.Live.GetComponents<Component>())
+                    if (c != null && IsA(c.GetType(), "AttributeBase")) return c.GetType().Name;
+                return null;
+            }
+            return w.Atts.Count > 0 ? w.Atts[0].type : null;
+        }
+
+        // The Blacksmith's result as it would be (the three slots as they are now): built once, its
+        // numbers worked out every frame like your other weapons', and used by Forge if you take it.
+        Weapon preview;
+        (uint, uint, uint) previewKey;
+        bool previewBuilding;
+
+        /// <summary>
+        /// Build the forged weapon for these three, out of sight, as Forge would, without touching the
+        /// bag. done(true) when it's ready (Preview then has it), done(false, why) if not.
+        /// </summary>
+        public IEnumerator BuildPreview(uint baseId, uint donor1, uint donor2, Action<bool, string> done)
+        {
+            var key = (baseId, donor1, donor2);
+            if (preview != null && previewKey == key) { done(true, ""); yield break; }
+            Weapon b = Find(baseId), d1 = Find(donor1), d2 = Find(donor2);
+            string why = Check(b, d1, d2, baseId, donor1, donor2);
+            if (why.Length > 0) { done(false, why); yield break; }
+            while (previewBuilding) yield return null;
+            previewBuilding = true;
+            Weapon built = null;
+            yield return BuildForged(b, d1, d2, (w, err) => { built = w; why = err; });
+            previewBuilding = false;
+            if (built == null) { done(false, why); yield break; }
+            preview = built;
+            previewKey = key;
+            McLog.Info($"forge: preview of #{baseId} with #{donor1} and #{donor2}: '{built.Name}' {built.Damage:F1} dmg, {built.PerSecond:F2}/s, knockback {built.Knockback:F1}, reach {built.Reach:F2} blocks; {built.AttText}");
+            done(true, "");
+        }
+
+        /// <summary>The preview's entry for Minecraft (id 0), or false if there's none for these three.</summary>
+        public bool PreviewEntry(uint baseId, uint donor1, uint donor2, out MyceliumLink.WeaponEntry entry)
+        {
+            entry = default;
+            if (preview == null || previewKey != (baseId, donor1, donor2)) return false;
+            entry = Entry(preview);
+            entry.Id = 0;
+            return true;
+        }
+
+        string Check(Weapon b, Weapon d1, Weapon d2, uint baseId, uint donor1, uint donor2)
+        {
+            string why = "";
+            if (b == null || d1 == null || d2 == null) return "a weapon given isn't in your bag";
+            if (baseId == donor1 || baseId == donor2 || donor1 == donor2) return "the same weapon twice";
+            if (!Forgeable(b, out why) || !Forgeable(d1, out why) || !Forgeable(d2, out why)) return why;
+            return "";
+        }
+
+        /// <summary>
+        /// The forged weapon as ForgeShroom.ProvideWeaponReward makes it: the base's prefab, its own
+        /// attributes destroyed, each donor's first attribute added (AttributeAssigner.PickAttFromString),
+        /// all rated Forged, no random attribute. Built out of sight, read into a Weapon (not in the bag,
+        /// no id yet), then removed. Its numbers are worked out for the spore as it is now; its reach is
+        /// the base's (the same prefab).
+        /// </summary>
+        IEnumerator BuildForged(Weapon b, Weapon d1, Weapon d2, Action<Weapon, string> done)
+        {
+            UnityEngine.Object prefab = Resources.Load(b.Path);
+            object assigner = GetStatic("AttributeAssigner", "Instance");
+            string a1 = FirstAttribute(d1), a2 = FirstAttribute(d2);
+            if (prefab == null || assigner == null) { done(null, prefab == null ? $"no prefab at Resources/{b.Path}" : "no AttributeAssigner"); yield break; }
+            var o = UnityEngine.Object.Instantiate(prefab, new Vector3(0f, -5000f, 0f), Quaternion.identity) as GameObject;
+            o.tag = "Untagged";
+            Collider col = o.GetComponent<Collider>();
+            if (col != null) col.enabled = false;
+            foreach (Renderer r in o.GetComponentsInChildren<Renderer>(true)) r.enabled = false;
+            Rigidbody body = o.GetComponent<Rigidbody>();
+            if (body != null) body.isKinematic = true;
+            Component stats = Comp(o, "WeaponStats");
+            int own = 0;
+            foreach (Component c in o.GetComponents<Component>())
+                if (c != null && IsA(c.GetType(), "AttributeBase")) { UnityEngine.Object.Destroy(c); own++; }
+            int added = 0;
+            foreach (string a in new[] { a1, a2 })
+                if (a != null && Call(assigner, "PickAttFromString", o, a) is Component) added++;
+            Set(stats, "acceptingAttribute", false);
+            yield return null; // the prefab's own attributes are gone now
+            foreach (Component c in o.GetComponents<Component>())
+                if (c != null && IsA(c.GetType(), "AttributeBase") && Get(c, "rating") is object r) Set(c, "rating", Enum.ToObject(r.GetType(), 4)); // Forged
+            yield return new WaitForSeconds(0.1f); // its Start: stats
+            if (o == null) { done(null, "the forged weapon was removed while it was made"); yield break; }
+            var w = new Weapon { Forged = true };
+            Stash(w, o, unequip: false); // never equipped: nothing to take off
+            UnityEngine.Object.Destroy(o);
+            w.Reach = b.Reach; // the same prefab reaches as far; measured again once held
+            ComputeOne(w, Find(heldId));
+            McLog.Info($"forge: built '{w.Name}' ({w.Path}) from '{b.Name}' (#{b.Id}, the base; its {own} own attribute(s) taken off) with '{a1}' from '{d1.Name}' (#{d1.Id}) and '{a2}' from '{d2.Name}' (#{d2.Id}): {added} of 2 added, {w.Atts.Count} on it now");
+            done(w, "");
+        }
+
+        /// <summary>
+        /// Forge: the preview built for these three if there is one (so you get what it showed),
+        /// else built now. It goes into the bag as a weapon of yours and the three given leave it.
+        /// done(new id, "") or done(0, why).
+        /// </summary>
+        public IEnumerator Forge(uint baseId, uint donor1, uint donor2, Action<uint, string> done)
+        {
+            Weapon b = Find(baseId), d1 = Find(donor1), d2 = Find(donor2);
+            string why = Check(b, d1, d2, baseId, donor1, donor2);
+            if (why.Length > 0) { McLog.Info($"forge: refused (#{baseId}, #{donor1}, #{donor2}): {why}"); done(0, why); yield break; }
+
+            // Not while the spore holds one of them, or a switch is going on: Minecraft's hand doesn't
+            // hold them any more (they went into the smithing screen), so the hand follows soon.
+            float since = Time.realtimeSinceStartup;
+            while (busy || previewBuilding || heldId == baseId || heldId == donor1 || heldId == donor2)
+            {
+                if (Time.realtimeSinceStartup - since > 5f)
+                {
+                    why = $"the spore still holds '{Find(heldId)?.Name}'";
+                    McLog.Info($"forge: refused: {why} after 5 s");
+                    done(0, why);
+                    yield break;
+                }
+                yield return null;
+            }
+            McLog.Info($"forge: starting after {Time.realtimeSinceStartup - since:F2} s (the spore holds #{heldId}{(emptyHand ? ", the empty hand" : "")})");
+            Weapon w;
+            bool fromPreview = preview != null && previewKey == (baseId, donor1, donor2);
+            if (fromPreview)
+            {
+                w = preview;
+            }
+            else
+            {
+                busy = true;
+                w = null;
+                yield return BuildForged(b, d1, d2, (got, err) => { w = got; why = err; });
+                busy = false;
+                if (w == null) { McLog.Info($"forge: refused: {why}"); done(0, why); yield break; }
+            }
+            preview = null;
+            w.Id = nextId++;
+            bag.Remove(b);
+            bag.Remove(d1);
+            bag.Remove(d2);
+            bag.Add(w);
+            version++;
+            McLog.Info($"forge: '{w.Name}' (#{w.Id}) forged ({(fromPreview ? "the preview you saw" : "built now, no preview")}): {w.AttText}; {w.Damage:F1} dmg, {w.PerSecond:F2}/s, damage x{w.DamageMult:F2}, speed x{w.SpeedMod:F2}. The three given are gone; {bag.Count} weapon(s) in the bag");
+            done(w.Id, "");
         }
 
         Weapon Find(uint id)

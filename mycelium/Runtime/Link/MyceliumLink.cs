@@ -385,6 +385,53 @@ namespace MyceliumCraft.Link
             WriteU32(view, b + Proto.BsSeq, seq + 2);
         }
 
+        /// <summary>The Blacksmith for Minecraft: open requests, which weapons it takes, the answer to the last request.</summary>
+        public void WriteForge(uint openSeq, bool available, uint[] ids, int count, uint handled, uint result, string reason, uint previewHandled, WeaponEntry preview)
+        {
+            int b = Proto.OffForge;
+            uint seq = ReadU32(view, b + Proto.FgSeq);
+            WriteU32(view, b + Proto.FgSeq, seq + 1);
+            Thread.MemoryBarrier();
+            WriteU32(view, b + Proto.FgOpenSeq, openSeq);
+            WriteU32(view, b + Proto.FgHandled, handled);
+            WriteU32(view, b + Proto.FgResult, result);
+            count = Math.Max(0, Math.Min(Proto.FgMax, count));
+            WriteU32(view, b + Proto.FgCount, (uint)count);
+            WriteU32(view, b + Proto.FgFlags, available ? Proto.FgAvailable : 0u);
+            for (int i = 0; i < count; i++) WriteU32(view, b + Proto.FgIds + i * 4, ids[i]);
+            WriteUtf8(view, b + Proto.FgReason, Proto.FgReasonBytes, reason ?? "");
+            WriteU32(view, b + Proto.FgPreviewHandled, previewHandled);
+            preview.Name = preview.Name ?? "";
+            preview.Attributes = preview.Attributes ?? "";
+            WriteWeaponEntry(b + Proto.FgPreview, preview);
+            Thread.MemoryBarrier();
+            WriteU32(view, b + Proto.FgSeq, seq + 2);
+        }
+
+        /// <summary>Minecraft's latest forge request: its seq (0 = none yet), then the base and the two donors.</summary>
+        public uint ReadForgeRequest(out uint baseId, out uint donor1, out uint donor2)
+        {
+            int b = Proto.OffForge;
+            uint seq = ReadU32(view, b + Proto.FgRequestSeq);
+            Thread.MemoryBarrier();
+            baseId = ReadU32(view, b + Proto.FgBase);
+            donor1 = ReadU32(view, b + Proto.FgDonor1);
+            donor2 = ReadU32(view, b + Proto.FgDonor2);
+            return seq;
+        }
+
+        /// <summary>Minecraft's latest preview request (the three slots as they are): its seq (0 = none yet), then the ids.</summary>
+        public uint ReadForgePreview(out uint baseId, out uint donor1, out uint donor2)
+        {
+            int b = Proto.OffForge;
+            uint seq = ReadU32(view, b + Proto.FgPreviewSeq);
+            Thread.MemoryBarrier();
+            baseId = ReadU32(view, b + Proto.FgPreviewBase);
+            donor1 = ReadU32(view, b + Proto.FgPreviewDonor1);
+            donor2 = ReadU32(view, b + Proto.FgPreviewDonor2);
+            return seq;
+        }
+
         /// <summary>How far Minecraft's collision has pushed this spore in all, in blocks.</summary>
         public void ReadSporePush(int slot, out float totalX, out float totalZ)
         {
@@ -481,24 +528,24 @@ namespace MyceliumCraft.Link
             WriteU32(view, b + Proto.WSelectId, selectId);
             WriteU32(view, b + Proto.WHeldId, heldId);
             WriteF32(view, b + Proto.WDamageScale, damageScale);
-            for (int i = 0; i < count; i++)
-            {
-                int e = b + Proto.WList + i * Proto.WSize;
-                WeaponEntry w = list[i];
-                WriteU32(view, e + Proto.WeId, w.Id);
-                WriteU32(view, e + Proto.WeType, w.Type);
-                WriteF32(view, e + Proto.WeDamage, w.Damage);
-                WriteF32(view, e + Proto.WePerSecond, w.PerSecond);
-                WriteF32(view, e + Proto.WeKnockback, w.Knockback);
-                WriteF32(view, e + Proto.WeDamageMult, w.DamageMult);
-                WriteF32(view, e + Proto.WeSpeedMod, w.SpeedMod);
-                WriteF32(view, e + Proto.WeReach, w.Reach);
-                WriteUtf8(view, e + Proto.WeName, Proto.WeNameBytes, w.Name);
-                WriteUtf8(view, e + Proto.WeAtts, Proto.WeAttsBytes, w.Attributes);
-                WriteUtf8(view, e + Proto.WeKey, Proto.WeKeyBytes, w.Key ?? "");
-            }
+            for (int i = 0; i < count; i++) WriteWeaponEntry(b + Proto.WList + i * Proto.WSize, list[i]);
             Thread.MemoryBarrier();
             WriteU32(view, b + Proto.WSeq, seq + 2);
+        }
+
+        void WriteWeaponEntry(int e, WeaponEntry w)
+        {
+            WriteU32(view, e + Proto.WeId, w.Id);
+            WriteU32(view, e + Proto.WeType, w.Type);
+            WriteF32(view, e + Proto.WeDamage, w.Damage);
+            WriteF32(view, e + Proto.WePerSecond, w.PerSecond);
+            WriteF32(view, e + Proto.WeKnockback, w.Knockback);
+            WriteF32(view, e + Proto.WeDamageMult, w.DamageMult);
+            WriteF32(view, e + Proto.WeSpeedMod, w.SpeedMod);
+            WriteF32(view, e + Proto.WeReach, w.Reach);
+            WriteUtf8(view, e + Proto.WeName, Proto.WeNameBytes, w.Name);
+            WriteUtf8(view, e + Proto.WeAtts, Proto.WeAttsBytes, w.Attributes);
+            WriteUtf8(view, e + Proto.WeKey, Proto.WeKeyBytes, w.Key ?? "");
         }
 
         /// <summary>A string as UTF-8, cut to fit (whole characters) and zero-terminated.</summary>

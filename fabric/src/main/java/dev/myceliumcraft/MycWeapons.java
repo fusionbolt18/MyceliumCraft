@@ -78,6 +78,9 @@ public final class MycWeapons {
 	private static int pendingSelect;
 	private static long pendingSince, nextSync, nextLog;
 	private static volatile boolean syncQueued;
+	// Mycelium's table as last read, for the Blacksmith (MycForge) on the server thread.
+	private static volatile List<MycLink.Weapon> latestTable = List.of();
+	private static volatile float damageScale = 5f;
 
 	static {
 		for (int i = 0; i < TABLE.length; i++) {
@@ -117,12 +120,16 @@ public final class MycWeapons {
 		}
 		count = n;
 		lastVersion = HEADER.version;
+		if (changed) {
+			latestTable = snapshot(n);
+		}
 		// Into the inventory: on a change at once, otherwise twice a second (to catch drops, copies).
 		if ((changed || now >= nextSync) && !syncQueued && !player.isDeadOrDying()) {
 			nextSync = now + 500;
 			syncQueued = true;
 			List<MycLink.Weapon> want = snapshot(n);
 			float scale = HEADER.damageScale > 0f ? HEADER.damageScale : 5f;
+			damageScale = scale;
 			var uuid = player.getUUID();
 			server.execute(() -> {
 				try {
@@ -173,8 +180,19 @@ public final class MycWeapons {
 		for (MycLink.Weapon w : want) {
 			byId.put(w.id, w);
 		}
+		// Blacksmith Ironspore: a forged weapon's stand-in becomes it once Mycelium has answered.
+		MycForge.resolve(sp, want);
 		Inventory inv = sp.getInventory();
 		Set<Integer> seen = new HashSet<>();
+		// Weapons in the Blacksmith's slots are present too (they go back to you when it closes).
+		if (sp.containerMenu instanceof MycForge.ForgeMenu forge) {
+			for (int i = 0; i < 3; i++) {
+				int id = weaponId(forge.input(i));
+				if (id != 0 && (!byId.containsKey(id) || !seen.add(id))) {
+					forge.clearInput(i);
+				}
+			}
+		}
 		// Thrown weapons flying or lying in the world are present: not made again.
 		for (ItemEntity item : sp.level().getEntities(EntityTypes.ITEM, e -> weaponId(e.getItem()) != 0)) {
 			seen.add(weaponId(item.getItem()));
@@ -187,6 +205,10 @@ public final class MycWeapons {
 				continue;
 			}
 			MycLink.Weapon w = byId.get(id);
+			if (w == null && MycForge.keeps(id)) {
+				seen.add(id); // just forged: Minecraft's copy of the table hasn't caught up yet
+				continue;
+			}
 			if (w == null || !seen.add(id)) {
 				inv.setItem(slot, ItemStack.EMPTY);
 				removed++;
@@ -212,15 +234,15 @@ public final class MycWeapons {
 		// The carrot on the mouse cursor (an open inventory screen) counts too.
 		ItemStack carried = sp.containerMenu.getCarried();
 		int carriedId = weaponId(carried);
-		if (carriedId != 0) {
+		if (carriedId != 0 && !(MycForge.keeps(carriedId) && !byId.containsKey(carriedId))) {
 			if (!byId.containsKey(carriedId) || !seen.add(carriedId)) {
 				sp.containerMenu.setCarried(ItemStack.EMPTY);
 				removed++;
 			}
 		}
 		for (MycLink.Weapon w : want) {
-			if (seen.contains(w.id)) {
-				continue;
+			if (seen.contains(w.id) || MycForge.holdsBack(w.id)) {
+				continue; // there already, or given to the Blacksmith
 			}
 			ItemStack stack = new ItemStack(item(w.type));
 			apply(stack, w, scale);
@@ -299,6 +321,44 @@ public final class MycWeapons {
 		});
 	}
 
+	/** A weapon from Mycelium's table as last read (any thread), or null. */
+	public static MycLink.Weapon latest(int id) {
+		for (MycLink.Weapon w : latestTable) {
+			if (w.id == id) {
+				return w;
+			}
+		}
+		return null;
+	}
+
+	public static List<MycLink.Weapon> latestTable() {
+		return latestTable;
+	}
+
+	/**
+	 * The Blacksmith's result as it would be (MycForge): a weapon's numbers, look and lore written as
+	 * on any weapon item, but marked as the preview (no weapon id), with these lines on top.
+	 */
+	public static void applyPreview(ItemStack stack, MycLink.Weapon w, CompoundTag mark, List<Component> top) {
+		apply(stack, w, damageScale);
+		stack.set(DataComponents.CUSTOM_DATA, CustomData.of(mark));
+		ItemLore lore = stack.get(DataComponents.LORE);
+		List<Component> lines = new ArrayList<>(top);
+		if (lore != null) {
+			lines.addAll(lore.lines());
+		}
+		stack.set(DataComponents.LORE, new ItemLore(lines));
+	}
+
+	/** Make an item weapon id's item (the Blacksmith's stand-in): it's rewritten with its numbers on the next sync. */
+	public static void claim(ItemStack stack, int id) {
+		CompoundTag tag = new CompoundTag();
+		tag.putInt(ID_KEY, id);
+		tag.putInt(STAMP_KEY, 0);
+		stack.set(DataComponents.CUSTOM_DATA, CustomData.of(tag));
+		stack.remove(DataComponents.LORE);
+	}
+
 	/** Take every weapon carrot away (server thread): before Minecraft's death drop. */
 	public static void removeAll(ServerPlayer sp) {
 		sync(sp, List.of(), 5f);
@@ -325,7 +385,7 @@ public final class MycWeapons {
 	}
 
 	private static int stamp(MycLink.Weapon w, float scale) {
-		return Objects.hash(Math.round(w.damage * 100), Math.round(w.perSecond * 1000), Math.round(w.knockback * 10), w.type, w.name, w.attributes, Math.round(scale * 100), Math.round(w.reach * 100), w.key, 4);
+		return Objects.hash(Math.round(w.damage * 100), Math.round(w.perSecond * 1000), Math.round(w.knockback * 10), w.type, w.name, w.attributes, Math.round(scale * 100), Math.round(w.reach * 100), w.key, 5);
 	}
 
 	/** Write a weapon onto a carrot. */
@@ -369,10 +429,45 @@ public final class MycWeapons {
 		lore.add(Component.literal(w.reach > 0.1f ? String.format("Reach: %.2f blocks", range) : String.format("Reach: %.2f blocks until first held", range)).withStyle(gray));
 		for (String att : w.attributes.split("; ")) {
 			if (!att.isBlank()) {
-				lore.add(Component.literal(att).withStyle(blue));
+				lore.add(attributeLine(att, blue));
 			}
 		}
 		stack.set(DataComponents.LORE, new ItemLore(lore));
+	}
+
+	// Mycelium's stat icons (font myceliumcraft:stat_icons, cut from its icon sheet when the jar is
+	// built; see build.gradle's statIcons). Without them the stat names stay.
+	private static final java.util.regex.Pattern STAT = java.util.regex.Pattern.compile("([+-]\\d+) (Primal|Sentience|Speed|Vitality)\\b");
+	private static final boolean STAT_ICONS = MycWeapons.class.getResource("/assets/myceliumcraft/font/stat_icons.json") != null;
+	private static final net.minecraft.network.chat.FontDescription ICON_FONT = new net.minecraft.network.chat.FontDescription.Resource(Identifier.fromNamespaceAndPath("myceliumcraft", "stat_icons"));
+	private static boolean iconsLogged;
+
+	/** An attribute's line ("Beefy: +3 Primal, +3 Vitality") with each stat name after an amount as its icon. */
+	public static Component attributeLine(String text, Style style) {
+		if (!iconsLogged) {
+			iconsLogged = true;
+			MycLink.LOG.info("MyceliumCraft: weapons: stat icons in tooltips: {}", STAT_ICONS ? "yes (Mycelium's)" : "no (the jar was built without Mycelium's icon sheet): stat names");
+		}
+		if (!STAT_ICONS) {
+			return Component.literal(text).withStyle(style);
+		}
+		var line = Component.empty().withStyle(style);
+		var m = STAT.matcher(text);
+		int last = 0;
+		while (m.find()) {
+			line.append(Component.literal(text.substring(last, m.start(2))));
+			String glyph = switch (m.group(2)) {
+				case "Primal" -> "\uE000";
+				case "Sentience" -> "\uE001";
+				case "Speed" -> "\uE002";
+				default -> "\uE003";
+			};
+			// White, so the icon keeps its own colours (font glyphs take the text colour).
+			line.append(Component.literal(glyph).withStyle(Style.EMPTY.withFont(ICON_FONT).withColor(0xFFFFFF)));
+			last = m.end(2);
+		}
+		line.append(Component.literal(text.substring(last)));
+		return line;
 	}
 
 	/** A prefab name as our resource pack names it: lower case, every run of other characters one '_' (as build.gradle). */

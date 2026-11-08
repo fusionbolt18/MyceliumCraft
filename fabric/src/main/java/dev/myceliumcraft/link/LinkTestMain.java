@@ -57,6 +57,15 @@ public final class LinkTestMain {
 	private static final boolean PUSH = "1".equals(System.getenv("LINKTEST_PUSH"));
 	private static final float[] sporePositions = new float[Proto.COL_MAX * 3];
 	private static final MycLink.Boss boss = new MycLink.Boss();
+	// LINKTEST_FORGE=1: when Mycelium asks for the Blacksmith's screen, put the first three weapons he takes in its slots and take
+	// the result (a forge request); once answered, ask again with the same three (they're gone now: want a refusal).
+	private static final boolean FORGE = "1".equals(System.getenv("LINKTEST_FORGE"));
+	private static final MycLink.Forge forge = new MycLink.Forge();
+	private static int forgeOpenSeen = Integer.MIN_VALUE, forgeSent, forgeIds[], forgeStage;
+	private static String forgeSeen = "", forgePreview = "", forgePreviewNumbers = "";
+	private static int forgePreviewSent;
+	private static final MycLink.Weapon[] forgeTable = new MycLink.Weapon[Proto.W_MAX];
+	private static final MycLink.WeaponsHeader forgeHeader = new MycLink.WeaponsHeader();
 	private static String bossSeen = "";
 	private static double nextSproutPrint;
 	private static final MycLink.Colony colony = new MycLink.Colony();
@@ -199,6 +208,20 @@ public final class LinkTestMain {
 	}
 
 	public static void main(String[] args) throws InterruptedException {
+		if ("1".equals(System.getenv("LINKTEST_ICONS"))) {
+			// LINKTEST_ICONS=1: how weapon tooltips' attribute lines come out (stat icons), then stop.
+			for (String line : new String[] { "Beefy: +3 Primal, +3 Vitality", "Golden: +2 All Stats", "Savvy: +3 Sentience, +3 Speed", "Rapid: Double attack speed, half damage" }) {
+				var c = dev.myceliumcraft.MycWeapons.attributeLine(line, net.minecraft.network.chat.Style.EMPTY);
+				StringBuilder parts = new StringBuilder();
+				for (var part : c.getSiblings()) {
+					String t = part.getString();
+					boolean icon = part.getStyle().getFont() instanceof net.minecraft.network.chat.FontDescription.Resource r && r.id().getPath().equals("stat_icons");
+					parts.append(icon ? String.format("[icon U+%04X]", (int) t.charAt(0)) : "'" + t + "'");
+				}
+				System.out.println("icons: '" + line + "' -> " + parts);
+			}
+			return;
+		}
 		long deadline = System.currentTimeMillis() + 15000;
 		MycLink.MycState myc = new MycLink.MycState();
 		GroundGrid grid = null;
@@ -400,6 +423,9 @@ public final class LinkTestMain {
 				for (int i = 0; i < myc.resourceCount; i++) {
 					list.append(i > 0 ? ", " : "").append("type ").append(myc.resourceTypes[i]).append(" #").append(myc.resourceIds[i]);
 				}
+				if (FORGE && MycLink.readForge(forge)) {
+					forgeFrame(t);
+				}
 				if (MycLink.readBoss(boss)) {
 					String seen = boss.shown ? "'" + boss.name + "' at " + Math.round(boss.progress * 100) + "%" : "none";
 					if (!seen.equals(bossSeen)) {
@@ -503,6 +529,88 @@ public final class LinkTestMain {
 		int[] count = {0};
 		grid.forEachBox(x, y, z, (a, b, c, d, e, f) -> count[0]++);
 		return count[0];
+	}
+
+	private static void forgeFrame(double t) {
+		StringBuilder takes = new StringBuilder();
+		for (int i = 0; i < forge.count; i++) {
+			takes.append(i > 0 ? ", #" : "#").append(forge.ids[i]);
+		}
+		String seen = "a Blacksmith here " + ((forge.flags & Proto.FG_AVAILABLE) != 0) + ", he takes " + forge.count + " weapon(s) " + takes;
+		if (!seen.equals(forgeSeen)) {
+			forgeSeen = seen;
+			System.out.printf("t=%.2f forge: %s%n", t, seen);
+		}
+		if (forgeOpenSeen == Integer.MIN_VALUE) {
+			forgeOpenSeen = forge.openSeq;
+		} else if (forge.openSeq != forgeOpenSeen) {
+			forgeOpenSeen = forge.openSeq;
+			System.out.printf("t=%.2f forge: Mycelium asks for the Blacksmith's screen (#%d)%n", t, forge.openSeq);
+			if (forgeStage == 0 && forge.count >= 3) {
+				forgeIds = new int[] { forge.ids[0], forge.ids[1], forge.ids[2] };
+				MycLink.Weapon[] pre = new MycLink.Weapon[3];
+				for (int i = 0; i < forgeTable.length; i++) {
+					if (forgeTable[i] == null) {
+						forgeTable[i] = new MycLink.Weapon();
+					}
+				}
+				int wn = MycLink.readWeapons(forgeTable, forgeHeader);
+				for (int i = 0; i < wn; i++) {
+					for (int k = 0; k < 3; k++) {
+						if (forgeTable[i].id == forgeIds[k]) {
+							pre[k] = forgeTable[i];
+						}
+					}
+				}
+				if (pre[0] != null && pre[1] != null && pre[2] != null) {
+					forgePreview = dev.myceliumcraft.ForgeName.forged(pre[0].name, pre[0].attributes, pre[1].attributes, pre[2].attributes);
+					System.out.printf("t=%.2f forge: given '%s' (base), '%s', '%s'; the result preview's name: '%s'%n", t, pre[0].name, pre[1].name, pre[2].name, forgePreview);
+				}
+				forgePreviewSent = MycLink.forgePreviewSeq() + 1;
+				MycLink.writeForgePreview(forgePreviewSent, forgeIds[0], forgeIds[1], forgeIds[2]);
+				forgeStage = 3;
+				System.out.printf("t=%.2f forge: slots #%d (base), #%d, #%d; asking for the result's numbers: preview #%d%n", t, forgeIds[0], forgeIds[1], forgeIds[2], forgePreviewSent);
+			}
+		}
+		if (forgeStage == 3 && forge.previewHandled == forgePreviewSent && !forge.preview.name.isEmpty()) {
+			MycLink.Weapon p = forge.preview;
+			forgePreviewNumbers = String.format("'%s' %.1f dmg %.2f/s knockback %.1f x%.2f dmg x%.2f speed reach %.2f [%s]", p.name, p.damage, p.perSecond, p.knockback, p.damageMult, p.speedMod, p.reach, p.attributes);
+			System.out.printf("t=%.2f forge: preview #%d answered: %s%n", t, forgePreviewSent, forgePreviewNumbers);
+			forgeSent = MycLink.forgeRequestSeq() + 1;
+			MycLink.writeForgeRequest(forgeSent, forgeIds[0], forgeIds[1], forgeIds[2]);
+			forgeStage = 1;
+			System.out.printf("t=%.2f forge: result taken: request #%d%n", t, forgeSent);
+		}
+		if (forgeSent != 0 && forge.handled == forgeSent) {
+			for (int i = 0; i < forgeTable.length; i++) {
+				if (forgeTable[i] == null) {
+					forgeTable[i] = new MycLink.Weapon();
+				}
+			}
+			int n = MycLink.readWeapons(forgeTable, forgeHeader);
+			StringBuilder table = new StringBuilder();
+			for (int i = 0; i < n; i++) {
+				table.append(i > 0 ? "; " : "").append('#').append(forgeTable[i].id).append(' ').append(forgeTable[i].name)
+					.append(String.format(" %.1f dmg x%.2f [%s]", forgeTable[i].damage, forgeTable[i].damageMult, forgeTable[i].attributes));
+			}
+			System.out.printf("t=%.2f forge: request #%d answered: weapon #%d%s; your weapons now: %s%n", t, forgeSent, forge.result,
+				forge.reason.isEmpty() ? "" : " (refused: " + forge.reason + ")", table);
+			for (int i = 0; i < n; i++) {
+				if (forge.result != 0 && forgeTable[i].id == forge.result) {
+					System.out.printf("t=%.2f forge: preview name '%s', Mycelium's forged name '%s': %s%n", t, forgePreview, forgeTable[i].name, forgeTable[i].name.equals(forgePreview) ? "SAME" : "DIFFERENT");
+					MycLink.Weapon g = forgeTable[i];
+					String got = String.format("'%s' %.1f dmg %.2f/s knockback %.1f x%.2f dmg x%.2f speed reach %.2f [%s]", g.name, g.damage, g.perSecond, g.knockback, g.damageMult, g.speedMod, g.reach, g.attributes);
+					System.out.printf("t=%.2f forge: preview numbers %s%nt=%.2f forge: forged numbers  %s: %s%n", t, forgePreviewNumbers, t, got, got.equals(forgePreviewNumbers) ? "SAME" : "DIFFERENT");
+				}
+			}
+			forgeSent = 0;
+			if (forgeStage == 1) {
+				forgeStage = 2;
+				forgeSent = MycLink.forgeRequestSeq() + 1;
+				MycLink.writeForgeRequest(forgeSent, forgeIds[0], forgeIds[1], forgeIds[2]);
+				System.out.printf("t=%.2f forge: the same three again (gone now): request #%d%n", t, forgeSent);
+			}
+		}
 	}
 
 	private static boolean check(String what, double got, double expected) {

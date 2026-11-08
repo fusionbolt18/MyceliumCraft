@@ -48,6 +48,7 @@ public final class MyceliumCraftClient implements ClientModInitializer {
 		// The other spores: invisible creatures, so you collide with them by Minecraft's rules.
 		dev.myceliumcraft.combat.SporeProxies.init();
 		MycBossBar.init(); // the final boss's health: Minecraft's boss bar
+		MycForge.init(); // Blacksmith Ironspore: Minecraft's smithing screen
 		// Diagnostic: what stalls Minecraft's server (late hits, 2026-10-21).
 		ServerStallWatch.init();
 		MycWeapons.init(); // thrown weapons: no pickup, removed once landed
@@ -225,6 +226,7 @@ public final class MyceliumCraftClient implements ClientModInitializer {
 		MycWeapons.frame(minecraft, player, haveMyc && MycLink.myceliumAlive() && MYC.inLevel());
 		MycResources.frame(minecraft, player, haveMyc && MycLink.myceliumAlive() && MYC.inLevel(), MYC); // the resources you carry
 		MycWeapons.thrownFrame(minecraft, partial); // thrown weapons, for Mycelium to show
+		MycForge.frame(minecraft, player, haveMyc && MycLink.myceliumAlive() && MYC.inLevel()); // the Blacksmith's screen
 		dev.myceliumcraft.combat.EnemyProxies.clientSnap(minecraft.level);
 		sendHitBoxes(minecraft);
 		// Third person: your Minecraft body, for Mycelium to draw instead of the spore.

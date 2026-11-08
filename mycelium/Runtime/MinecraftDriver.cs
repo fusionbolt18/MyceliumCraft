@@ -69,6 +69,9 @@ namespace MyceliumCraft
         readonly BossBar bossBar = new BossBar();
         readonly ShopUndo shopUndo = new ShopUndo();
         readonly TraitLeaks traitLeaks = new TraitLeaks();
+        // Blacksmith Ironspore opens Minecraft's smithing screen (ForgeWatch).
+        readonly ForgeWatch forge = new ForgeWatch();
+        bool forgeDriving, forgeScreenOpen; // as of this frame's Update, for the next frame's early catch
         // Test aid "-mcNoTraitFix": leave Mycelium's leftover trait hooks alone, as Mycelium does.
         static readonly bool NoTraitFix = Array.IndexOf(Environment.GetCommandLineArgs(), "-mcNoTraitFix") >= 0;
         readonly UnarmedCyclone unarmedCyclone = new UnarmedCyclone();
@@ -197,6 +200,12 @@ namespace MyceliumCraft
                 McLog.Info("FAILED to create shared memory: " + e.Message);
             }
 
+            // The Blacksmith's Interact is caught before PlayerController reads it (ForgeWatch).
+            var forgeCatch = new GameObject("MyceliumCraft forge catch").AddComponent<ForgeCatch>();
+            DontDestroyOnLoad(forgeCatch.gameObject);
+            forgeCatch.EarlyUpdate = () => forge.Early(forgeDriving, forgeScreenOpen);
+            forgeCatch.LateAfter = forge.Late;
+
             // Test aid: "-mcScene <name>" skips the menus and loads that level directly.
             string[] args = Environment.GetCommandLineArgs();
             int sceneArg = Array.IndexOf(args, "-mcScene");
@@ -320,6 +329,9 @@ namespace MyceliumCraft
             // Test aid: "-mcRepickTest" picks up the nearest weapon lying in the world (tag "Weapon")
             // 8 s into driving, through WeaponInteraction.Interact (for thrown weapons).
             if (Array.IndexOf(args, "-mcRepickTest") >= 0) StartCoroutine(RepickTest());
+            // Test aid: "-mcForgeTest" (the first level) picks up three weapons, brings the Blacksmith in
+            // front of the spore and presses Mycelium's Interact key; run with LINKTEST_FORGE=1.
+            if (Array.IndexOf(args, "-mcForgeTest") >= 0) StartCoroutine(ForgeTest());
             // Test aid: "-mcInteractWatch" logs whenever Mycelium's closest interactable thing (what its
             // pop-up and Interact key are for) changes, with where it is.
             if (Array.IndexOf(args, "-mcInteractWatch") >= 0) StartCoroutine(InteractWatch());
@@ -407,6 +419,7 @@ namespace MyceliumCraft
                 bossBar.SceneLoaded();
                 shopUndo.SceneLoaded();
                 menuBody.SceneLoaded();
+                forge.SceneLoaded();
                 SetPhase(Phase.Idle, "new scene");
             };
         }
@@ -577,6 +590,11 @@ namespace MyceliumCraft
             // Your weapons: the bag, Minecraft's carrots, the one Minecraft's hand holds.
             WeaponBag.DropOrphanPopUp(); // a pop-up for something salvaged or gone
             if (rb != null) weapons.Update(this, link, alive && phase == Phase.Driving && camFresh2, camFresh2 ? lastCamMc.HandWeapon : 0u, map);
+            // Blacksmith Ironspore: Minecraft's smithing screen, and forging what it asks for.
+            // A re-sync teleport (WaitingForTeleport, a moment after bumping into something) counts as driving, as for the keys.
+            forgeDriving = rb != null && alive && (phase == Phase.Driving || phase == Phase.WaitingForTeleport) && camFresh2;
+            forgeScreenOpen = mcScreenOpen;
+            forge.Update(this, link, weapons, forgeDriving);
             combat.HeldKnockback = weapons.HeldKnockback;
             // Mycelium's attack events for Minecraft's swings (weapon attributes).
             if (rb != null) combat.FollowSwings(lastCamMc.Swings, camFresh2 && alive);
@@ -2674,6 +2692,78 @@ namespace MyceliumCraft
                 McLog.Info($"reach test: {folders[type]}: {string.Join(", ", summary)} blocks");
                 summary.Clear();
             }
+        }
+
+        /// <summary>Test aid (-mcForgeTest): three weapons picked up, the Blacksmith brought in front, Interact pressed.</summary>
+        System.Collections.IEnumerator ForgeTest()
+        {
+            while (phase != Phase.Driving) yield return null;
+            yield return new WaitForSeconds(4f);
+            Type wi = Type.GetType("WeaponInteraction, Assembly-CSharp");
+            MethodInfo pick = wi?.GetMethod("Interact", BindingFlags.Public | BindingFlags.Instance);
+            foreach (string path in new[] { "Slash/AvocadoFlamberge", "Smash/RoseMace", "Stab/OpalRapier" })
+            {
+                UnityEngine.Object prefab = Resources.Load(path);
+                if (prefab == null || rb == null || pick == null) { McLog.Info($"forge test: no {path} prefab, spore or WeaponInteraction"); yield break; }
+                var o = Instantiate(prefab, rb.position + rb.transform.forward * 1.5f, Quaternion.identity) as GameObject;
+                o.tag = "Weapon";
+                yield return new WaitForSeconds(0.5f); // its Start: stats, a random attribute
+                McLog.Info($"forge test: picking up '{o.name}'");
+                try { pick.Invoke(o.GetComponent(wi), new object[] { o }); }
+                catch (Exception e) { McLog.Info("forge test: pickup failed: " + (e.InnerException ?? e).Message); }
+                yield return new WaitForSeconds(1f);
+            }
+            yield return new WaitForSeconds(4f); // the fake Minecraft's hand is empty: the last one goes into the bag too
+
+            McLog.Info($"forge test: the Blacksmith takes: {weapons.ForgeReport()}");
+            GameObject spore = GameObject.FindWithTag("currentPlayer");
+            Component smith = spore != null ? forge.Nearest(spore.transform.position) : null;
+            if (smith == null) { McLog.Info("forge test: no Blacksmith (ForgeShroom) in this level"); yield break; }
+            McLog.Info($"forge test: the Blacksmith '{smith.gameObject.name}' was {Vector3.Distance(spore.transform.position, smith.transform.position):F1} units away; brought 1.5 units in front of the spore");
+            smith.transform.position = spore.transform.position + spore.transform.forward * 1.5f;
+            Type ft = Type.GetType("SporeInteractableFinder, Assembly-CSharp");
+            Component finder = ft != null ? spore.GetComponent(ft) : null;
+            FieldInfo closestF = ft?.GetField("closestInteractableObject");
+            GameObject closest = null;
+            for (int i = 0; i < 30 && finder != null; i++)
+            {
+                closest = closestF.GetValue(finder) as GameObject;
+                if (closest == smith.gameObject) break;
+                yield return new WaitForSeconds(0.1f);
+            }
+            McLog.Info($"forge test: Mycelium's closest thing is '{(closest != null ? closest.name : "none")}' (the Blacksmith: {closest == smith.gameObject})");
+            FieldInfo salvaged = smith.GetType().GetField("salvagedWeapons", BindingFlags.NonPublic | BindingFlags.Instance);
+            uint before = forge.Opened;
+            // Press the key Mycelium's Interact is bound to, as your keyboard would.
+            var action = playerControllerType?.GetField("interact", BindingFlags.NonPublic | BindingFlags.Instance)?.GetValue(controller) as UnityEngine.InputSystem.InputAction;
+            UnityEngine.InputSystem.Controls.KeyControl key = null;
+            if (action != null) foreach (var c in action.controls) if (c is UnityEngine.InputSystem.Controls.KeyControl k) { key = k; break; }
+            var kb = UnityEngine.InputSystem.Keyboard.current;
+            if (key != null && kb != null)
+            {
+                McLog.Info($"forge test: pressing '{key.keyCode}' (Mycelium's Interact)");
+                UnityEngine.InputSystem.InputSystem.QueueStateEvent(kb, new UnityEngine.InputSystem.LowLevel.KeyboardState(key.keyCode));
+                yield return null;
+                yield return null;
+                UnityEngine.InputSystem.InputSystem.QueueStateEvent(kb, new UnityEngine.InputSystem.LowLevel.KeyboardState());
+                yield return new WaitForSeconds(0.5f);
+            }
+            else McLog.Info($"forge test: no key for Interact (action {action != null}, keyboard {kb != null})");
+            if (forge.Opened == before)
+            {
+                McLog.Info("forge test: the key press didn't reach the catch (the window has no focus?); calling it as the catch would");
+                forge.Interacted(smith, false);
+                yield return null;
+                forge.Late();
+            }
+            McLog.Info($"forge test: screens asked for {forge.Opened - before}; Mycelium's own Blacksmith took {salvaged?.GetValue(smith)} weapon(s) (want 0)");
+            for (int i = 0; i < 20; i++)
+            {
+                yield return new WaitForSeconds(0.5f);
+                if (forge.Handled != 0) break;
+            }
+            yield return new WaitForSeconds(3f);
+            McLog.Info($"forge test: done; last answer #{forge.Handled} gave weapon #{forge.LastResult}; Mycelium's own Blacksmith took {salvaged?.GetValue(smith)} weapon(s); finished: {smith.GetType().GetField("weaponGoalReached", BindingFlags.NonPublic | BindingFlags.Instance)?.GetValue(smith)}");
         }
 
         /// <summary>Test aid (-mcPickupTest): a weapon pickup through Mycelium's own code.</summary>

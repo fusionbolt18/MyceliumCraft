@@ -1,5 +1,191 @@
 # MODLOG
 
+## 2026-11-08 Stat icons in weapon tooltips; "+X All Stats"
+
+**Your request:** "All Stats +X" becomes "+X All Stats", and the stat names in item tooltips become
+Mycelium's stat icons.
+
+**Changed:**
+- `WeaponBag.StatText`: "+2 All Stats".
+- `fabric/build.gradle`, new `statIcons` step: when the jar is built, it cuts Mycelium's four stat
+  icons out of its own icon sheet (`2DArt/UI/TextIconSpriteSheet.png` in the Mycelium install).
+  - The sheet is only read. The icons go into `fabric/build` and the jar, not the repository, and
+    the jar in `dist` isn't tracked.
+  - Which picture is which stat comes from Mycelium itself. Its spore pop-up writes `<sprite=0>`
+    Primal, 1 Speed, 2 Sentience and 3 Vitality, and its sprite asset and the sheet's settings give
+    each picture's place.
+  - They become a small Minecraft font, `myceliumcraft:stat_icons`.
+- `MycWeapons.attributeLine`: in each attribute line, a stat name right after an amount ("+3 Primal")
+  is drawn as its icon, in its own colours. Other words stay ("Double attack speed" is untouched).
+  "+X All Stats" stays as words. The Blacksmith's preview uses the same lines.
+  - A jar built without the Mycelium install has no icons, and the names stay. The log says which:
+    "stat icons in tooltips: yes/no".
+- Weapon items are rewritten once after the update (their stamp changed), to get the new lines.
+
+**Tested how:**
+- The build log: 4 of 4 icons cut (Primal, Sentience, Speed, Vitality). I looked at the four
+  pictures: the flexing red spore, the one with glasses, the running one, the heart.
+- The fake Minecraft (`LINKTEST_ICONS=1`) built the tooltip lines:
+  - "Beefy: +3 Primal, +3 Vitality" became "Beefy: +3 [Primal icon], +3 [Vitality icon]".
+  - Savvy gave the Sentience and Speed icons.
+  - "Golden: +2 All Stats" and "Rapid: Double attack speed, half damage" were unchanged.
+- Stand-in, `-mcAttribute Golden`: "Golden: +2 All Stats".
+
+**Not tested:** in Minecraft. How the icons look there (size, how they line up with the text) isn't
+checked. They're 8 pixels tall, like letters.
+
+## 2026-11-08 Stat attributes say what they give on every weapon item
+
+**Your request:** in a weapon's hover box, an attribute that changes stats says by how much:
+"Beefy: +3 Primal, +3 Vitality" instead of "Beefy". One that gives all four the same says
+"All Stats +X".
+
+**Changed:** `WeaponBag.ReadLive` reads each attribute's stat amounts (`primalAmount`,
+`sentienceAmount`, `speedAmount`, `vitalityAmount`, which Mycelium sets for its stat attributes)
+into its line. The stats are listed in the order Primal, Sentience, Speed, Vitality. An attribute
+with its own description and stat amounts gets both. This holds for all weapons, including the
+Blacksmith's preview and forged weapons, since they all come from the same text. The log now says
+when a weapon's attribute text changes ("weapons: #N's attributes now: ...").
+
+**Tested how:** stand-in, Daybreak Arboretum, `-mcAttribute <Name>` on the held Stick
+(`LINKTEST_HOLD=1`).
+**Result:**
+- Golden: "Golden: All Stats +2"
+- Beefy: "Beefy: +3 Primal, +3 Vitality"
+- Strong: "Strong: +5 Primal"
+- Nasty (no stats): "Nasty: 20% chance to apply poison", unchanged
+
+**Not tested:** in Minecraft's hover box. A weapon's attribute text is cut at 159 bytes, as before,
+so a weapon with three long attributes may lose the end of the last one.
+
+## 2026-11-08 The Blacksmith's result preview shows the forged weapon's numbers (protocol v49)
+
+**Your request:** the result preview works out the forged weapon's stats.
+
+**Changed:**
+- With all three slots full, Minecraft asks Mycelium for the result's numbers (the Forge block's new
+  preview request).
+- Mycelium builds the forged weapon out of sight, as the forge does (`WeaponBag.BuildPreview`).
+- It works out its numbers like any of your weapons, every frame, with the spore as it is now:
+  damage per swing, swings per second, knockback, multipliers, and reach (the base's, the same
+  prefab).
+- The result item gets the same name, numbers and attribute lines as a weapon item
+  (`MycWeapons.applyPreview`), under "Forged by Blacksmith Ironspore" and its base. Until Mycelium
+  answers (about 0.1 s) it says "Working out its numbers...".
+- **Taking the result forges that same built weapon,** so you get exactly what the preview showed.
+  Attributes are given fresh when a weapon is built, so a second build could differ.
+- Protocol v49: the Forge block is 0x400 bytes, with a preview request and answer
+  (`protocol/PROTOCOL.md`).
+
+**Tested how:** stand-in, `-mcForgeTest`, `LINKTEST_FORGE=1 LINKTEST_STILL=1`. The fake asks for the
+preview, then takes the result, and compares the two.
+
+**Result:**
+- Preview: 'Feline Vigorous Avocado Flamberge' 63.0 dmg, 2.15/s, knockback 4.5, x1.40 damage,
+  reach 2.82 blocks, [Vigorous; Feline: meow].
+- The forged weapon was exactly the same ("the preview you saw" in Mycelium's log).
+- The base swung 1.95/s; Vigorous raises it, as it does when held.
+
+**Not tested:** in Minecraft (the result item itself, and its refresh when the numbers arrive).
+
+## 2026-11-08 The Blacksmith's result preview has the forged weapon's name
+
+**Your report:** the result preview's name had the base weapon's own attribute in it.
+
+**Why:** the preview was a copy of the base weapon's item, whose name is Mycelium's name for it. Mycelium
+puts each attribute's name in front of the plain name ("Vigorous Avocado Flamberge").
+
+**Changed:** new `ForgeName.java`. The preview is named the way Mycelium names the forged weapon: the
+base's attribute names taken off the front, then the second donor's attribute and the first donor's in
+front ("Smart Tough Avocado Flamberge"). Its "Base:" line shows the plain name too. The fake Minecraft
+(`LINKTEST_FORGE=1`) works the name out for its three weapons and compares it with Mycelium's.
+
+**Tested how:** stand-in, `-mcForgeTest`, `LINKTEST_FORGE=1 LINKTEST_STILL=1`.
+**Result:** given 'Undergrown Avocado Flamberge' (base), 'Tough Rose Mace', 'Smart Opal Rapier'. The
+preview name was 'Smart Tough Avocado Flamberge', and Mycelium's forged name was the same.
+
+**Not tested:** in Minecraft (the preview item itself). An attribute whose name is empty would put the
+names out of step; none was seen.
+
+## 2026-11-08 Blacksmith Ironspore opens a smithing screen in Minecraft (protocol v48)
+
+**Your request:** interacting with Blacksmith Ironspore (the first level) brings up Minecraft's
+smithing table screen. The first slot is the weapon base, the next two are the attribute donors.
+
+**How Mycelium's own Blacksmith works** (`ForgeShroom`): each interact takes the weapon you hold.
+The first is the base. The next two each give their first attribute. The forged weapon is the base's
+kind with only those two attributes, rated "Forged", and he forges only once. He takes no Stick,
+nothing forged already, and nothing without an attribute.
+
+**Changed:**
+- New `ForgeWatch.cs` (Mycelium):
+  - While Minecraft drives, your Interact on the Blacksmith asks Minecraft to open the screen.
+  - Mycelium's own Interact is skipped for that press. This is done by a small component that runs
+    before all of Mycelium's scripts in that frame.
+  - It sends Minecraft which of your weapons he takes, and answers Minecraft's forge request.
+- `WeaponBag.cs`:
+  - `Forge` builds the weapon as `ForgeShroom.ProvideWeaponReward` does: the base's prefab with its
+    own attributes taken off, then each donor's first attribute, all rated Forged. It puts the new
+    weapon in your bag and takes the three you gave out.
+  - A forged weapon keeps only its own attributes when it's rebuilt in your hand or thrown, as
+    Mycelium's forged weapon does.
+- New `MycForge.java` (Minecraft):
+  - A menu with the smithing table's picture and slot places: base, donor, donor, then the result.
+  - The slots take only weapons the Blacksmith takes.
+  - The result shows the base with the two attributes it will get.
+  - Taking the result asks Mycelium to forge. The item you took becomes the new weapon once Mycelium
+    answers. If Mycelium refuses, you get a chat line saying why, and your three weapons come back.
+  - Hovering an empty slot says what it's for.
+- `MycWeapons.java`: weapons in the Blacksmith's slots count as yours (no duplicates), and the three
+  you gave aren't put back while Mycelium forges.
+- Protocol v48: the Forge block (`protocol/PROTOCOL.md`). Test aid `-mcForgeTest`, and the fake
+  Minecraft's `LINKTEST_FORGE=1`.
+
+**Tested how:** stand-in (`LINKTEST_FORGE=1 LINKTEST_STILL=1`), Daybreak Arboretum, `-mcForgeTest`.
+The test:
+1. Picks up an Avocado Flamberge, a Rose Mace and an Opal Rapier.
+2. Brings the Blacksmith in front of the spore.
+3. Asks for his screen.
+4. The fake Minecraft puts the three into the slots in that order and takes the result, then tries
+   the same three again.
+
+**Result:**
+- The Blacksmith took #2, #3 and #4, not the Stick.
+- Mycelium's closest thing was the Blacksmith. Mycelium's own Blacksmith took 0 weapons.
+- Forged #5 "Undergrown Feline Avocado Flamberge": the Avocado Flamberge with Feline (from the Rose
+  Mace) and Undergrown (from the Opal Rapier), 0.1 s after the request. The three given were gone.
+- The same three again: refused ("a weapon given isn't in your bag").
+- He was done after that ("a Blacksmith here false"). No errors in Unity's log.
+
+**Not tested:**
+- The Minecraft side as a whole: the screen, its slots, the result, the item becoming your weapon,
+  and the chat line. The stand-in can't show a Minecraft screen. The jar builds.
+- The R key itself on the Blacksmith. In the stand-in the key press doesn't reach Mycelium (its
+  window has no focus), so the test called the same code the key would.
+
+## 2026-11-08 Interacting works again after picking up a weapon
+
+**Found while testing the Blacksmith:** after a weapon pickup, Mycelium's code that finds what's
+near enough to interact with (`SporeInteractableFinder`) threw an error every frame.
+- The weapon you swap out goes into your bag, and this mod removes its object from the world.
+- But Mycelium still had that weapon on its list of nearby things. It only takes a thing off the
+  list when the thing walks out of range, and a removed thing never does.
+- From then on nothing near you became the thing to interact with. In the test, the Blacksmith
+  standing right in front was never picked.
+
+**Changed:** `ForgeWatch.PruneFinder` takes removed things off that list every frame, before
+Mycelium's code reads it. The log says "interact: N removed thing(s) taken off ...".
+
+**Tested how:** stand-in, the same forge test (three pickups).
+**Result:**
+- Before: dozens of `NullReferenceException at SporeInteractableFinder.Update` in Unity's log, and
+  the closest thing stayed "none".
+- After: 0 errors. 3 removed weapons were taken off the list, and the Blacksmith became the closest
+  thing in 0.1 s.
+
+**Not tested:** in Minecraft by hand. If you noticed pop-ups or Interact stop working after
+picking up a weapon, this was the likely cause.
+
 ## 2026-11-08 Skills go into cooldown again after lots of spore swaps
 
 **Your report:** in a run with a different spore (Nala), your skills weren't going into cooldown.

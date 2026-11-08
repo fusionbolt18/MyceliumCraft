@@ -97,9 +97,19 @@ public final class Proto {
 	public static final long BS_SEQ = 0x00, BS_SHOWN = 0x04, BS_PROGRESS = 0x08, BS_NAME = 0x10;
 	public static final int BS_NAME_BYTES = 0x80;
 
-	public static final long MAPPING_BYTES = OFF_BOSS + BOSS_BYTES;
+	// Forge: Blacksmith Ironspore as Minecraft's smithing screen, since v48. Mycelium writes 0x00..0xFF (seqlock), Minecraft writes 0x100.. (its request; the request seq last).
+	public static final long OFF_FORGE = OFF_BOSS + BOSS_BYTES;
+	public static final long FORGE_BYTES = 0x400; // 0x200 before v49
+	public static final long FG_PREVIEW_HANDLED = 0x18, FG_PREVIEW = 0x200; // since v49: the preview request answered, and the forged weapon as it would be (a Weapons entry)
+	public static final long FG_SEQ = 0x00, FG_OPEN_SEQ = 0x04, FG_HANDLED = 0x08, FG_RESULT = 0x0C, FG_COUNT = 0x10, FG_FLAGS = 0x14, FG_IDS = 0x20, FG_REASON = 0xA0;
+	public static final int FG_MAX = 32, FG_REASON_BYTES = 0x60;
+	public static final int FG_AVAILABLE = 1; // a Blacksmith that hasn't forged yet is in this level
+	public static final long FG_REQUEST_SEQ = 0x100, FG_BASE = 0x104, FG_DONOR1 = 0x108, FG_DONOR2 = 0x10C;
+	public static final long FG_PREVIEW_SEQ = 0x110, FG_PREVIEW_BASE = 0x114, FG_PREVIEW_DONOR1 = 0x118, FG_PREVIEW_DONOR2 = 0x11C; // since v49
+
+	public static final long MAPPING_BYTES = OFF_FORGE + FORGE_BYTES;
 	public static final int MAGIC = 0x4343594D; // "MYCC"
-	public static final int VERSION = 47;
+	public static final int VERSION = 49;
 	/** A side is alive if its heartbeat is younger than this. */
 	public static final long HEARTBEAT_TIMEOUT_MS = 3000;
 

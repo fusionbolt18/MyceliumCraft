@@ -346,6 +346,80 @@ public final class MycLink {
 		return false;
 	}
 
+	/** The Blacksmith, as Mycelium says (Forge block). */
+	public static final class Forge {
+		public int openSeq, handled, result, count, flags, previewHandled;
+		public final Weapon preview = new Weapon(); // the forged weapon as it would be (since v49)
+		public final int[] ids = new int[FG_MAX];
+		public String reason = "";
+	}
+
+	public static boolean readForge(Forge out) {
+		MemorySegment s = shm;
+		if (s == null) {
+			return false;
+		}
+		long b = OFF_FORGE;
+		for (int attempt = 0; attempt < 16; attempt++) {
+			int seq1 = (int) INT.getAcquire(s, b + FG_SEQ);
+			if ((seq1 & 1) != 0) {
+				Thread.onSpinWait();
+				continue;
+			}
+			out.openSeq = s.get(JAVA_INT, b + FG_OPEN_SEQ);
+			out.handled = s.get(JAVA_INT, b + FG_HANDLED);
+			out.result = s.get(JAVA_INT, b + FG_RESULT);
+			out.count = Math.max(0, Math.min(FG_MAX, s.get(JAVA_INT, b + FG_COUNT)));
+			out.flags = s.get(JAVA_INT, b + FG_FLAGS);
+			MemorySegment.copy(s, JAVA_INT, b + FG_IDS, out.ids, 0, out.count);
+			out.reason = utf8(s, b + FG_REASON, FG_REASON_BYTES);
+			out.previewHandled = s.get(JAVA_INT, b + FG_PREVIEW_HANDLED);
+			readWeaponEntry(s, b + FG_PREVIEW, out.preview);
+			VarHandle.loadLoadFence();
+			if (seq1 == (int) INT.getVolatile(s, b + FG_SEQ)) {
+				return true;
+			}
+		}
+		return false;
+	}
+
+	/** Ask Mycelium to forge: the ids first, the request seq last. */
+	public static void writeForgeRequest(int seq, int baseId, int donor1, int donor2) {
+		MemorySegment s = shm;
+		if (s == null) {
+			return;
+		}
+		long b = OFF_FORGE;
+		s.set(JAVA_INT, b + FG_BASE, baseId);
+		s.set(JAVA_INT, b + FG_DONOR1, donor1);
+		s.set(JAVA_INT, b + FG_DONOR2, donor2);
+		INT.setRelease(s, b + FG_REQUEST_SEQ, seq);
+	}
+
+	/** Ask Mycelium for the forged weapon's numbers as it would be: the ids first, the seq last. */
+	public static void writeForgePreview(int seq, int baseId, int donor1, int donor2) {
+		MemorySegment s = shm;
+		if (s == null) {
+			return;
+		}
+		long b = OFF_FORGE;
+		s.set(JAVA_INT, b + FG_PREVIEW_BASE, baseId);
+		s.set(JAVA_INT, b + FG_PREVIEW_DONOR1, donor1);
+		s.set(JAVA_INT, b + FG_PREVIEW_DONOR2, donor2);
+		INT.setRelease(s, b + FG_PREVIEW_SEQ, seq);
+	}
+
+	public static int forgePreviewSeq() {
+		MemorySegment s = shm;
+		return s == null ? 0 : (int) INT.getAcquire(s, OFF_FORGE + FG_PREVIEW_SEQ);
+	}
+
+	/** Minecraft's own last request seq as written (for the stand-in). */
+	public static int forgeRequestSeq() {
+		MemorySegment s = shm;
+		return s == null ? 0 : (int) INT.getAcquire(s, OFF_FORGE + FG_REQUEST_SEQ);
+	}
+
 	/** How far Minecraft's collision has pushed this spore in all, in blocks. */
 	public static void writeSporePush(int slot, float totalX, float totalZ) {
 		MemorySegment s = shm;
@@ -459,19 +533,7 @@ public final class MycLink {
 			header.heldId = s.get(JAVA_INT, b + W_HELD_ID);
 			header.damageScale = s.get(JAVA_FLOAT, b + W_DAMAGE_SCALE);
 			for (int i = 0; i < count; i++) {
-				long e = b + W_LIST + i * W_SIZE;
-				Weapon w = out[i];
-				w.id = s.get(JAVA_INT, e + WE_ID);
-				w.type = s.get(JAVA_INT, e + WE_TYPE);
-				w.damage = s.get(JAVA_FLOAT, e + WE_DAMAGE);
-				w.perSecond = s.get(JAVA_FLOAT, e + WE_PER_SECOND);
-				w.knockback = s.get(JAVA_FLOAT, e + WE_KNOCKBACK);
-				w.damageMult = s.get(JAVA_FLOAT, e + WE_DAMAGE_MULT);
-				w.speedMod = s.get(JAVA_FLOAT, e + WE_SPEED_MOD);
-				w.reach = s.get(JAVA_FLOAT, e + WE_REACH);
-				w.name = utf8(s, e + WE_NAME, WE_NAME_BYTES);
-				w.attributes = utf8(s, e + WE_ATTS, WE_ATTS_BYTES);
-				w.key = utf8(s, e + WE_KEY, WE_KEY_BYTES);
+				readWeaponEntry(s, b + W_LIST + i * W_SIZE, out[i]);
 			}
 			VarHandle.loadLoadFence();
 			if ((int) INT.getVolatile(s, b + W_SEQ) == seq1) {
@@ -479,6 +541,20 @@ public final class MycLink {
 			}
 		}
 		return -1;
+	}
+
+	private static void readWeaponEntry(MemorySegment s, long e, Weapon w) {
+		w.id = s.get(JAVA_INT, e + WE_ID);
+		w.type = s.get(JAVA_INT, e + WE_TYPE);
+		w.damage = s.get(JAVA_FLOAT, e + WE_DAMAGE);
+		w.perSecond = s.get(JAVA_FLOAT, e + WE_PER_SECOND);
+		w.knockback = s.get(JAVA_FLOAT, e + WE_KNOCKBACK);
+		w.damageMult = s.get(JAVA_FLOAT, e + WE_DAMAGE_MULT);
+		w.speedMod = s.get(JAVA_FLOAT, e + WE_SPEED_MOD);
+		w.reach = s.get(JAVA_FLOAT, e + WE_REACH);
+		w.name = utf8(s, e + WE_NAME, WE_NAME_BYTES);
+		w.attributes = utf8(s, e + WE_ATTS, WE_ATTS_BYTES);
+		w.key = utf8(s, e + WE_KEY, WE_KEY_BYTES);
 	}
 
 	private static String utf8(MemorySegment s, long off, int max) {

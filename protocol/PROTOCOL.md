@@ -29,7 +29,7 @@ a block without locks.
 - **Reader:** read `seq`. If it's odd, try again. Read the fields, then read `seq` again. If it
   changed, try again.
 
-## Layout (version 27)
+## Layout (version 49)
 
 ### Header @ 0x000
 
@@ -307,6 +307,37 @@ The final boss's bar (`BossBar.cs`, `MycBossBar.java`). The mapping grows by 0x1
 | 0x04 | u32 | 1 = show the bar |
 | 0x08 | f32 | health 0..1 (`HUDBoss.bossHealthBar.fillAmount`) |
 | 0x10 | utf8[128] | the boss's name, colour tags taken out |
+
+### Forge @ after Boss. Since version 48
+
+Blacksmith Ironspore (Mycelium's `ForgeShroom`) as Minecraft's smithing screen (`ForgeWatch.cs`,
+`MycForge.java`). The mapping grows by 0x200 (0x400 since version 49).
+
+Mycelium writes 0x00..0xFF (seqlock):
+
+| Off | Type | Field |
+|---|---|---|
+| 0x00 | u32 | seq |
+| 0x04 | u32 | open seq: changes when you interact with the Blacksmith; Minecraft opens its screen |
+| 0x08 | u32 | handled: the last Minecraft request seq Mycelium has answered |
+| 0x0C | u32 | result: the forged weapon's id (Weapons table) for that request; 0 = refused |
+| 0x10 | u32 | count of weapons the Blacksmith takes (at most 32) |
+| 0x14 | u32 | flags: bit0 `AVAILABLE`, a Blacksmith that hasn't forged yet is in this level |
+| 0x20 | u32 ×32 | the weapon ids the Blacksmith takes (not a Stick, not forged, with at least one attribute) |
+| 0xA0 | utf8[96] | why the last request was refused ("" if it wasn't) |
+| 0x18 | u32 | since version 49: the last preview seq Mycelium has answered |
+| 0x200 | entry (0x120) | since version 49: the forged weapon as it would be for that preview, laid out as a Weapons entry (id 0); name "" = none |
+
+Minecraft writes 0x100..:
+
+| Off | Type | Field |
+|---|---|---|
+| 0x100 | u32 | request seq: written last; a new value is a new request |
+| 0x104 | u32 | the base weapon id (first slot) |
+| 0x108 | u32 | the first attribute donor (second slot) |
+| 0x10C | u32 | the second attribute donor (third slot) |
+| 0x110 | u32 | since version 49: preview seq, written last; a new value asks for the result's numbers for the three below (the slots as they are) |
+| 0x114 | u32 ×3 | the base and the two donors for the preview |
 
 ### SporeMoves @ after Bodies. Since version 46
 

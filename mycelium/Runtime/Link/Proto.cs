@@ -105,9 +105,20 @@ namespace MyceliumCraft.Link
         public const int BossBytes = 0x100;
         public const int BsSeq = 0x00, BsShown = 0x04, BsProgress = 0x08, BsName = 0x10, BsNameBytes = 0x80;
 
-        public const int MappingBytes = OffBoss + BossBytes;
+        // Forge: Blacksmith Ironspore as Minecraft's smithing screen, since v48. Mycelium writes 0x00..0xFF
+        // (seqlock), Minecraft writes 0x100.. (its request; the request seq last).
+        public const int OffForge = OffBoss + BossBytes;
+        public const int ForgeBytes = 0x400; // 0x200 before v49
+        public const int FgSeq = 0x00, FgOpenSeq = 0x04, FgHandled = 0x08, FgResult = 0x0C, FgCount = 0x10, FgFlags = 0x14, FgIds = 0x20, FgReason = 0xA0;
+        public const int FgPreviewHandled = 0x18, FgPreview = 0x200; // since v49: the preview request answered, and the forged weapon as it would be (a Weapons entry)
+        public const int FgMax = 32, FgReasonBytes = 0x60;
+        public const uint FgAvailable = 1; // a Blacksmith that hasn't forged yet is in this level
+        public const int FgRequestSeq = 0x100, FgBase = 0x104, FgDonor1 = 0x108, FgDonor2 = 0x10C;
+        public const int FgPreviewSeq = 0x110, FgPreviewBase = 0x114, FgPreviewDonor1 = 0x118, FgPreviewDonor2 = 0x11C; // since v49
+
+        public const int MappingBytes = OffForge + ForgeBytes;
         public const uint Magic = 0x4343594D; // "MYCC"
-        public const uint Version = 47;
+        public const uint Version = 49;
         public const ulong HeartbeatTimeoutMs = 3000;
 
         // Header @0x000

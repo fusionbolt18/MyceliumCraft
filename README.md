@@ -187,6 +187,15 @@ Single-player and offline only.
   spores, and swaps work with a stand-in body in Mycelium. Minecraft's log shows the skins made and your player wearing one;
   you've seen the other spores as Minecraft characters. **Not tested in Minecraft:** their size
   matching yours, their walking, the cap's brightness.
+- **Stat attributes say what they give** in a weapon's hover box ("Beefy: +3 [Primal icon], +3
+  [Vitality icon]" with Mycelium's stat icons, "Golden: +2 All Stats"). Tested with a fake Minecraft; **not tested in Minecraft.**
+- **Blacksmith Ironspore opens a smithing screen in Minecraft** (first slot the weapon base, next
+  two the attribute donors). The result shows the forged weapon's name and numbers, and you get
+  exactly that weapon. Forging works with a fake Minecraft; **the Minecraft screen is not
+  tested.** He forges once and takes no Stick, nothing forged, and nothing without an attribute, as
+  in Mycelium.
+- **Interacting works again after picking up a weapon** (Mycelium's nearby-things list kept the
+  swapped-out weapon and threw errors every frame). Tested with a fake Minecraft.
 - **Skills keep their cooldowns after many spore swaps.** Mycelium leaves traits hooked on (the Smarty
   Pants trait piled up and cut every cooldown to almost nothing). Only your spore's traits act now.
   Tested in Mycelium with a fake Minecraft; **not tested by hand.**

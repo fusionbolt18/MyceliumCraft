@@ -668,6 +668,16 @@ Stick.
     the held weapon's value (`EnemyKnockback.Knockback`, as `WeaponCollision` does).
 - Sent in the Weapons table (protocol v24) with a version number that changes on any change.
 
+**Attribute lines** (since 2026-11-08): each attribute is "Name: description". A stat attribute
+also says what it gives while held, from its `primalAmount`, `sentienceAmount`, `speedAmount` and
+`vitalityAmount`: "Beefy: +3 Primal, +3 Vitality", or "Golden: +2 All Stats" when all four are the
+same (`WeaponBag.StatText`). In Minecraft's tooltips a stat name after an amount is drawn as
+Mycelium's icon for it (`MycWeapons.attributeLine`). The icons form a font, `myceliumcraft:stat_icons`
+(U+E000 Primal, E001 Sentience, E002 Speed, E003 Vitality), which `build.gradle`'s `statIcons` step
+cuts from Mycelium's own icon sheet when the jar is built. It's read from the Mycelium install, and
+goes only into build output and the jar (AGENTS.md rule 1). Without the install the jar has no
+icons and the names stay.
+
 **Weapon attributes work with Minecraft's attacks** (since 2026-10-21). Mycelium's attributes hook
 in three ways:
 
@@ -789,6 +799,75 @@ hides it when you walk away. Here it goes into the bag, so the panel stayed (you
 `WeaponBag.HideStatsAfterPickup`: 1 s after a pickup where the old or new weapon changes stats,
 `HUDStats.HideStats` (Mycelium's), unless another weapon's pop-up is open (that one hides it when it
 closes). `-mcPickupTest <Type/Prefab>` picks up a chosen weapon and logs where the panel is.
+
+### 5.0.4.0 Blacksmith Ironspore: Minecraft's smithing screen (since 2026-11-08, protocol v48)
+
+Your request: interacting with Blacksmith Ironspore (Mycelium's `ForgeShroom`, in the first level)
+opens Minecraft's smithing table screen. The first slot is the weapon base, the next two are the
+attribute donors.
+
+**Mycelium's own rules, kept:**
+- He takes no Stick, nothing forged already, and nothing without an attribute.
+- The forged weapon is the base's prefab with its own attributes taken off. It gets each donor's
+  first attribute (`AttributeAssigner.PickAttFromString`), all rated Forged, and no random one.
+- He forges once (`weaponGoalReached`).
+
+**Mycelium side** (`ForgeWatch`, `WeaponBag.Forge`):
+- **The key:** `PlayerController.Update` reads Interact and calls `Interact` on the closest thing
+  (`SporeInteractableFinder.closestInteractableObject`). The mod can't change that code. Instead, a
+  component that runs before every other script (`ForgeCatch`, execution order −10000) sees the
+  press while Minecraft drives:
+  1. If the closest thing is the Blacksmith, it asks Minecraft to open the screen (open seq).
+  2. It sets `weaponGoalReached` for that one frame, so Mycelium's `Interact` only takes its pop-up
+     away.
+  3. It puts the flag back after every script has run (`LateUpdate`).
+  While Minecraft isn't driving, his own interaction is left alone.
+- **Before that:** removed things are taken off the finder's list (`PruneFinder`). A swapped-out
+  weapon goes into your bag and is removed from the world, and the finder threw on it every frame
+  after (MODLOG 2026-11-08).
+- **Every frame** it sends which of your weapons he takes, and whether an unfinished Blacksmith is in
+  the level.
+- **A request** (base, donor, donor) is forged by `WeaponBag.Forge`:
+  1. It checks his rules again.
+  2. It waits until the spore doesn't hold any of the three. They went into the screen, so
+     Minecraft's hand doesn't hold them, and the hand follows within a moment.
+  3. It builds the weapon out of sight (5000 units down, not drawn, no collider) and reads it into
+     the bag as a weapon of yours. The object is removed, and the three given leave the bag.
+- A forged weapon (`Weapon.Forged`) drops its prefab's own attributes whenever it's rebuilt (held or
+  thrown), as `ForgeShroom` does when it makes one.
+
+**Minecraft side** (`MycForge`):
+- **The menu:** a menu type of the mod's own (`myceliumcraft:blacksmith`), an `ItemCombinerMenu`
+  with the smithing table's slot places (8, 26, 44 and the result at 98). Vanilla's `SmithingMenu`
+  can't be reused: its slots take only smithing templates.
+- **The screen:** `ItemCombinerScreen` with vanilla's `smithing.png`. Hovering an empty slot says
+  what it's for. The red error mark shows when the three slots are full but there's no result.
+- **The slots** take only the weapon items Mycelium says he takes. Weapons left in them go back to
+  you when the screen closes.
+- **The result** is a copy of the base item with lore: "Forged by Blacksmith Ironspore", and each
+  donor's first attribute. Since protocol v49 it carries the forged weapon's numbers. Minecraft
+  sends the slots as a preview request, and Mycelium builds the forged weapon out of sight
+  (`WeaponBag.BuildPreview`) and works out its numbers every frame like your other weapons' (reach:
+  the base's). The answer's name, numbers and attributes go onto the result as on any weapon item,
+  and the menu makes the result again whenever they change. Forging uses that same built weapon,
+  so you get what the preview showed. Before the answer, it's named as Mycelium names the forged
+  weapon (`ForgeName`). Mycelium
+  puts each attribute's name in front of the plain name, the last attribute first. So the base's
+  attribute names are taken off its name, then "second donor's first donor's plain name". Its numbers come once Mycelium has forged it.
+- **Taking the result:** the three are used up and the request is written.
+  - The item you took stays a stand-in until Mycelium answers.
+  - Once the answer is in and the new weapon is in Minecraft's copy of the table, the stand-in gets
+    that weapon's id. `MycWeapons` then writes its name, numbers and attributes.
+  - Refused (or no answer for 10 s): the stand-in goes, your three come back, and a chat line says
+    why.
+- **`MycWeapons.sync`:**
+  - It counts weapons in the Blacksmith's slots as present.
+  - It doesn't put back the three while a request waits, or for 5 s after the answer.
+  - It doesn't take away the new weapon in those 5 s while its table catches up.
+- **Closing:** the screen closes when there's no unfinished Blacksmith in the level (after forging).
+
+**Checked:** stand-in, `-mcForgeTest` with `LINKTEST_FORGE=1 LINKTEST_STILL=1` (MODLOG
+2026-11-08). The Minecraft screen itself isn't tested.
 
 ### 5.0.4.1 Resources: each one you carry is an item (since 2026-11-02, protocol v39)
 
