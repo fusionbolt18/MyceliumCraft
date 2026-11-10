@@ -43,8 +43,9 @@ Single-player and offline only.
   nearest enemy or hitbox) and can be wrong. Minecraft's death roll isn't copied.
 - **Weapons are food items in your Minecraft inventory** (Slash weapons bread, Smash beetroot, Stab
   carrots; not tested in Minecraft).
-  - **Pickup:** picking up a weapon keeps the one you had; the new one gets a carrot and is
-    selected.
+  - **Pickup:** picking up a weapon keeps the one you had; the new one gets a carrot. It's only
+    selected if you weren't holding a weapon; otherwise you keep holding yours (not tested in
+    Minecraft).
   - **Switching:** the spore holds the weapon whose carrot you select.
   - **The carrot:** its name, attack damage (Mycelium damage ÷ 5) and attack speed match the
     weapon, with the spore's level and the weapon's attributes counted. Its description lists

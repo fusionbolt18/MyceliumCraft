@@ -86,6 +86,7 @@ namespace MyceliumCraft
         GameObject expected;
         uint selectSeq, selectId;
         uint pendingSelect;
+        uint minecraftHandNow; // the weapon in Minecraft's main hand this frame (0 = none of yours)
         float pendingSince;
         float nextLog;
         readonly Dictionary<string, float> clipLength = new Dictionary<string, float>();
@@ -131,6 +132,7 @@ namespace MyceliumCraft
         public void Update(MonoBehaviour host, MyceliumLink link, bool minecraftDriving, uint minecraftHand, WorldMapping map)
         {
             this.host = host;
+            minecraftHandNow = minecraftDriving ? minecraftHand : 0;
             Component swap = FindSwap();
             if (swap == null) { link.WriteWeapons(version, 0, null, selectSeq, selectId, 0, McConfig.DamageScale); return; }
             GameObject cur = Get(swap, "O_curWeapon") as GameObject;
@@ -351,8 +353,20 @@ namespace MyceliumCraft
             w.Live = null;
         }
 
+        /// <summary>
+        /// A new weapon is in the spore's hand: ask Minecraft to select its carrot, but only when
+        /// Minecraft's hand holds none of your weapons (a run's first Stick, a pickup after a throw).
+        /// Holding one, the hotbar stays where it is (your request, 2026-11-10: new weapons were
+        /// selected) and Follow puts the spore back on the weapon Minecraft's hand holds; the new
+        /// one waits in the bag, its carrot in the inventory.
+        /// </summary>
         void AskSelect(uint id)
         {
+            if (minecraftHandNow != 0 && minecraftHandNow != id && Find(minecraftHandNow) != null)
+            {
+                McLog.Info($"weapons: #{id} is new; not selected: Minecraft's hand holds #{minecraftHandNow} '{Find(minecraftHandNow).Name}', the spore goes back to it");
+                return;
+            }
             selectSeq++;
             selectId = id;
             pendingSelect = id;

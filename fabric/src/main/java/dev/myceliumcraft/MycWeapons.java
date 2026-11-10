@@ -46,7 +46,8 @@ import net.minecraft.world.item.component.ItemLore;
  *  - not food (it can't be eaten).
  * Rewritten when Mycelium's numbers change (levelling up, a stat attribute, Fungal Might). Carrots of
  * weapons Mycelium doesn't have any more are removed (a new run starts with only the Stick), and so
- * are copies. After a pickup Minecraft selects the new carrot.
+ * are copies. A new weapon's carrot is selected only when your hand holds none of your weapons
+ * (Mycelium asks: WeaponBag.AskSelect); otherwise the hotbar stays where it is.
  *
  * Throwing one (your choice, 2026-10-21): the item flies through Minecraft's world as usual (its own
  * physics, on Mycelium's ground), nobody can pick it up, and its position goes to Mycelium every
@@ -142,7 +143,7 @@ public final class MycWeapons {
 				}
 			});
 		}
-		// Mycelium picked a weapon up: select its carrot (once it's in the hotbar).
+		// Mycelium asks to select a new weapon (only when the hand holds none of yours): select its carrot (once it's in the hotbar).
 		if (HEADER.selectSeq != lastSelectSeq) {
 			if (lastSelectSeq != Integer.MIN_VALUE && HEADER.selectId != 0) {
 				pendingSelect = HEADER.selectId;

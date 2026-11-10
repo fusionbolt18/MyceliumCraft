@@ -1,5 +1,21 @@
 # MODLOG
 
+## 2026-11-10 New weapons aren't selected in the hotbar
+
+**Your request:** new weapons shouldn't be selected automatically.
+
+**Changed:**
+- `WeaponBag.AskSelect` (Mycelium): after a pickup, Minecraft is only asked to select the new
+  carrot when its main hand holds none of your weapons (a run's first Stick, or a pickup after you
+  threw your weapon), so you're never left empty-handed. Otherwise nothing is selected; Mycelium
+  put the new weapon in the spore's hand, so the spore switches straight back to the weapon in
+  Minecraft's hand, and the new one waits in the bag with its carrot in the inventory.
+- Log line (Mycelium): "weapons: #N is new; not selected: Minecraft's hand holds #M ..., the spore
+  goes back to it".
+
+**Tested how:** both builds pass. Not tested: there's no stand-in test for a pickup, and not tested
+in Minecraft.
+
 ## 2026-11-09 The final boss's sand pull moves you (protocol v59)
 
 **Your report:** the boss's move that should pull you towards it doesn't move you at all.

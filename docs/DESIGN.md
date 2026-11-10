@@ -626,8 +626,11 @@ Stick.
 - **Picking up** still goes through Mycelium (`WeaponInteraction.Interact`: the new one in the
   hand, attributes unequipped/equipped). The weapon you held, which Mycelium lets go into the
   world, is saved into the bag instead and its object removed. The save copies
-  `LevelEnd.GoToNextLevel`: attribute type names, values and rarities. Then Minecraft is asked to
-  select the new carrot. Until it does (at most 3 s), Minecraft's hand isn't followed.
+  `LevelEnd.GoToNextLevel`: attribute type names, values and rarities. If Minecraft's hand holds
+  none of your weapons (a run's first Stick, a pickup after a throw), Minecraft is asked to select
+  the new carrot, and until it does (at most 3 s) its hand isn't followed. If it holds one, the
+  hotbar stays where it is (your request, 2026-11-10) and the spore switches back to that weapon at
+  once; the new one waits in the bag (`WeaponBag.AskSelect`).
 - **Switching:** the spore holds the weapon whose carrot is in Minecraft's main hand (McState
   0x90). The held one is saved (attributes unequipped) and removed. The wanted one is rebuilt much
   as `LevelGenerator` rebuilds the held weapon in a new level:
@@ -798,8 +801,8 @@ in three ways:
      weapon stays where it is as a pickup. Picking it up is an ordinary pickup: it comes back as a
      new weapon with its attributes.
 - The carrot on the cursor in an open inventory counts as held.
-- **Pickups:** the new carrot is selected once it's in the hotbar (within 3 s; a full hotbar
-  means it isn't).
+- **Pickups:** when Mycelium asks (only if your hand held none of your weapons), the new carrot is
+  selected once it's in the hotbar (within 3 s; a full hotbar means it isn't).
 - **Death:** the carrots are taken out just before Mycelium's death kills the Minecraft player,
   so they don't drop. The run's end then empties the table.
 
