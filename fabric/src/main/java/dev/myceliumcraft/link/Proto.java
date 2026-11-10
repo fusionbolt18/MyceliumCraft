@@ -99,6 +99,7 @@ public final class Proto {
 	public static final long OFF_BOSS = OFF_SPORE_MOVES + SPORE_MOVES_BYTES;
 	public static final long BOSS_BYTES = 0x100;
 	public static final long BS_SEQ = 0x00, BS_SHOWN = 0x04, BS_PROGRESS = 0x08, BS_NAME = 0x10;
+	public static final long BS_PULL_X = 0x90, BS_PULL_Z = 0x94; // f32, since v59: the boss's pull on you, blocks/s (0 and 0 = none)
 	public static final int BS_NAME_BYTES = 0x80;
 
 	// Forge: Blacksmith Ironspore as Minecraft's smithing screen, since v48. Mycelium writes 0x00..0xFF (seqlock), Minecraft writes 0x100.. (its request; the request seq last).
@@ -113,7 +114,7 @@ public final class Proto {
 
 	public static final long MAPPING_BYTES = OFF_FORGE + FORGE_BYTES;
 	public static final int MAGIC = 0x4343594D; // "MYCC"
-	public static final int VERSION = 58;
+	public static final int VERSION = 59;
 	/** A side is alive if its heartbeat is younger than this. */
 	public static final long HEARTBEAT_TIMEOUT_MS = 3000;
 

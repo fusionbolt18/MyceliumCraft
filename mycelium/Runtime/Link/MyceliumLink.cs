@@ -385,6 +385,19 @@ namespace MyceliumCraft.Link
             WriteU32(view, b + Proto.BsSeq, seq + 2);
         }
 
+        /// <summary>The boss's pull on you (PullWatch), Minecraft blocks per second; 0 and 0 = none.</summary>
+        public void WriteBossPull(float x, float z)
+        {
+            int b = Proto.OffBoss;
+            uint seq = ReadU32(view, b + Proto.BsSeq);
+            WriteU32(view, b + Proto.BsSeq, seq + 1);
+            Thread.MemoryBarrier();
+            WriteF32(view, b + Proto.BsPullX, x);
+            WriteF32(view, b + Proto.BsPullZ, z);
+            Thread.MemoryBarrier();
+            WriteU32(view, b + Proto.BsSeq, seq + 2);
+        }
+
         /// <summary>The Blacksmith for Minecraft: open requests, which weapons it takes, the answer to the last request.</summary>
         public void WriteForge(uint openSeq, bool available, uint[] ids, int count, uint handled, uint result, string reason, uint previewHandled, WeaponEntry preview)
         {

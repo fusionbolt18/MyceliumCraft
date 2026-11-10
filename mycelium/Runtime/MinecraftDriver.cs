@@ -61,6 +61,7 @@ namespace MyceliumCraft
         readonly WeaponBag weapons = new WeaponBag();
         readonly SkillAim skillAim = new SkillAim();
         readonly DashWatch dash = new DashWatch();
+        readonly PullWatch pull = new PullWatch(); // the final boss's sand pull, for Minecraft's player
         readonly ColonyWatch colony = new ColonyWatch();
         readonly BirthCutscene birth = new BirthCutscene();
         readonly NutrientPanel nutrientPanel = new NutrientPanel();
@@ -321,6 +322,9 @@ namespace MyceliumCraft
             if (Array.IndexOf(args, "-mcPopUpTest") >= 0) StartCoroutine(PopUpTest());
             // Test aid: "-mcBossIntroTest" walks you into the final boss's trigger 3 s into driving, as reaching it does.
             if (Array.IndexOf(args, "-mcBossIntroTest") >= 0) StartCoroutine(BossIntroTest());
+            // Test aid: "-mcBossPullTest" switches the final boss's attacks on 3 s into driving, as the intro's end
+            // does: its sand pull starts 5 s later and lasts 5 s (PullWatch logs it).
+            if (Array.IndexOf(args, "-mcBossPullTest") >= 0) StartCoroutine(BossPullTest());
             // Test aid: "-mcLoop <n>" starts on that loop, to see its nutrient bonus.
             int loopArg = Array.IndexOf(args, "-mcLoop");
             if (loopArg >= 0 && loopArg + 1 < args.Length && int.TryParse(args[loopArg + 1], out int loop))
@@ -528,6 +532,9 @@ namespace MyceliumCraft
             // The final boss's health: Minecraft's boss bar instead of Mycelium's (BossBar, MycBossBar.java).
             bossBar.Update(link, McConfig.Overlay && rb != null && phase != Phase.Idle && link.MinecraftAlive,
                            heldByMycelium && !this.controlsWhy.EndsWith("knockback"));
+            // The boss's sand pull moves Minecraft's player (PullWatch, MycBossPull.java).
+            pull.ForMinecraft(map, out float pullX, out float pullZ);
+            if (link != null) link.WriteBossPull(pullX, pullZ);
 
             // Your colony: in Minecraft's player list instead of Mycelium's colony meter (ColonyWatch, MycColony.java).
             if (colony.Update(rb != null && Steering && link.MinecraftAlive, (float)map.Scale))
@@ -759,6 +766,8 @@ namespace MyceliumCraft
             if (!driving) SetMyceliumTurning(true);
             driving = false;
             if (link == null || rb == null) return;
+            // The boss's pull: the force it gathered on the spore since the last step, before the velocity is set below (PullWatch).
+            pull.Step(rb, link.MinecraftAlive && phase == Phase.Driving, controlsWhy.EndsWith("knockback"));
             bool alive = link.MinecraftAlive;
             McState fresh = default;
             bool read = alive && link.TryReadMcState(out fresh) && fresh.InWorld;
@@ -2482,6 +2491,28 @@ namespace MyceliumCraft
             yield return new WaitForSeconds(2f);
             McLog.Info("boss bar test: beaten (0/1000)");
             t.GetMethod("UpdateBossHealthUI").Invoke(hudBoss, new object[] { 0f, 1000f });
+        }
+
+        /// <summary>Test aid (-mcBossPullTest): the final boss's attacks on, then where the spore and the boss are every second.</summary>
+        System.Collections.IEnumerator BossPullTest()
+        {
+            while (phase != Phase.Driving) yield return null;
+            yield return new WaitForSeconds(3f);
+            GameObject boss = GameObject.Find("Rival Sporemother");
+            var attacks = boss != null ? boss.GetComponent(Type.GetType("MonsterBossAttack, Assembly-CSharp")) as Behaviour : null;
+            if (attacks == null) { McLog.Info("boss pull test: no Rival Sporemother with MonsterBossAttack"); yield break; }
+            attacks.enabled = true;
+            McLog.Info($"boss pull test: the boss's attacks on; you're {Vector3.Distance(rb.position, boss.transform.position):F1} units from it");
+            for (int i = 1; i <= 14; i++)
+            {
+                yield return new WaitForSeconds(1f);
+                pull.ForMinecraft(map, out float x, out float z);
+                object paused = Type.GetType("GlobalData, Assembly-CSharp")?.GetField("isGamePaused")?.GetValue(null);
+                var target = attacks.GetType().GetField("player", BindingFlags.NonPublic | BindingFlags.Instance)?.GetValue(attacks) as Transform;
+                McLog.Info($"boss pull test: +{i} s: {Vector3.Distance(rb.position, boss.transform.position):F1} units from the boss; pull for Minecraft {Mathf.Sqrt(x * x + z * z):F2} blocks/s; " +
+                    $"pull particles {(GameObject.Find("BossSandPullParticles(Clone)") != null)}, paused {paused}, boss pulls '{(target != null ? target.name : "nobody")}' (you: '{rb.name}'), attacks on {attacks.isActiveAndEnabled}, timeScale {Time.timeScale}; " +
+                    $"phase {phase}, controls '{controlsWhy}', held by Mycelium {heldByMycelium}, spore at {rb.position:F1} velocity {rb.velocity:F1} kinematic {rb.isKinematic}, boss at {boss.transform.position:F1}");
+            }
         }
 
         /// <summary>Test aid (-mcBossDeathTest): BossHealth.EnemyTakeDamage with more than its health, then the hold and overlay every second.</summary>

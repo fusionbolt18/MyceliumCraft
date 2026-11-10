@@ -79,6 +79,7 @@ public final class MyceliumCraftClient implements ClientModInitializer {
 		boolean on = MycLink.myceliumAlive() && MYC.inLevel();
 		MycDash.tick(minecraft, on ? MYC.dashX : 0f, on ? MYC.dashZ : 0f);
 		MycDash.faceRoll(minecraft.player, on && (MYC.flags & Proto.MYC_ROLL) != 0, MYC.dashX, MYC.dashZ);
+		MycBossPull.tick(minecraft, on); // the final boss's sand pull
 		MycSkillAnimation.tick(minecraft, on && (MYC.flags & Proto.MYC_CYCLONE) != 0, on && (MYC.flags & Proto.MYC_ROLL) != 0);
 		MycFury.tick(minecraft, on && (MYC.flags & Proto.MYC_FURY) != 0); // Relentless Fury: red potion particles
 		blockAttackWhileCycloning(minecraft);

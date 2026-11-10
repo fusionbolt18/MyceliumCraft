@@ -1923,6 +1923,20 @@ While Mycelium shows a level (and `overlay=1`), Mycelium sets `OVERLAY` in its s
   `AT_DECORATION` is on (your spore's Bustin Moves) and stops it when it goes off. Your player is in
   the world, so Minecraft ticks its animation; the facing is held as for any emote.
 
+### 5.3.8d The final boss's sand pull (since 2026-11-09, protocol v59)
+
+- **Mycelium:** `PullWatch.Step` runs first in `MinecraftDriver.FixedUpdate`, before the velocity
+  is set to follow Minecraft. While a `MonsterBossAttack` is on and `BossSandPullParticles(Clone)`
+  exists, it reads `rb.GetAccumulatedForce(fixedDeltaTime)` (horizontal part, only when it points
+  within about 37 degrees of the boss, not during a knockback), turns it into speed (force × step
+  ÷ mass, as Mycelium's own step adds it to the walk), smooths it over 0.25 s, and adds the
+  opposite force so the spore doesn't move on its own. `ForMinecraft` gives it in blocks/s for the
+  Boss block (0x90, 0x94), written every frame.
+- **Minecraft:** `MycBossPull.tick` (start of each client tick) moves the player by a tick's worth
+  with `Entity.move` (collisions apply). It doesn't touch the velocity, where friction would make
+  it build up.
+- The pull's strength depends on Mycelium's frame rate, as in Mycelium itself.
+
 ### 5.3.9 Your spore's skin on mannequins of you (since 2026-11-08)
 
 Emotecraft's emote wheel draws you as a Minecraft mannequin (`ClientMannequin`) made from your

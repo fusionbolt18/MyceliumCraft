@@ -203,6 +203,8 @@ Single-player and offline only.
   is not tested in Minecraft.**
 - **The other spores sit and lie down at the curios** in Minecraft's poses, fitted to the bed as
   yours. Mycelium's side tested with a fake Minecraft; **the poses are not tested in Minecraft.**
+- **The final boss's sand pull moves you towards it.** Tested with a fake Minecraft; **not tested
+  in Minecraft.**
 - **Dancing at the beetle drum plays a random Emotecraft dance** (Club Penguin, Kazotsky Kick,
   Roblox Potion Dance, Over here), for the other spores and for you. **Not tested in Minecraft.**
 - **Spores hitting the beetle drum are animated**, after Mycelium's own drum hit. Mycelium's side

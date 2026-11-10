@@ -29,7 +29,7 @@ a block without locks.
 - **Reader:** read `seq`. If it's odd, try again. Read the fields, then read `seq` again. If it
   changed, try again.
 
-## Layout (version 58)
+## Layout (version 59)
 
 ### Header @ 0x000
 
@@ -311,6 +311,8 @@ The final boss's bar (`BossBar.cs`, `MycBossBar.java`). The mapping grows by 0x1
 | 0x04 | u32 | 1 = show the bar |
 | 0x08 | f32 | health 0..1 (`HUDBoss.bossHealthBar.fillAmount`) |
 | 0x10 | utf8[128] | the boss's name, colour tags taken out |
+| 0x90 | f32 | since version 59: the boss's sand pull on you, Minecraft blocks per second along x (`PullWatch.cs`); Minecraft moves its player by it every tick (`MycBossPull.java`) |
+| 0x94 | f32 | the same along z; 0 and 0 = no pull |
 
 ### Forge @ after Boss. Since version 48
 

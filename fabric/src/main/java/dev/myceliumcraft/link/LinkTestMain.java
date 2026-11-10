@@ -72,6 +72,9 @@ public final class LinkTestMain {
 	private static String bossSeen = "";
 	private static double nextSproutPrint;
 	private static final MycLink.Colony colony = new MycLink.Colony();
+	private static final float[] bossPull = new float[2];
+	private static double nextPullPrint;
+	private static long pullTick = -1;
 	// LINKTEST_THROW_RESOURCE=1: once Mycelium lists 3 resources, the first is thrown 1 s later, flying
 	// 3 blocks forward until 1.5 s after, landed for 0.5 s, then gone, as Minecraft reports a thrown item.
 	private static final boolean THROW_RESOURCE = "1".equals(System.getenv("LINKTEST_THROW_RESOURCE"));
@@ -327,6 +330,12 @@ public final class LinkTestMain {
 			if (STILL) {
 				tc = 0;
 				tp = 0;
+				// Like MycBossPull: the boss's pull moves the player a tick's worth per tick.
+				if (k > pullTick && MycLink.readBossPull(bossPull)) {
+					x += bossPull[0] / 20.0 * (pullTick < 0 ? 1 : k - pullTick);
+					z += bossPull[1] / 20.0 * (pullTick < 0 ? 1 : k - pullTick);
+				}
+				pullTick = k;
 			}
 			tick.prevX = x + 2 * Math.max(0, Math.min(tp, 5));
 			tick.prevZ = z - 2 * Math.max(0, Math.min(tp - 5, 5));
@@ -457,6 +466,10 @@ public final class LinkTestMain {
 							break;
 						}
 					}
+				}
+				if (MycLink.readBossPull(bossPull) && (bossPull[0] != 0f || bossPull[1] != 0f) && t >= nextPullPrint) {
+					nextPullPrint = t + 0.5;
+					System.out.printf("t=%.2f boss pull: %.2f, %.2f blocks/s (%.2f)%n", t, bossPull[0], bossPull[1], Math.hypot(bossPull[0], bossPull[1]));
 				}
 				if (MycLink.readColony(colony)) {
 					for (int i = 0; i < colony.count; i++) {

@@ -1,5 +1,39 @@
 # MODLOG
 
+## 2026-11-09 The final boss's sand pull moves you (protocol v59)
+
+**Your report:** the boss's move that should pull you towards it doesn't move you at all.
+
+**Why:** the boss (`MonsterBossAttack.ApplyPullForce`, 5 s out of every 10, starting 5 s after its
+attacks come on) pushes the spore's physics body towards itself every frame. While Minecraft
+drives, Mycelium's spore is set to follow Minecraft's player every physics step, so the push went
+nowhere. In Mycelium the pull is an extra speed on top of your walking, and it's stronger the
+higher the frame rate (the boss pushes once per frame, the physics steps 50 times a second).
+
+**Changed:**
+- New `PullWatch.cs`: at the start of each physics step it reads the force gathered on the spore
+  (`Rigidbody.GetAccumulatedForce`), turns it into the speed Mycelium would have added, and takes
+  the force off the spore. Only while the boss's attacks are on, its sand-pull particles are out,
+  you're not being knocked back, and the push points towards the boss. In the first test run
+  something else pushed once, away from the boss; that's left alone now.
+- The speed goes to Minecraft in the Boss block (0x90/0x94, blocks per second).
+- New `MycBossPull.java`: at the start of every tick, the player is moved by a tick's worth of it
+  (Minecraft's collisions apply), on top of its own walking.
+- Log lines: Mycelium "boss pull: '<boss>' pulls you" and "over after ... s, at most ... units/s";
+  Minecraft "the boss's pull moves the player (... blocks/s)" and "is over: it moved the player ...
+  blocks over ... ticks".
+- New test aid `-mcBossPullTest` (Impact Barrens: switches the boss's attacks on). The stand-in
+  with `LINKTEST_STILL=1` now also moves by the pull, as Minecraft does.
+
+**Tested how:** stand-in run (`-mcScene "Impact Barrens" -mcBossPullTest`, `LINKTEST_STILL=1`).
+Nothing until the sand particles came out 5 s after the attacks, then about 14 blocks/s towards the
+boss. The stand-in's player moved by it and the spore followed: 388 units from the boss, then 377,
+then 357. That speed is high because the background test runs at a very high frame rate. At a
+normal frame rate it should be roughly 1.5 to 4 blocks/s (worked out, not measured). One re-sync
+teleport happened as the pull dragged the stand-in up a slope (the stand-in doesn't follow the
+ground's height).
+**Not tested:** in Minecraft.
+
 ## 2026-11-09 Dancing at the beetle drum plays an Emotecraft dance
 
 **Your request:** spores dancing at the beetle drum, and you, pick one of Club Penguin, Kazotsky

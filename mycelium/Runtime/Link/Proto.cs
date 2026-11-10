@@ -108,6 +108,7 @@ namespace MyceliumCraft.Link
         public const int OffBoss = OffSporeMoves + SporeMovesBytes;
         public const int BossBytes = 0x100;
         public const int BsSeq = 0x00, BsShown = 0x04, BsProgress = 0x08, BsName = 0x10, BsNameBytes = 0x80;
+        public const int BsPullX = 0x90, BsPullZ = 0x94; // f32, since v59: the boss's pull on you, Minecraft blocks/s along x and z (0 and 0 = none)
 
         // Forge: Blacksmith Ironspore as Minecraft's smithing screen, since v48. Mycelium writes 0x00..0xFF
         // (seqlock), Minecraft writes 0x100.. (its request; the request seq last).
@@ -122,7 +123,7 @@ namespace MyceliumCraft.Link
 
         public const int MappingBytes = OffForge + ForgeBytes;
         public const uint Magic = 0x4343594D; // "MYCC"
-        public const uint Version = 58;
+        public const uint Version = 59;
         public const ulong HeartbeatTimeoutMs = 3000;
 
         // Header @0x000
