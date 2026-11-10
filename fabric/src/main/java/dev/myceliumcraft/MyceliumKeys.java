@@ -27,7 +27,7 @@ public final class MyceliumKeys {
 		key("subspecies_skill", InputConstants.Type.KEYBOARD, InputConstants.KEY_V),
 		key("salvage", InputConstants.Type.MOUSE, InputConstants.MOUSE_BUTTON_MIDDLE),
 		key("attack", InputConstants.Type.KEYBOARD, NONE),
-		key("curio", InputConstants.Type.KEYBOARD, NONE),
+		key("curio", InputConstants.Type.MOUSE, InputConstants.MOUSE_BUTTON_MIDDLE), // your choice, 2026-11-08 (shared with Salvage)
 		key("dodge", InputConstants.Type.KEYBOARD, NONE),
 		key("skill_1", InputConstants.Type.KEYBOARD, NONE),
 		key("skill_2", InputConstants.Type.KEYBOARD, NONE),

@@ -660,8 +660,16 @@ public final class MycLink {
 		public final float[] speeds = new float[COL_MAX];
 		/** Mycelium's nutrient bonus in percent; -1 = not in a run. */
 		public int nutrientBonus = -1;
+		/** Bit i: spore i is waving (since v51). */
+		public int waving;
 		/** How far through its sprout each spore is, 0..1 (-1 = none). */
 		public final float[] emerges = new float[COL_MAX];
+		/** How far through a beetle drum hit each spore is, 0..1 (-1 = none; since v57). */
+		public final float[] drums = new float[COL_MAX];
+		/** Each spore at a decoration: 0 none, 1 sitting, 2 lying on its back, 5 lying head ahead (since v58). */
+		public final int[] poses = new int[COL_MAX];
+		/** Each spore's facing, Minecraft yaw (since v58). */
+		public final float[] yaws = new float[COL_MAX];
 		public final float[] happiness = new float[COL_MAX];
 		public final String[] names = new String[COL_MAX];
 	}
@@ -683,12 +691,16 @@ public final class MycLink {
 			out.average = s.get(JAVA_FLOAT, b + COL_AVERAGE);
 			out.current = s.get(JAVA_INT, b + COL_CURRENT);
 			out.nutrientBonus = s.get(JAVA_INT, b + COL_NUTRIENT_BONUS);
+			out.waving = s.get(JAVA_INT, b + COL_WAVING);
 			for (int i = 0; i < out.count; i++) {
 				long e = b + COL_LIST + COL_SIZE * i;
 				out.colors[i] = s.get(JAVA_INT, e + CE_COLOR);
 				out.caps[i] = s.get(JAVA_INT, e + CE_CAP);
 				out.speeds[i] = s.get(JAVA_FLOAT, e + CE_SPEED);
 				out.emerges[i] = s.get(JAVA_FLOAT, e + CE_EMERGE);
+				out.drums[i] = s.get(JAVA_FLOAT, b + COL_DRUMS + 4L * i);
+				out.poses[i] = s.get(JAVA_BYTE, b + COL_POSES + i) & 0xFF;
+				out.yaws[i] = s.get(JAVA_SHORT, b + COL_YAWS + 2L * i) / 10f;
 				out.happiness[i] = s.get(JAVA_FLOAT, e + CE_HAPPINESS);
 				out.names[i] = utf8(s, e + CE_NAME, CE_NAME_BYTES);
 			}

@@ -49,6 +49,9 @@ public final class MyceliumCraftClient implements ClientModInitializer {
 		dev.myceliumcraft.combat.SporeProxies.init();
 		MycBossBar.init(); // the final boss's health: Minecraft's boss bar
 		MycForge.init(); // Blacksmith Ironspore: Minecraft's smithing screen
+		// During an Emotecraft emote you keep facing one way, and the camera orbits around you.
+		net.fabricmc.fabric.api.client.event.lifecycle.v1.ClientTickEvents.END_CLIENT_TICK.register(MycEmotes::holdFacing);
+		net.fabricmc.fabric.api.client.event.lifecycle.v1.ClientTickEvents.END_CLIENT_TICK.register(MycEmotes::danceYou);
 		// Diagnostic: what stalls Minecraft's server (late hits, 2026-10-21).
 		ServerStallWatch.init();
 		MycWeapons.init(); // thrown weapons: no pickup, removed once landed
@@ -59,6 +62,11 @@ public final class MyceliumCraftClient implements ClientModInitializer {
 		net.fabricmc.fabric.api.client.rendering.v1.EntityRendererRegistry.register(dev.myceliumcraft.combat.EnemyProxies.TYPE, net.minecraft.client.renderer.entity.NoopRenderer::new);
 		net.fabricmc.fabric.api.client.rendering.v1.EntityRendererRegistry.register(dev.myceliumcraft.combat.SporeProxies.TYPE, net.minecraft.client.renderer.entity.NoopRenderer::new);
 		MycLink.LOG.info("MyceliumCraft: rules: no fall damage for players, no natural health regeneration (always, while the mod is installed)");
+	}
+
+	/** MycState's flags as last read (MycPlayerModel: a decoration in use). */
+	public static int mycFlags() {
+		return MycLink.myceliumAlive() && MYC.inLevel() ? MYC.flags : 0;
 	}
 
 	/** Mycelium is running and in one of its levels (FovCapMixin). */
@@ -185,6 +193,9 @@ public final class MyceliumCraftClient implements ClientModInitializer {
 		}
 		if (minecraft.isPaused()) {
 			flags |= Proto.MC_PAUSED; // Escape's pause menu: Mycelium freezes too
+		}
+		if (MycEmotes.wavingYou(player)) {
+			flags |= Proto.MC_EMOTE_WAVE; // Emotecraft's wave on you: Mycelium's spores may wave back
 		}
 		if (player.onGround()) {
 			flags |= Proto.MC_ON_GROUND;
@@ -498,7 +509,9 @@ public final class MyceliumCraftClient implements ClientModInitializer {
 		// Living Cyclone: the same while it spins (your request, 2026-11-01).
 		boolean vanished = MycLink.myceliumAlive() && MYC.inLevel() && (MYC.flags & Proto.MYC_VANISHED) != 0;
 		boolean cyclone = MycLink.myceliumAlive() && MYC.inLevel() && (MYC.flags & Proto.MYC_CYCLONE) != 0;
-		boolean vanishView = (vanished || cyclone) && (viewBeforeOverride != null || minecraft.options.getCameraType().isFirstPerson());
+		// At a decoration (sitting, lying down): the same, so you see yourself there (your request, 2026-11-08).
+		boolean decoration = MycLink.myceliumAlive() && MYC.inLevel() && (MYC.flags & (Proto.MYC_SIT | Proto.MYC_LIE | Proto.MYC_AT_DECORATION)) != 0;
+		boolean vanishView = (vanished || cyclone || decoration) && (viewBeforeOverride != null || minecraft.options.getCameraType().isFirstPerson());
 		if (deathView || emerging) {
 			if (deathView) {
 				viewOverride(minecraft, net.minecraft.client.CameraType.THIRD_PERSON_BACK, "Minecraft's death animation");
@@ -506,7 +519,7 @@ public final class MyceliumCraftClient implements ClientModInitializer {
 				viewOverride(minecraft, net.minecraft.client.CameraType.THIRD_PERSON_FRONT, "the emerge");
 			}
 		} else if (vanishView) {
-			viewOverride(minecraft, net.minecraft.client.CameraType.THIRD_PERSON_BACK, vanished ? "Trophic Cascade's vanish" : "Living Cyclone");
+			viewOverride(minecraft, net.minecraft.client.CameraType.THIRD_PERSON_BACK, vanished ? "Trophic Cascade's vanish" : cyclone ? "Living Cyclone" : "a decoration");
 		} else if (viewBeforeOverride != null) {
 			minecraft.options.setCameraType(viewBeforeOverride);
 			MycLink.LOG.info("MyceliumCraft: view back to {} (after {})", viewBeforeOverride, overrideWhy);
@@ -705,6 +718,11 @@ public final class MyceliumCraftClient implements ClientModInitializer {
 		boolean turn = !Float.isNaN(yaw);
 		if (turn) {
 			player.setYRot(yaw);
+			// The body and head too (a decoration turns you to sit or lie the right way), and the
+			// facing held at a decoration or in an emote follows (MycEmotes).
+			player.yBodyRot = player.yBodyRotO = yaw;
+			player.yHeadRot = player.yHeadRotO = yaw;
+			MycEmotes.faceTo(yaw);
 		}
 		player.setDeltaMovement(Vec3.ZERO);
 		player.resetFallDistance();

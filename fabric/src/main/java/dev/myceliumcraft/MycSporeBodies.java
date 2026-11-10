@@ -22,6 +22,23 @@ import net.minecraft.world.entity.player.PlayerSkin;
  * it walks never comes through here. A spore grown in the shop digs out of the ground as yours does
  * in The Carcass (EmergePose), for as long as Mycelium's Sprout plays on it. A spore standing still
  * isn't sent again. Render thread only.
+ *
+ * Waving (your request, 2026-11-08): when Mycelium says a spore waves (Colony's waving bits: its
+ * Animator in "Hello"), that spore gets a made-up player of its own and Emotecraft's "Waving" emote
+ * plays on it (MycEmotes; nothing without Emotecraft). It's ticked here once per game tick, as the
+ * world would tick it, and posed every frame until the emote is over (2.5 s); then the spore goes
+ * back to the shared body.
+ *
+ * The beetle drum (your request, 2026-11-09): while Mycelium says a spore is in its "Drum Hit"
+ * (Colony drums: how far through, 0..1), its body is posed as DrumPose, on the shared body.
+ *
+ * Decorations (your request, 2026-11-09): a spore sitting or lying at one (Colony poses) is posed
+ * as you are (MycPlayerModel.sporeDecorationPose): on its bed, fitted to Mycelium's ground where it
+ * stands (SporeMoves positions) and the way it faces (Colony yaws).
+ *
+ * Dancing at the beetle drum (Colony poses 4, your request, 2026-11-09): like waving, the spore gets
+ * its own made-up player and one of MycEmotes.DANCES, picked at random, plays on it for as long as
+ * it dances (played again if it ends: "Over here" doesn't loop).
  */
 public final class MycSporeBodies {
 	/** Minecraft's walking animation: 1 at 5 blocks a second, a little over its walking speed. */
@@ -33,7 +50,16 @@ public final class MycSporeBodies {
 	private static final float[] WALKED = new float[Proto.COL_MAX];
 	private static final boolean[] MOVING = new boolean[Proto.COL_MAX];
 	private static final boolean[] EMERGING = new boolean[Proto.COL_MAX];
+	private static final boolean[] DRUMMING = new boolean[Proto.COL_MAX];
+	private static final float[] POSITIONS = new float[Proto.COL_MAX * 3];
 	private static SporeBody body;
+	private static final SporeBody[] WAVER = new SporeBody[Proto.COL_MAX]; // a waving spore's own body, while the emote plays
+	private static final boolean[] WAVE_WAS = new boolean[Proto.COL_MAX];
+	private static final int[] DANCE = new int[Proto.COL_MAX]; // the dance on WAVER (MycEmotes.DANCES), -1 = none
+	static {
+		Arrays.fill(DANCE, -1);
+	}
+	private static long lastGameTime = Long.MIN_VALUE;
 	private static long lastNanos;
 	private static int lastShown = -1;
 	private static float lastScale = -1f;
@@ -47,8 +73,12 @@ public final class MycSporeBodies {
 		PlayerSkin skin;
 
 		SporeBody(ClientLevel level) {
-			super(level, new GameProfile(UUID.nameUUIDFromBytes("myceliumcraft-spore-body".getBytes(StandardCharsets.UTF_8)), "Spore"));
-			this.setId(MADE_UP_ID); // the world gives its entities their ids; Minecraft's renderer asks for one
+			this(level, "myceliumcraft-spore-body", MADE_UP_ID);
+		}
+
+		SporeBody(ClientLevel level, String key, int id) {
+			super(level, new GameProfile(UUID.nameUUIDFromBytes(key.getBytes(StandardCharsets.UTF_8)), "Spore"));
+			this.setId(id); // the world gives its entities their ids; Minecraft's renderer asks for one
 		}
 
 		@Override
@@ -62,6 +92,10 @@ public final class MycSporeBodies {
 		Arrays.fill(SENT, null);
 		Arrays.fill(MOVING, false);
 		Arrays.fill(EMERGING, false);
+		Arrays.fill(DRUMMING, false);
+		Arrays.fill(WAVER, null);
+		Arrays.fill(WAVE_WAS, false);
+		Arrays.fill(DANCE, -1);
 		lastShown = -1;
 		failed = false;
 	}
@@ -81,6 +115,10 @@ public final class MycSporeBodies {
 			body = new SporeBody(minecraft.level);
 		}
 		body.setPos(minecraft.player.position());
+		// Game ticks since the last frame: the waving bodies' animations move on by as many.
+		long gameTime = minecraft.level.getGameTime();
+		int ticks = lastGameTime == Long.MIN_VALUE ? 0 : (int) Math.max(0, Math.min(10, gameTime - lastGameTime));
+		lastGameTime = gameTime;
 		// Your player is scaled to the spore's height (MyceliumCraftClient); the others are the same size.
 		float scale = minecraft.player.getScale();
 		if (scale != lastScale) {
@@ -88,10 +126,49 @@ public final class MycSporeBodies {
 			MycLink.LOG.info("MyceliumCraft: spore bodies: scaled x{} like your player", String.format("%.3f", scale));
 		}
 		int shown = 0;
+		int placed = MycLink.readSporePositions(POSITIONS); // where the other spores stand (feet, Minecraft blocks)
 		for (int i = 0; i < colony.count; i++) {
 			if (i == colony.current) {
 				clear(i); // that's you
+				endWave(i, "is you now");
 				continue;
+			}
+			boolean dancing = colony.poses[i] == 4;
+			if (DANCE[i] >= 0 && !dancing) {
+				endWave(i, "stops dancing");
+				MOVING[i] = true;
+			}
+			if (dancing && WAVER[i] == null && MycEmotes.available()) {
+				SporeBody own = new SporeBody(minecraft.level, "myceliumcraft-spore-wave-" + i, MADE_UP_ID - 1 - i);
+				int which = MycEmotes.pickDance();
+				if (MycEmotes.dance(own, which)) {
+					WAVER[i] = own;
+					DANCE[i] = which;
+					MycLink.LOG.info("MyceliumCraft: spore bodies: {} dances at the beetle drum: Emotecraft's '{}'", colony.names[i], MycEmotes.DANCE_NAMES[which]);
+				}
+			}
+			boolean waving = (colony.waving & (1 << i)) != 0;
+			if (waving && !WAVE_WAS[i] && WAVER[i] == null) {
+				SporeBody own = new SporeBody(minecraft.level, "myceliumcraft-spore-wave-" + i, MADE_UP_ID - 1 - i);
+				if (MycEmotes.wave(own)) {
+					WAVER[i] = own;
+					MycLink.LOG.info("MyceliumCraft: spore bodies: {} waves: Emotecraft's wave", colony.names[i]);
+				}
+			}
+			WAVE_WAS[i] = waving;
+			if (WAVER[i] != null) {
+				WAVER[i].setPos(minecraft.player.position());
+				for (int t = 0; t < ticks; t++) {
+					MycEmotes.tick(WAVER[i]);
+				}
+				if (!MycEmotes.playing(WAVER[i])) {
+					if (DANCE[i] >= 0 && dancing) {
+						MycEmotes.dance(WAVER[i], DANCE[i]); // "Over here" doesn't loop: again while it dances
+					} else {
+						endWave(i, "is done waving");
+						MOVING[i] = true; // posed once more on the shared body, out of the wave
+					}
+				}
 			}
 			float swing = Math.min(1f, Math.max(0f, colony.speeds[i]) * SWING_PER_BLOCK_PER_SECOND);
 			SWING[i] += (swing - SWING[i]) * Math.min(1f, dt * 10f);
@@ -100,8 +177,15 @@ public final class MycSporeBodies {
 			}
 			WALKED[i] += SWING[i] * dt * 20f; // Minecraft's animation moves on per tick, 20 a second
 			float emerge = colony.emerges[i];
-			boolean moving = SWING[i] > 0f || emerge >= 0f;
-			String colours = colony.caps[i] + "/" + colony.colors[i] + "/" + Math.round(scale * 1000f);
+			float drum = colony.drums[i];
+			int pose = colony.poses[i];
+			net.minecraft.world.phys.Vec3 stand = i < placed && !Float.isNaN(POSITIONS[i * 3 + 1])
+				? new net.minecraft.world.phys.Vec3(POSITIONS[i * 3], POSITIONS[i * 3 + 1], POSITIONS[i * 3 + 2]) : null;
+			boolean moving = SWING[i] > 0f || emerge >= 0f || drum >= 0f || WAVER[i] != null;
+			// The pose is part of what was sent: a body sitting down or getting up is sent again. Lying,
+			// it's fitted to the bed where the spore stands, to the tenth of a block.
+			String colours = colony.caps[i] + "/" + colony.colors[i] + "/" + Math.round(scale * 1000f) + "/" + pose
+				+ (pose >= 2 && stand != null ? "/" + Math.round(stand.x * 10) + "," + Math.round(stand.y * 10) + "," + Math.round(stand.z * 10) + "," + Math.round(colony.yaws[i]) : "");
 			if (colours.equals(SENT[i]) && !moving && !MOVING[i]) {
 				shown++;
 				continue;
@@ -116,7 +200,11 @@ public final class MycSporeBodies {
 				EMERGING[i] = emerge >= 0f;
 				MycLink.LOG.info("MyceliumCraft: spore bodies: {} {}", colony.names[i], EMERGING[i] ? "digs out of the ground" : "is out of the ground");
 			}
-			if (!send(i, skin, scale, emerge, minecraft, partialTick)) {
+			if (drum >= 0f != DRUMMING[i]) {
+				DRUMMING[i] = drum >= 0f;
+				MycLink.LOG.info("MyceliumCraft: spore bodies: {} {}", colony.names[i], DRUMMING[i] ? "hits the beetle drum (Mycelium's Drum Hit, from " + String.format("%.2f", drum) + ")" : "is done with that drum hit");
+			}
+			if (!send(WAVER[i] != null ? WAVER[i] : body, i, skin, scale, emerge, drum, pose, stand, colony.yaws[i], colony.names[i], minecraft, partialTick)) {
 				return; // logged; the next frame clears the slots
 			}
 			SENT[i] = colours;
@@ -126,7 +214,8 @@ public final class MycSporeBodies {
 		logShown(shown, colony.count);
 	}
 
-	private static boolean send(int slot, PlayerSkin skin, float scale, float emerge, Minecraft minecraft, float partialTick) {
+	private static boolean send(SporeBody body, int slot, PlayerSkin skin, float scale, float emerge, float drum, int pose,
+			net.minecraft.world.phys.Vec3 stand, float yaw, String name, Minecraft minecraft, float partialTick) {
 		try {
 			body.skin = skin;
 			EntityRenderState state = minecraft.getEntityRenderDispatcher().extractEntity(body, partialTick);
@@ -141,13 +230,17 @@ public final class MycSporeBodies {
 				avatar.showHat = true; // the cap's outer layer (a made-up player has its outer layers off)
 				avatar.showJacket = avatar.showLeftSleeve = avatar.showRightSleeve = avatar.showLeftPants = avatar.showRightPants = true;
 			}
+			com.mojang.blaze3d.vertex.PoseStack poses = new com.mojang.blaze3d.vertex.PoseStack();
+			MycPlayerModel.sporeDecorationPose(state, poses, slot, name, pose, stand, yaw);
 			EmergePose.setCapturing(emerge >= 0f ? emerge : Float.NaN);
+			DrumPose.setCapturing(drum >= 0f ? drum : Float.NaN);
 			try {
-				if (MycPlayerModel.sendBody(slot, state, minecraft)) {
+				if (MycPlayerModel.sendBody(slot, state, minecraft, poses)) {
 					return true;
 				}
 			} finally {
 				EmergePose.setCapturing(Float.NaN);
+				DrumPose.setCapturing(Float.NaN);
 			}
 			MycLink.LOG.warn("MyceliumCraft: spore bodies: nothing came out for slot {}; the other spores stay as they are", slot);
 		} catch (RuntimeException e) {
@@ -155,6 +248,15 @@ public final class MycSporeBodies {
 		}
 		failed = true;
 		return false;
+	}
+
+	private static void endWave(int slot, String why) {
+		DANCE[slot] = -1;
+		if (WAVER[slot] != null) {
+			MycEmotes.stop(WAVER[slot]);
+			WAVER[slot] = null;
+			MycLink.LOG.info("MyceliumCraft: spore bodies: slot {} {}; back to the shared body", slot, why);
+		}
 	}
 
 	private static void clear(int slot) {

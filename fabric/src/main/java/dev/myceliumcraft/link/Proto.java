@@ -74,6 +74,10 @@ public final class Proto {
 	public static final long COLONY_BYTES = 0x800;
 	public static final long COL_SEQ = 0x00, COL_COUNT = 0x04, COL_AVERAGE = 0x08, COL_CURRENT = 0x0C, COL_LIST = 0x10;
 	public static final int COL_MAX = 24;
+	public static final long COL_WAVING = 0x734; // u32, since v51: bit i = spore i is waving (Mycelium's "Hello" state)
+	public static final long COL_POSES = 0x798; // u8[COL_MAX], since v58: 0 none, 1 sitting, 2 lying on its back (head behind), 4 dancing at the beetle drum, 5 lying with its head ahead
+	public static final long COL_YAWS = 0x7B0; // i16[COL_MAX], since v58: each spore's facing, Minecraft yaw in tenths of a degree
+	public static final long COL_DRUMS = 0x738; // f32[COL_MAX], since v57: how far through Mycelium's "Drum Hit" each spore is (0..1); -1 = not drumming
 	public static final long COL_NUTRIENT_BONUS = 0x730; // i32, just after the list: Mycelium's nutrient bonus in percent; -1 = not in a run
 	public static final long COL_SIZE = 0x4C; // u32 body colour 0xRRGGBB, f32 happiness 0..1, utf8[56] name, u32 cap colour, f32 walking speed (blocks/s), f32 sprout 0..1 (-1 = none)
 	public static final long CE_COLOR = 0x00, CE_HAPPINESS = 0x04, CE_NAME = 0x08, CE_CAP = 0x40, CE_SPEED = 0x44, CE_EMERGE = 0x48;
@@ -109,7 +113,7 @@ public final class Proto {
 
 	public static final long MAPPING_BYTES = OFF_FORGE + FORGE_BYTES;
 	public static final int MAGIC = 0x4343594D; // "MYCC"
-	public static final int VERSION = 50;
+	public static final int VERSION = 58;
 	/** A side is alive if its heartbeat is younger than this. */
 	public static final long HEARTBEAT_TIMEOUT_MS = 3000;
 
@@ -154,6 +158,11 @@ public final class Proto {
 	public static final int MYC_OVERLAY = 1 << 2; // Mycelium shows Minecraft's overlay: Minecraft skips drawing its world
 	public static final int MYC_VANISHED = 1 << 3; // the spore has vanished (Trophic Cascade); since v33
 	public static final int MYC_CYCLONE = 1 << 4; // Living Cyclone is spinning; since v34
+	public static final int MYC_SIT = 1 << 7; // sitting at a decoration: Minecraft's sitting pose; since v52
+	public static final int MYC_LIE = 1 << 8; // lying on a decoration: Minecraft's sleeping pose; since v52
+	public static final int MYC_LIE_FRONT = 1 << 11; // with LIE: on your front (Mycelium's "Lay"), head ahead; else on your back ("Sleep"), head behind; since v56
+	public static final int MYC_AT_DECORATION = 1 << 10; // at a decoration standing (the dance pad): third person, facing held; since v55
+	public static final int MYC_WAVE = 1 << 9; // not sent since v53 (the Curio key with nothing near does nothing now)
 	public static final int MYC_FURY = 1 << 6; // Relentless Fury's frenzy: red potion particles; since v50
 	public static final int MYC_ROLL = 1 << 5; // the dodge roll is on (Mycelium's Animator "Roll"); since v37
 
@@ -187,6 +196,7 @@ public final class Proto {
 	public static final int MC_ON_GROUND = 1 << 2;
 	public static final int MC_SNEAKING = 1 << 3;
 	public static final int MC_SPRINTING = 1 << 4;
+	public static final int MC_EMOTE_WAVE = 1 << 6; // Emotecraft's wave is playing on you: Mycelium's spores may wave back; since v53
 	public static final int MC_PAUSED = 1 << 5; // Minecraft's pause menu has paused the game (Mycelium freezes too)
 
 	// MycInput @0x300 (Mycelium -> Minecraft, seqlock): the input bridge
@@ -208,8 +218,9 @@ public final class Proto {
 	public static final long IN_CURSOR_X = 0x170; // f64, 0..1 from the left of the picture
 	public static final long IN_CURSOR_Y = 0x178; // f64, 0..1 from the top
 	public static final String[] IN_REASONS = {"active", "Mycelium window not focused", "Mycelium has the controls (menu, pause or cutscene)", "Minecraft isn't driving the spore", "bridge turned off",
-		"a hit's knockback has the spore: keys let go, mouse buttons kept"};
+		"a hit's knockback has the spore: keys let go, mouse buttons kept", "at a decoration: mouse look only"};
 	public static final int IN_REASON_KNOCKBACK = 5; // since v29
+	public static final int IN_REASON_LOOK_ONLY = 6; // at a decoration: only the mouse turns your look (keys and buttons let go); since v54
 
 	// Bindings @0x500 (Minecraft -> Mycelium, seqlock): what Mycelium's actions are bound to
 	public static final long OFF_BINDINGS = 0x500;

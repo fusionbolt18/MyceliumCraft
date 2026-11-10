@@ -55,6 +55,8 @@ namespace MyceliumCraft
                     // The popup when you look at a spore hangs under the spore too: its happiness
                     // faces are sprites on a canvas, and stay drawn (the spore's own parts aren't on one).
                     if (r.GetComponentInParent<Canvas>() != null) continue;
+                    // Its happiness going up or down (happy and sad particles) stays drawn too.
+                    if (CameraSync.MoodEffect(r.transform, spore.transform)) continue;
                     r.forceRenderingOff = true;
                     hiddenNow.Add(r);
                 }

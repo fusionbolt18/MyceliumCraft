@@ -34,6 +34,17 @@ namespace MyceliumCraft
         public readonly uint[] Caps = new uint[Proto.ColMax];
         public readonly float[] Speeds = new float[Proto.ColMax];
         public readonly float[] Emerges = new float[Proto.ColMax];
+        /// <summary>How far through Mycelium's "Drum Hit" each spore is (0..1), -1 when it isn't hitting the beetle drum.</summary>
+        public readonly float[] Drums = new float[Proto.ColMax];
+        /// <summary>Each spore at a decoration (as yours, MinecraftDriver.DecorationAnims): 0 none, 1 sitting, 2 lying on its back, 4 dancing, 5 lying head ahead.</summary>
+        public readonly byte[] Poses = new byte[Proto.ColMax];
+        /// <summary>Each spore's facing as a Minecraft yaw.</summary>
+        public readonly float[] Yaws = new float[Proto.ColMax];
+        readonly Dictionary<GameObject, int> lastPose = new Dictionary<GameObject, int>();
+        readonly Dictionary<RuntimeAnimatorController, bool> hasActionState = new Dictionary<RuntimeAnimatorController, bool>();
+        /// <summary>Bit i: spore i is waving (Mycelium's Wave trigger plays its Animator's "Hello" state: WaveCurio, waving back, the dance and drum curios).</summary>
+        public uint Waving;
+        uint wavingBefore;
         public readonly GameObject[] Spores = new GameObject[Proto.ColMax];
         public readonly float[] Happiness = new float[Proto.ColMax];
         public readonly string[] Names = new string[Proto.ColMax];
@@ -45,7 +56,7 @@ namespace MyceliumCraft
         float nextLook;
         string lastLogged = "";
         readonly Dictionary<GameObject, (Vector3 pos, float time, float speed)> lastSeen = new Dictionary<GameObject, (Vector3, float, float)>();
-        int sprouting;
+        int sprouting, drumming;
 
         // Mycelium's meter while we hide it: the objects, and whether Mycelium had each on.
         readonly List<(GameObject obj, bool wasOn)> hidden = new List<(GameObject, bool)>();
@@ -58,7 +69,8 @@ namespace MyceliumCraft
             HideMeter(driving);
             if (Time.realtimeSinceStartup < nextLook) return false;
             Look(scale);
-            nextLook = sprouting > 0 ? 0f : Time.realtimeSinceStartup + LookEvery;
+            // Every frame while a spore sprouts or hits the drum: Minecraft poses its body from how far through it is.
+            nextLook = sprouting > 0 || drumming > 0 ? 0f : Time.realtimeSinceStartup + LookEvery;
             return true;
         }
 
@@ -89,6 +101,68 @@ namespace MyceliumCraft
             return state.IsName("Sprout") && state.normalizedTime < 1f ? Mathf.Clamp01(state.normalizedTime) : -1f;
         }
 
+        /// <summary>
+        /// How far through a beetle drum hit the spore is (0..1), or -1. Mycelium's DrumCurio triggers
+        /// "DrumHit" on the beat; its Animator plays "Drum Hit" (SmashAnim at double speed, about
+        /// 1.5 s with its blends). Also while blending into it, so the Minecraft body starts with it.
+        /// </summary>
+        static float DrumOf(GameObject spore)
+        {
+            Animator animator = spore.GetComponent<Animator>();
+            if (animator == null || !animator.isActiveAndEnabled) return -1f;
+            AnimatorStateInfo now = animator.GetCurrentAnimatorStateInfo(0);
+            if (now.IsName("Drum Hit")) return Mathf.Clamp01(now.normalizedTime);
+            if (animator.IsInTransition(0))
+            {
+                AnimatorStateInfo next = animator.GetNextAnimatorStateInfo(0);
+                if (next.IsName("Drum Hit")) return Mathf.Clamp01(next.normalizedTime);
+            }
+            return -1f;
+        }
+
+        /// <summary>
+        /// A spore at a decoration (your request, 2026-11-09): the curios set the Animator's
+        /// InActionState and play SitFloor / SitStump / Sleep / Lay, as for you (MinecraftDriver.
+        /// DecorationPose). Between two of those states the last pose is kept while InActionState
+        /// stays on. 4 is dancing at the beetle drum (Bustin Moves).
+        /// </summary>
+        int PoseOf(GameObject spore, string name)
+        {
+            Animator a = spore.GetComponent<Animator>();
+            int last = lastPose.TryGetValue(spore, out int l) ? l : 0, pose = 0;
+            if (a != null && a.isActiveAndEnabled && a.runtimeAnimatorController != null)
+            {
+                if (!hasActionState.TryGetValue(a.runtimeAnimatorController, out bool has))
+                {
+                    has = false;
+                    foreach (AnimatorControllerParameter p in a.parameters) if (p.name == "InActionState" && p.type == AnimatorControllerParameterType.Bool) has = true;
+                    hasActionState[a.runtimeAnimatorController] = has;
+                }
+                if (has && a.GetBool("InActionState"))
+                {
+                    AnimatorStateInfo s = a.GetCurrentAnimatorStateInfo(0);
+                    AnimatorStateInfo next = a.IsInTransition(0) ? a.GetNextAnimatorStateInfo(0) : s;
+                    pose = -1;
+                    foreach (var (state, p) in MinecraftDriver.DecorationAnims)
+                        if (s.IsName(state) || next.IsName(state)) { pose = p; break; }
+                    if (pose == -1) pose = last;
+                }
+            }
+            if (pose != last)
+            {
+                lastPose[spore] = pose;
+                McLog.Info($"colony: {name} {(pose == 1 ? "sits at a decoration" : pose == 2 ? "lies down on its back (head behind)" : pose == 5 ? "lies down head ahead" : pose == 4 ? "dances at the beetle drum (Minecraft plays an Emotecraft dance)" : "gets up from a decoration")}; Minecraft poses its body so");
+            }
+            return pose;
+        }
+
+        /// <summary>Is the spore waving: its Animator in "Hello", where Mycelium's Wave trigger takes it.</summary>
+        static bool WavingNow(GameObject spore)
+        {
+            Animator animator = spore.GetComponent<Animator>();
+            return animator != null && animator.isActiveAndEnabled && animator.GetCurrentAnimatorStateInfo(0).IsName("Hello");
+        }
+
         /// <summary>Mycelium's nutrient bonus in percent, or -1 outside a run.</summary>
         static int NutrientBonusNow()
         {
@@ -101,10 +175,12 @@ namespace MyceliumCraft
         {
             Count = 0;
             Current = -1;
+            Waving = 0;
             Average = -1f;
             NutrientBonus = NutrientBonusNow();
-            int sproutingBefore = sprouting;
+            int sproutingBefore = sprouting, drummingBefore = drumming;
             sprouting = 0;
+            drumming = 0;
             GameObject parent = GameObject.FindWithTag("PlayerParent");
             Type swapType = Type.GetType("SwapCharacter, Assembly-CSharp");
             Type statsType = Type.GetType("CharacterStats, Assembly-CSharp");
@@ -135,13 +211,25 @@ namespace MyceliumCraft
                 Caps[Count] = Rgb(cap);
                 Speeds[Count] = SpeedOf(spore, scale);
                 Emerges[Count] = SproutOf(spore);
+                Drums[Count] = spore != current ? DrumOf(spore) : -1f;
+                Poses[Count] = spore != current ? (byte)PoseOf(spore, Names[Count]) : (byte)0;
+                Yaws[Count] = WorldMapping.McYaw(spore.transform.eulerAngles.y);
+                if (Drums[Count] >= 0f) drumming++;
+                if (spore != current && WavingNow(spore)) Waving |= 1u << Count;
                 if (Emerges[Count] >= 0f && spore != current) sprouting++;
                 Spores[Count] = spore;
                 if (spore == current) Current = Count;
                 Count++;
             }
             if (all > 0) Average = total / all;
+            if (Waving != wavingBefore)
+            {
+                for (int i = 0; i < Count; i++)
+                    if (((Waving ^ wavingBefore) & (1u << i)) != 0) McLog.Info($"colony: {Names[i]} {((Waving & (1u << i)) != 0 ? "waves (Minecraft plays Emotecraft's wave)" : "stops waving")}");
+                wavingBefore = Waving;
+            }
             if (sprouting != sproutingBefore) McLog.Info($"colony: {sprouting} other spore(s) in Mycelium's Sprout");
+            if (drumming != drummingBefore) McLog.Info($"colony: {drumming} other spore(s) hitting the beetle drum (Mycelium's Drum Hit)");
             var parts = new List<string>();
             for (int i = 0; i < Count; i++) parts.Add($"{Names[i]}{(i == Current ? " (you)" : "")} {Happiness[i]:F2} body #{Colors[i]:X6} cap #{Caps[i]:X6}");
             LogOnce($"colony: {all} spore(s), average happiness {Average:F2}, nutrient bonus {NutrientBonus}: {string.Join(", ", parts)}");

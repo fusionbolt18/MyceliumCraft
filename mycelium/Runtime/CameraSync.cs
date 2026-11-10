@@ -305,6 +305,19 @@ namespace MyceliumCraft
                 if (n.StartsWith("DefenseBuildup") || n.StartsWith("DefenseBurst")) return true;
                 if (n.StartsWith("DefenseParticles")) return mode != FirstPerson || lastCutscene;
             }
+            return MoodEffect(r.transform, spore);
+        }
+
+        /// <summary>
+        /// Mycelium's happiness going up or down (CharacterStats.ModifyHappiness): "HappyParticles" at
+        /// the spore's feet, "SadParticles" over its head, both put under the spore. They stay drawn
+        /// while the spore's own body is hidden, for you and for the other spores (your report,
+        /// 2026-11-09: they weren't showing).
+        /// </summary>
+        public static bool MoodEffect(Transform t, Transform top)
+        {
+            for (; t != null && t != top; t = t.parent)
+                if (t.name.StartsWith("HappyParticles") || t.name.StartsWith("SadParticles")) return true;
             return false;
         }
 

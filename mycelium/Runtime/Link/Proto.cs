@@ -82,6 +82,10 @@ namespace MyceliumCraft.Link
         public const int ColonyBytes = 0x800;
         public const int ColSeq = 0x00, ColCount = 0x04, ColAverage = 0x08, ColCurrent = 0x0C, ColList = 0x10;
         public const int ColMax = 24;
+        public const int ColWaving = 0x734;        // u32, since v51: bit i = spore i is waving (its Animator in "Hello", Mycelium's Wave trigger)
+        public const int ColPoses = 0x798;         // u8[ColMax], since v58: each spore at a decoration: 0 none, 1 sitting, 2 lying on its back (head behind), 4 dancing at the beetle drum, 5 lying with its head ahead
+        public const int ColYaws = 0x7B0;          // i16[ColMax], since v58: each spore's facing as a Minecraft yaw, in tenths of a degree (0..3599)
+        public const int ColDrums = 0x738;         // f32[ColMax], since v57: how far through Mycelium's "Drum Hit" each spore is (0..1); -1 = not hitting the beetle drum
         public const int ColNutrientBonus = 0x730; // i32, just after the list: Mycelium's nutrient bonus in percent; -1 = not in a run
         public const int ColSize = 0x4C;           // u32 body colour 0xRRGGBB, f32 happiness 0..1, utf8[56] name, u32 cap colour, f32 walking speed (blocks/s), f32 sprout 0..1 (-1 = none)
         public const int CeColor = 0x00, CeHappiness = 0x04, CeName = 0x08, CeNameBytes = 0x38, CeCap = 0x40, CeSpeed = 0x44, CeEmerge = 0x48;
@@ -118,7 +122,7 @@ namespace MyceliumCraft.Link
 
         public const int MappingBytes = OffForge + ForgeBytes;
         public const uint Magic = 0x4343594D; // "MYCC"
-        public const uint Version = 50;
+        public const uint Version = 58;
         public const ulong HeartbeatTimeoutMs = 3000;
 
         // Header @0x000
@@ -164,6 +168,11 @@ namespace MyceliumCraft.Link
         public const uint MycOverlay = 1u << 2; // Mycelium shows Minecraft's overlay: Minecraft skips drawing its world
         public const uint MycVanished = 1u << 3; // the spore has vanished (Trophic Cascade): third person behind from first person; since v33
         public const uint MycCyclone = 1u << 4;  // Living Cyclone is spinning: third person behind from first person; since v34
+        public const uint MycSit = 1u << 7;      // you're sitting at a decoration (Stump Chairs): Minecraft's sitting pose; since v52
+        public const uint MycLie = 1u << 8;      // you're lying on a decoration (Mushroom Bed): Minecraft's sleeping pose; since v52
+        public const uint MycLieFront = 1u << 11; // with LIE: on your front (Mycelium's "Lay"), head ahead; without it on your back ("Sleep"), head behind; since v56
+        public const uint MycAtDecoration = 1u << 10; // at a decoration standing (the dance pad): third person, facing held, no pose; since v55
+        public const uint MycWave = 1u << 9;     // not sent since v53 (the Curio key with nothing near does nothing now)
         public const uint MycFury = 1u << 6;     // Relentless Fury's frenzy is on: Minecraft shows red potion particles; since v50
         public const uint MycRoll = 1u << 5;     // the dodge roll is on (the spore's Animator "Roll"): Minecraft plays its roll animation; since v37
 
@@ -197,6 +206,7 @@ namespace MyceliumCraft.Link
         public const uint McOnGround = 1u << 2;
         public const uint McSneaking = 1u << 3;
         public const uint McSprinting = 1u << 4;
+        public const uint McEmoteWave = 1u << 6; // Emotecraft's wave is playing on you: the spores may wave back (CurioKey); since v53
         public const uint McPaused = 1u << 5;    // Minecraft's pause menu has paused the game (Mycelium freezes too)
 
         // MycInput @0x300 (Mycelium -> Minecraft, seqlock): the input bridge
@@ -218,6 +228,7 @@ namespace MyceliumCraft.Link
         public const int InCursorX = 0x170;    // f64, 0..1 from the left of the picture
         public const int InCursorY = 0x178;    // f64, 0..1 from the top
         public const uint ReasonActive = 0, ReasonNotFocused = 1, ReasonMyceliumControls = 2, ReasonNotDriving = 3, ReasonOff = 4;
+        public const uint ReasonLookOnly = 6;  // at a decoration: Minecraft follows only the mouse's look (since v54)
         public const uint ReasonKnockback = 5; // a hit's knockback has the spore: keys let go, mouse buttons kept (since v29)
 
         // Bindings @0x500 (Minecraft -> Mycelium, seqlock): what Mycelium's actions are bound to,

@@ -29,7 +29,7 @@ a block without locks.
 - **Reader:** read `seq`. If it's odd, try again. Read the fields, then read `seq` again. If it
   changed, try again.
 
-## Layout (version 50)
+## Layout (version 58)
 
 ### Header @ 0x000
 
@@ -47,7 +47,7 @@ a block without locks.
 | Off | Type | Field |
 |---|---|---|
 | 0x00 | u32 | seq |
-| 0x04 | u32 | flags: bit0 `IN_LEVEL` (a spore player exists), bit1 `PAUSED`, bit2 `OVERLAY` (Mycelium shows Minecraft's overlay, so Minecraft skips drawing its world; since version 10), bit3 `VANISHED` (the spore has vanished in Trophic Cascade: your Minecraft body isn't drawn, and Minecraft goes from first person to third person behind until it's back; since version 33), bit4 `CYCLONE` (Living Cyclone is spinning: Minecraft goes from first person to third person behind until it's over; since version 34), bit5 `ROLL` (the dodge roll is on, the spore's Animator "Roll": Minecraft plays its combat roll animation and turns the body to the roll's dash; since version 37), bit6 `FURY` (Relentless Fury's frenzy is on: Minecraft shows red potion particles around the player, and a health drop of exactly 5% isn't a hit; since version 50) |
+| 0x04 | u32 | flags: bit0 `IN_LEVEL` (a spore player exists), bit1 `PAUSED`, bit2 `OVERLAY` (Mycelium shows Minecraft's overlay, so Minecraft skips drawing its world; since version 10), bit3 `VANISHED` (the spore has vanished in Trophic Cascade: your Minecraft body isn't drawn, and Minecraft goes from first person to third person behind until it's back; since version 33), bit4 `CYCLONE` (Living Cyclone is spinning: Minecraft goes from first person to third person behind until it's over; since version 34), bit5 `ROLL` (the dodge roll is on, the spore's Animator "Roll": Minecraft plays its combat roll animation and turns the body to the roll's dash; since version 37), bit6 `FURY` (Relentless Fury's frenzy is on: Minecraft shows red potion particles around the player, and a health drop of exactly 5% isn't a hit; since version 50), bit7 `SIT`, bit8 `LIE`, bit9 `WAVE` (you're at a decoration: sitting or lying down, or waving with the Curio key and nothing near; Minecraft poses your body so, switches to third person behind from first person, and played Emotecraft's wave; since version 52. `WAVE` isn't sent since version 53: the Curio key with nothing near does nothing), bit10 `AT_DECORATION` (at a decoration standing, the dance pad: third person and your facing held as for SIT/LIE, no pose; since version 55), bit11 `LIE_FRONT` (with LIE: on your front, Mycelium's "Lay", head ahead; LIE alone is on your back, "Sleep", head behind; since version 56) |
 | 0x08 | f64 | spore X (**Mycelium** coords) |
 | 0x10 | f64 | spore Y |
 | 0x18 | f64 | spore Z |
@@ -79,7 +79,7 @@ Positions are in **Minecraft coordinates**: blocks, Y up, +Z is south.
 | Off | Type | Field |
 |---|---|---|
 | 0x00 | u32 | seq |
-| 0x04 | u32 | flags: bit0 `IN_WORLD`, bit1 `SCREEN_OPEN`, bit2 `ON_GROUND`, bit3 `SNEAKING`, bit4 `SPRINTING`, bit5 `PAUSED` (Minecraft's pause menu has paused the game; Mycelium freezes too; since version 13) |
+| 0x04 | u32 | flags: bit0 `IN_WORLD`, bit1 `SCREEN_OPEN`, bit2 `ON_GROUND`, bit3 `SNEAKING`, bit4 `SPRINTING`, bit5 `PAUSED` (Minecraft's pause menu has paused the game; Mycelium freezes too; since version 13), bit6 `EMOTE_WAVE` (Emotecraft's wave is playing on you; Mycelium's spores near you and in front of you may wave back; since version 53) |
 | 0x08 | f64 | feet X (interpolated to the rendered frame) |
 | 0x10 | f64 | feet Y |
 | 0x18 | f64 | feet Z |
@@ -120,7 +120,7 @@ lost if a read is missed.
 |---|---|---|
 | 0x00 | u32 | seq |
 | 0x04 | u32 | flags: bit0 `ACTIVE`, meaning Minecraft should play from this input (Mycelium is focused, and it's normal play); bit1 `CURSOR`, a Minecraft screen is open and the cursor position below is valid (since version 13) |
-| 0x08 | u32 | reason when not active: 0 active, 1 Mycelium window not focused, 2 Mycelium has the controls (its menu, pause or cutscene), 3 Minecraft isn't driving the spore, 4 bridge turned off, 5 a hit's knockback has the spore (since version 29: Minecraft lets go of the keys and ignores mouse movement, but keeps following the mouse buttons) |
+| 0x08 | u32 | reason when not active: 0 active, 1 Mycelium window not focused, 2 Mycelium has the controls (its menu, pause or cutscene), 3 Minecraft isn't driving the spore, 4 bridge turned off, 5 a hit's knockback has the spore (since version 29: Minecraft lets go of the keys and ignores mouse movement, but keeps following the mouse buttons), 6 you're at a decoration (since version 54: Minecraft follows only mouse movement, your look; keys and buttons let go) |
 | 0x0C | u32 | mouse buttons held: bit n = SDL button n (1 left, 2 middle, 3 right, 4 back, 5 forward) |
 | 0x10 | u8[64] | keys held: bit n = SDL scancode n (USB HID usage), 0..511 |
 | 0x50 | f64 | total mouse movement X since Mycelium started (pixels, right +) |
@@ -296,6 +296,10 @@ frame while another spore is in its Sprout. The mapping grows by 0x800.
 | 0x0C | i32 | which entry is the spore you control; −1 = none |
 | 0x10 + 0x4C·i | entry | u32 body colour `0xRRGGBB` (`DesignTracker.bodyColor`); f32 happiness 0..1 (`CharacterStats.sporeHappiness`); utf8[56] name; since version 43, at 0x40 u32 cap colour `0xRRGGBB` (`DesignTracker.capColor`) and at 0x44 f32 walking speed in blocks per second (entries were 0x40 long before); since version 44, at 0x48 f32 how far through Mycelium's Sprout animation 0..1, −1 = not in it |
 | 0x730 | i32 | since version 45: Mycelium's nutrient bonus in percent, as its HUD shows it, `(GlobalData.currentLoop − 1) × 50`; −1 = not in a run (in The Carcass) |
+| 0x734 | u32 | since version 51: bit i = spore i is waving (its Animator in "Hello", where Mycelium's Wave trigger takes it); Minecraft plays Emotecraft's wave on that spore's body |
+| 0x738 + 4·i | f32 | since version 57: how far through a beetle drum hit spore i is (its Animator's "Drum Hit", normalised time 0..1, also while blending into it); −1 = not hitting the drum. Minecraft poses that spore's body so (DrumPose) |
+| 0x798 + i | u8 | since version 58: spore i at a decoration (as `MinecraftDriver.DecorationAnims`): 0 none or standing, 1 sitting, 2 lying on its back with the head behind ("Sleep"), 4 dancing at the beetle drum ("Bustin Moves": Minecraft plays a random Emotecraft dance on it), 5 lying with the head ahead ("Lay"). Minecraft poses that spore's body as yours |
+| 0x7B0 + 2·i | i16 | since version 58: spore i's facing as a Minecraft yaw, in tenths of a degree (0..3599); Minecraft reads the bed's shape along it |
 
 ### Boss @ after SporeMoves (Mycelium → Minecraft, seqlock). Since version 47
 

@@ -1,5 +1,569 @@
 # MODLOG
 
+## 2026-11-09 Dancing at the beetle drum plays an Emotecraft dance
+
+**Your request:** spores dancing at the beetle drum, and you, pick one of Club Penguin, Kazotsky
+Kick, Roblox Potion Dance and Over here at random.
+
+**Found:** all four are built into Emotecraft (its jar's `assets/emotecraft/emotes`:
+`club_penguin_dance`, `kazotsky_kick`, `roblox_potion_dance`, `here`). Read by uuid, nothing copied.
+The first three loop; "Over here" doesn't, so it's played again while the dance goes on.
+
+**Changed:**
+- Mycelium: Colony `poses` now also sends 4 for a spore dancing at the drum (Mycelium's Bustin
+  Moves), where it sent 0 before.
+- Minecraft, other spores (`MycSporeBodies`): a dancing spore gets its own made-up player, as for
+  waving, and a random dance plays on it until it stops dancing. Then its wave plays as before.
+- Minecraft, you (`MycEmotes.danceYou`, every client tick): while you're at the dance pad (MycState
+  AT_DECORATION), a random dance plays on you. It stops when you leave.
+- Log lines: "spore bodies: <name> dances at the beetle drum: Emotecraft's '<dance>'" and
+  "emotes: you dance at the beetle drum: Emotecraft's '<dance>'" / "you stop dancing".
+- `-mcSporeCurioTest` now starts with the dance pad.
+
+**Tested how:** stand-in run: the spore on the dance pad came through as pose 4. Both sides build.
+**Not tested:** the emotes in Minecraft, for the spores or for you.
+
+## 2026-11-09 Other spores sit and lie down at the curios too (protocol v58)
+
+**Your request:** the other spores should do the sitting and lying down poses at the curios.
+
+**Changed:**
+- Mycelium (`ColonyWatch.PoseOf`): each other spore's decoration pose, read from its Animator as
+  for yours (InActionState plus SitFloor / SitStump / Sleep / Lay), goes out in the new Colony
+  field `poses` (0x798), with each spore's facing as a Minecraft yaw in `yaws` (0x7B0).
+- Minecraft (`MycPlayerModel.sporeDecorationPose`, called from `MycSporeBodies`): sitting is your
+  sitting pose (lowered to the floor). Lying is your bed pose: I moved that code into one shared
+  `lie` method, so a spore's body is fitted to the bed where it stands (the SporeMoves positions
+  Minecraft already had for pushing) and the way it faces: the head on the pillow, the body resting
+  on the bed, the head tilted forward. Dancing spores aren't posed, same as you.
+- Log lines: Mycelium "colony: <name> sits at a decoration / lies down ... / gets up"; Minecraft
+  "spore bodies: <name> sits ... / lies ... / stands again" and "<name> on the bed, head towards yaw
+  ...: pillow top ..., feet end ...; tilted up ... degrees".
+- New test aid `-mcSporeCurioTest`: puts another spore on the bed (Sleep, then Lay) and the chair.
+
+**Tested how:** stand-in run (`-mcScene "The Carcass" -mcSporeCurioTest` with `gradlew linkTest`).
+The stand-in read pose 2 (on its back) then 5 (head ahead) for the spore on the bed, and pose 1 for
+a spore that sat down on its own. The run ended before the test's chair step. Both sides build.
+**Not tested:** what the bodies look like in Minecraft; your own bed pose now goes through the
+shared code (it should look the same).
+
+## 2026-11-09 Drum hit: the hand hits the drum, not the face
+
+**Your report (screen recording):** it looks like the spore hits the drum with its face.
+
+**Why:** in frames from the recording, the body folded forward about 75 degrees while the arms
+swept out to the sides, so the head came down first. Mycelium's spore does the same fold, but it's
+holding its Smash weapon then, and the weapon is what hits the drum.
+
+**Changed (`DrumPose` keys from the slam on, t 0.436):** the wind-up is still as measured. In the
+slam, the right arm swings over the top (up, ahead, then ahead and down) and lands on the drum with
+the hand. The body leans forward 35 degrees instead of 75, the legs stay under it, and the hips hop
+half as high. Worked out by hand: at the bottom of the slam the right hand is about 10 model pixels
+ahead of the hips at hip height, and the chin is about 10 pixels higher than the hand.
+
+**Tested how:** the jar builds. **Not tested:** in Minecraft.
+
+## 2026-11-09 Spores hitting the beetle drum are animated (protocol v57)
+
+**Your request:** an animation for when a spore plays the beetle drum, like Mycelium's spore does.
+
+**What Mycelium does:** on the beat of The Carcass's music, the drum (`DrumCurio`) triggers
+"DrumHit" on the spore playing it. Its Animator plays "Drum Hit", which is the Smash weapon attack
+animation (SmashAnim) at double speed, about 1.5 s with its blends. The spore leans back with its
+right arm raised behind its head and its left arm reaching forward, holds that, then throws itself
+forward onto the drum. The right arm swings over and down, the left sweeps out to the side, the
+torso folds forward about 75 degrees, the legs kick back and the hips hop up.
+
+**How I copied it:** I measured it rather than guessing. A new test aid, `-mcDrumTest`, makes a
+spore hit the drum and logs where its hands, feet, chest and head point every 0.025 s, already
+converted to Minecraft's arm and leg angles. Those numbers are the keyframes in the new
+`DrumPose.java`.
+- Mycelium (`ColonyWatch.DrumOf`) sends how far through "Drum Hit" each other spore is, in the
+  new Colony field `drums` (0x738, -1 = not drumming), every frame while one is drumming.
+- Minecraft (`MycSporeBodies`) poses that spore's body with `DrumPose` while it's drumming (through
+  our own `HumanoidEmergeMixin`, as the dig-out does). Arms and legs turn the shortest way to each
+  keyed direction, and the whole body leans about the hips. Mycelium's spore holds its arms out to
+  the sides where Minecraft's hang down, so the pose fades in at the start of each hit and out at
+  the end.
+- Log lines: Mycelium "colony: N other spore(s) hitting the beetle drum"; Minecraft "spore
+  bodies: <name> hits the beetle drum" and "is done with that drum hit".
+
+**Tested how:** stand-in run (`-mcScene "The Carcass" -mcDrumTest` with `gradlew linkTest`). A spore
+that was already drumming on its own, and the test's hits, came through the link going smoothly
+from about 0.04 to 0.74, about 15 times a second. Both sides build.
+**Not tested:** what the pose looks like in Minecraft. The stand-in doesn't draw bodies, so
+`DrumPose` has only been checked by working the angle rules through by hand.
+
+## 2026-11-09 The happiness up and down particles show again
+
+**Your report:** the particles when happiness goes up or down aren't showing.
+
+**Why:** Mycelium makes them (`CharacterStats.ModifyHappiness`: "HappyParticles" at the feet,
+"SadParticles" over the head) as children of the spore. While your Minecraft body stands in for a
+spore, we hide everything under that spore, so the particles were hidden with it. This was true for
+you (`CameraSync`) and for the other spores shown as Minecraft characters (`McColonyBodies`).
+
+**Changed:** `CameraSync.MoodEffect` picks out those particles by name, and both places that hide a
+spore now leave them drawn, in every view. New test aid `-mcMoodTest`: 4 s into driving, it raises
+and then lowers the happiness of you and one other spore, and logs how many particle parts are drawn.
+
+**Tested how:** stand-in run (`-mcScene "The Carcass" -mcMoodTest` with `gradlew linkTest`). Up and
+down, for you and for another spore: "1 happy/sad particle part(s) drawn, 0 not drawn" at 0.5, 1.0
+and 1.5 s. I didn't run the test before the fix to see them hidden; that comes from reading the code.
+**Not tested:** in Minecraft.
+
+## 2026-11-09 On the bed: the body rests on the bed, not just the head
+
+**Your report:** the head is right, but the body floats.
+
+**Why:** the body is a straight line from the feet to the head. The feet end was held at your
+standing height, but the bed slopes down towards its foot, so the legs were in the air.
+
+**Changed (`MycPlayerModel.decorationPose`):** the head stays where it was, half its depth above the
+pillow's top. The feet end goes as low as the bed allows: the lowest straight line from the head
+down that keeps the body's underside on or above the ground at every point along it (every 0.125
+blocks, up to 0.85 of the way, from Mycelium's ground). Past the bed's edge the bed itself holds the
+body, so the legs can't dip into it. The log line now says "pillow top … (… above where you stand),
+feet end … above where you stand; tilted up … degrees".
+
+**Expected,** from the bed's shape measured with `-mcCurioTest`: the feet end about 0.17 blocks
+lower than before, about 28 degrees of tilt, the head at the same height.
+
+**Tested how:** the jar builds; the numbers worked out by hand from the measured shape.
+**Not tested:** in Minecraft.
+
+## 2026-11-09 On the bed: not floating after the slide
+
+**Your report:** after sliding down the bed, the body floated.
+
+**Why:** the tilt compared the pillow's height with the ground at the slid feet. Slid 0.3 blocks,
+they can be past the bed's edge, where the ground is the floor. So the head seemed much higher than
+the feet, and the body tilted up too steeply.
+
+**Changed (`MycPlayerModel.decorationPose`):** the pillow is compared with your own height, where
+you stand on the bed (the player's feet), not with the ground under the slid feet.
+
+**Tested how:** the jar builds. **Not tested:** in Minecraft. The log line "on the bed, head towards
+yaw …: ground … at the feet, highest … ; tilted up … degrees" shows the numbers it used.
+
+## 2026-11-09 On the bed: slid down a little, so the head is on the pillow
+
+**Your report:** much better, but the back was on the pillow rather than the head.
+
+**Changed (`MycPlayerModel.decorationPose`):** the lying body is moved 0.3 blocks towards the foot
+of the bed (away from the head's end). The pillow's height for the tilt is read from there too. The
+pillow's top is about 1 block from your feet and the head's middle about 1.2, so this puts the head
+on it.
+
+**Tested how:** the jar builds. **Not tested:** in Minecraft. If it's too far or not far enough,
+it's one number (`SLIDE_DOWN_BED`).
+
+## 2026-11-08 Lying on the bed: the head rests on the pillow; no face-down version
+
+**Your report:** your head was now at the pillow but inside it. You don't need the face-down
+version.
+
+**Why the head sank in:**
+- The body lay flat at the height of your feet.
+- `-mcCurioTest` probed the bed's surface along your body. It rises from about 0.7 blocks out to
+  0.27–0.39 blocks above your feet at 0.9–1.07 blocks out (the pillow), then drops away.
+- The head's middle lies about 1.18 blocks out (1.75 × your size).
+
+**Changed (`MycPlayerModel.decorationPose`):**
+- Always on your back. "Lay" keeps its head ahead (Mycelium's spore lies on its front there), but
+  your body isn't turned over.
+- The body is tilted up from the feet so the back of the head rests on the highest surface between
+  halfway along the body and the head. That surface is read from Mycelium's ground on the Minecraft
+  side (`GroundGrid.groundAt`, in half-block cells, every 0.125 blocks), against the ground at your
+  feet, plus the head's extra depth. At most 35 degrees.
+  - The log says "on the bed, head towards yaw …: ground … at the feet, highest … between halfway
+    and the head …; tilted up … degrees".
+  - From the probe, about 19 degrees is to be expected on your bed.
+- I checked the tilt's direction with JOML: the head end goes up by 1.75 × sin(tilt).
+
+**Tested how:** the bed's shape from Mycelium's physics (`-mcCurioTest`); the tilt's direction with
+JOML.
+**Not tested:** in Minecraft (how it looks; whether the half-block ground cells catch your bed's
+pillow as the probe did).
+
+## 2026-11-08 Lying on the bed: head on the pillow, the right way up, head still and tilted (protocol v56)
+
+**Your report:** lying on the bed was still wrong: your head wasn't on the pillow. And on the bed,
+the head shouldn't move, and should tilt a little forward.
+
+**Why:**
+- Your body took Minecraft's sleeping pose along one of its four bed directions, picked from where
+  you face (`Direction.fromYRot`), always on its back.
+- Mycelium's two bed animations differ. `-mcCurioTest` measured the spore's head bone ("head") while
+  it lay down:
+  - **"Sleep":** on its back, the head 178 degrees from where the spore faces (behind). Sleeping
+    faces away from the bed, so the head goes onto it.
+  - **"Lay":** on its front, the head 16 degrees from its facing (ahead, towards the bed).
+
+**Changed:**
+- **Mycelium:** "Lay" is sent as LIE + the new MycState flag `LIE_FRONT` (v56); "Sleep" is LIE
+  alone.
+- **Minecraft (`MycPlayerModel.decorationPose`):**
+  - The head goes behind you for "Sleep" and ahead for "Lay", at any angle. Minecraft's sleeping
+    pose with no bed direction turns the body by its body yaw, and the head then points along yaw
+    90 − body yaw. I read that from `LivingEntityRenderer.setupRotations` and checked it with JOML
+    for 0, 45, 90, 180 and 270 degrees.
+  - "Lay" turns the body over along its length, face down.
+  - The body is lifted by half its thickness, so it lies on the bed rather than half in it.
+  - On the bed, the head doesn't follow your look: straight, and tilted 20 degrees towards the
+    chest.
+
+**Tested how:** the stand-in, `-mcCurioTest`. The fake Minecraft got "lie down on your back" for
+Sleep and "on your front" for Lay. The head direction was checked with JOML; the rest is Minecraft's
+renderer, which the stand-in can't run.
+**Not tested:** in Minecraft: that the head is now on the pillow, the turn-over for Lay, the lift,
+and the tilt. Seen once in the test: the very first sit dropped its pose for a single frame at the
+start; not looked into.
+
+## 2026-11-08 The other decorations: on their spots, facing the right way (protocol v55)
+
+**Your request:** what the stumps and bed do (on the seat, the same facing every time), for all the
+other decorations.
+
+**What the others are** (locked furniture in your Carcass; `-mcCurioTest all` switches them on to
+try them):
+- the Bonfire: sit; 6 spots in a ring;
+- the Game Board: sit; 2 spots;
+- the Dance Pad: dance, two dances, while the drum plays; several spots;
+- the Beetle Drum: has no animation for you, so Mycelium does nothing on your Curio key there
+  (unchanged). A spore playing it opens the dance pad.
+
+Mycelium's rule for its spores at each: bonfire and game board, face it; dance pad, face its drum.
+
+**Changed (`MinecraftDriver.FaceDecoration`):**
+- The bonfire and game board turn you towards them, from the spot. The dance pad turns you towards
+  its drum. Before, anything that wasn't a stump or the bed used the bed's "away" rule; the test
+  showed you facing away from the fire.
+- Dancing (Bustin Moves, Bustin Metal Moves) counts as being at a decoration, standing. It's sent as
+  the new MycState flag `AT_DECORATION` (v55). Minecraft switches to third person and holds your
+  facing, as for sitting and lying; your body stands. The overlay stays, and mouse look works.
+
+**Tested how:** stand-in, The Carcass, `-mcCurioTest all`. Each of the three is brought next to you
+in front, to your right and behind.
+
+**Result:**
+- Bonfire: on the nearest of its 6 spots, facing the fire (95 or 154, by spot).
+- Dance pad: on its nearest spot, facing the Beetle Drum (91 to 92), "stands there".
+- Game board: on its nearest spot, facing it (82 or 265, by spot).
+- All within 0.04 units of the spot, still there after 3 s, overlay on. No errors.
+
+**Not tested:** in Minecraft. Your body only stands while you dance; Emotecraft has dances it could
+play, which isn't done.
+
+## 2026-11-08 Decorations: you're put on the seat, always facing the same way
+
+**Your report:** sitting on a stump, you sometimes didn't end up on it; and if you already faced the
+right way when you sat down, you were turned the wrong way.
+
+**Why:**
+- Mycelium plays the sit animation where you stand. Its other spores first walk to one of the
+  decoration's seats (`Curio.traversalTransforms`). A stump chair has one seat, on top of the stump
+  (about 0.65 up).
+- My facing copied Mycelium's rule, "away from the decoration's middle, plus its offset", from where
+  you stood. On a stump the seat is almost at the middle, so that direction depended on where
+  exactly you stood: arbitrary.
+- `-mcCurioTest` measured that the sit animation doesn't turn the model itself (its root bone stays
+  at 0 degrees from the spore). `-mcSeatTest` watched colony spores walk onto the seats: they stand
+  within 0.2 of them.
+
+**Changed:** `MinecraftDriver.FaceDecoration`. At the decoration Mycelium used
+(`FindClosestCurioInRange`), you're moved onto its seat nearest you.
+- On a stump you face the seat's own direction (your choice, of three offered). For your three
+  stumps that's 339, 120 and 84 degrees.
+- On the bed: Mycelium's rule from the seat, away from the bed to sleep, towards it to lie. The bed
+  has two places; you get the nearer one.
+- Minecraft gets a teleport there with that facing.
+
+**Tested how:** stand-in, The Carcass, `-mcCurioTest`. Each decoration is brought next to you three
+times: in front, to your right and behind.
+
+**Result:**
+- All three stumps: on the seat (0.00 units across, feet 0.09 under the seat point, on the stump's
+  top), facing exactly the seat's direction, from every side. Still there after 3 s.
+- The bed: on one of its two places, facing 256 or 189 depending on which is nearer. Each the same
+  every time.
+- No errors.
+
+**Not tested:** in Minecraft (how you look sitting on the stump top; Minecraft's ground there).
+
+## 2026-11-08 At a decoration: the camera turns, and you face the way Mycelium's spores do (protocol v54)
+
+**Your requests:** move the camera around while at a decoration; face the right way when sitting.
+
+**Why the camera was stuck:** Mycelium has the controls while you're at a decoration (canAct off
+until you move). The input bridge then stopped passing your keyboard and mouse to Minecraft, so its
+look, which the camera follows, couldn't turn.
+
+**Changed:**
+- **Mouse look only** (new bridge reason 6, protocol v54). At a decoration, Mycelium sends "at a
+  decoration (mouse look only)". Minecraft (`MycInputBridge`) keeps following the mouse's movement,
+  so the camera orbits, and lets go of keys and buttons. A movement key still just gets you up in
+  Mycelium.
+- **You keep facing one way:** your body and head facing is held while you're there, as in an emote
+  (`MycEmotes.holdFacing`, now also for SIT/LIE).
+- **Facing** (`MinecraftDriver.FaceDecoration`): Mycelium turns its other spores before they sit or
+  lie, but not you. Now you're turned the same way, at the decoration Mycelium used (its own
+  `FindClosestCurioInRange`):
+  - a stump chair: your back to it, turned by its `rotationOffset` (10 degrees here);
+  - the bed to sleep: away from it;
+  - the bed to lie: towards it.
+
+  The spore is turned, and Minecraft gets a teleport where you stand with that facing. A teleport
+  that turns you now also turns your body and head (`MyceliumCraftClient.teleport`), and the held
+  facing takes it (`MycEmotes.faceTo`).
+- `-mcCurioTest` now brings each decoration next to you, with the others out of the way, and logs
+  what Mycelium's lookup finds.
+
+**Tested how:** stand-in, The Carcass, `-mcCurioTest`, `LINKTEST_OVERLAY=1 LINKTEST_MODEL=1
+LINKTEST_STILL=1`.
+
+**Result:**
+- Facing north (yaw 0) with a stump in front: turned to yaw 190 (back to it, plus 10). Facing east
+  (90): turned to 281. The bed to sleep: 192 (away from it).
+- Minecraft confirmed each teleport in 0.02–0.03 s.
+- The bridge said "at a decoration (mouse look only)" while you were there, and "ON" after. No
+  errors.
+- Two mistakes the test caught first: the bed faced a stump the test had left beside you (it now
+  faces the decoration Mycelium used), and a variable that wasn't always set (a compile error).
+
+**Not tested:** in Minecraft: turning the camera with the mouse while seated, and how the turn looks.
+The stand-in can't move the mouse.
+
+## 2026-11-08 Curio key: no wave with nothing near; third person at decorations; spores wave back at your emote (protocol v53)
+
+**Your requests:**
+- no wave from the Curio key when no decoration is near (you have the emote wheel);
+- third person while you're at a decoration;
+- spores wave back at Emotecraft's wave as they did at Mycelium's.
+
+**Changed:**
+- **No wave** (new `CurioKey.cs`): in the early step before Mycelium's scripts (`ForgeCatch`), a
+  Curio press is checked as `PlayerController` checks it: no weapon in hand, the nearest decoration
+  (`FindClosestCurioInRange`) within its `playerInteractRange`, a dance spot only with `canDance`.
+  - With none, the press is cleared from Mycelium's Curio action with `InputAction.Reset()`, so it
+    does nothing. Salvage on the same button isn't touched.
+  - `Disable()` wouldn't have worked: I read Unity's Input System 1.5.1 code, and only a "hard
+    reset" clears "pressed this frame", which `Reset()` does and `Disable()` doesn't.
+  - The wave pose and Minecraft's wave for it (MYC_WAVE, `MycEmotes.waveYou`) are gone.
+- **Third person** (`MyceliumCraftClient.updateViewOverride`): while you sit or lie down
+  (MYC_SIT / MYC_LIE), first person becomes third person behind, as for Living Cyclone. Your view
+  comes back when you get up. Already in a third-person view, it stays.
+- **Waving back:** Minecraft sends McState `EMOTE_WAVE` while Emotecraft's "Waving" is the emote
+  playing on you (`MycEmotes.wavingYou`). When it starts, Mycelium calls its own
+  `PlayerController.GoadWaveBack`, as after its own wave: each wandering spore near you and within 60
+  degrees of where you face may wave back, more likely the happier it is.
+- Test aids: `-mcCurioKeyTest`, `LINKTEST_EMOTEWAVE=1`.
+
+**Tested how:** stand-in, The Carcass, `-mcCurioKeyTest` with `LINKTEST_EMOTEWAVE=1` (the wave from
+6 to 8.5 s).
+
+**Result:**
+- Mycelium found all it needs ("Curio action True, FindClosestCurioInRange True, GoadWaveBack
+  True").
+- On the emote wave: "you wave (Emotecraft): the spores near you and in front of you may wave back".
+  Two spores waved within a second, but spores wave on their own too, so that isn't proof. No errors.
+
+**Not tested:**
+- The Curio key with nothing near: the test's middle mouse press didn't reach Mycelium (its window
+  has no focus in a test run), as with earlier key tests.
+- In Minecraft: the third-person switch, and real spores waving back at your emote.
+
+## 2026-11-08 The Carcass's decorations work: Curio key, overlay, sitting and lying (protocol v52)
+
+**Your request:** make the interactable decorations around The Carcass work.
+
+**What they are:** Mycelium's curios. In your Carcass these are the Stump Chairs (sit on the floor)
+and the Mushroom Bed (sleep or lie down); the dance, drum, bonfire and game ones are locked furniture
+there. You use one with Mycelium's Curio key (`PlayerController`):
+- it fires the decoration's animation on your spore, gives the colony happiness, and holds you
+  (canAct off) until you press a movement key;
+- with no decoration near, the Curio key makes your spore wave.
+
+**What was wrong** (`-mcCurioTest` uses each one as the key does):
+1. The Curio key had no default in Minecraft's Controls (Mycelium's own is left click, Minecraft's
+   attack).
+2. While you sat or lay down, the overlay (hand, hotbar, hearts) went away: Mycelium has the
+   controls then, as in its menus.
+3. Your Minecraft body kept standing: the animation plays on the hidden spore.
+
+**Changed:**
+- `MyceliumKeys`: the Curio key defaults to the middle mouse button (your choice). It's shared with
+  Salvage. In The Carcass you hold no weapon and there's nothing to salvage. In a run Mycelium only
+  uses decorations with no weapon in hand. Minecraft keeps a saved binding, so an "unbound" saved
+  before stays until you press Reset on it.
+- `MinecraftDriver.DecorationPose`: while the Animator's `InActionState` is on, the state your spore
+  is in says what you're doing:
+  - SitFloor/SitStump → sitting;
+  - Sleep/Lay → lying;
+  - Hello → waving.
+
+  The pose is kept between two of its states. It's sent as MycState SIT / LIE / WAVE (v52), and the
+  overlay stays on meanwhile.
+- `MycPlayerModel`: your body sent to Mycelium takes Minecraft's own riding pose, lowered 0.62 blocks
+  (times your size) so you sit on the floor; or its sleeping pose, lying the way you face.
+- `MycEmotes.waveYou`: the plain wave plays Emotecraft's wave on you (as its wheel would). During it,
+  your facing is held as for any emote.
+- The animation names are triggers in Mycelium's Animator, used up at once. A first version read
+  them as true/false values and saw nothing; the test caught it.
+
+**Tested how:** stand-in, The Carcass, `-mcCurioTest`, `LINKTEST_OVERLAY=1 LINKTEST_MODEL=1
+LINKTEST_STILL=1`. It uses the 3 Stump Chairs and the Mushroom Bed, then the Curio key with nothing
+near.
+
+**Result:**
+- The fake Minecraft got "you sit" for 3 s at each chair, "you lie down" for 3 s at the bed, and
+  "you wave" for 1.5 s, each ending when the test moved you, with no gaps.
+- The overlay stayed on all the time (0 "overlay False").
+- Before the fixes: overlay off, no pose sent. No errors.
+
+**Not tested:**
+- In Minecraft: how the sitting and lying poses look on your body and where they sit relative to
+  the stump and bed, the middle mouse button, and your wave.
+- The camera doesn't turn while you're seated: Mycelium has the controls then, so your mouse doesn't
+  reach Minecraft.
+- The locked dance, drum, bonfire and game decorations get no pose of their own.
+
+## 2026-11-08 You keep facing one way during an emote, and the camera orbits around you
+
+**Your request:** your player doesn't turn during an emote, so you can orbit the camera around them.
+
+**Why it turned:**
+- The spore faces your Minecraft body (McState body yaw, `rb.MoveRotation` while driving).
+- Minecraft turns its body after your look once you look more than about 50 degrees away.
+- So turning the camera during an emote turned the spore and your body with it.
+
+**Changed:** `MycEmotes.holdFacing`, at the end of every client tick. While Emotecraft plays an emote
+on you (its `isPlayingEmote`), your body and head yaw are held where the body faced when the emote
+started (`yBodyRot`, `yHeadRot`, and their previous-tick copies, so the frames between ticks agree).
+Your look still turns, and Mycelium's camera follows it, so it orbits. When the emote ends, you turn
+with the camera again. The log says "emotes: you're doing an emote; you keep facing …" and "your
+emote is over …".
+
+**Tested how:** the jar builds.
+**Not tested:** in Minecraft; the stand-in can't play an emote. If an emote animates the head itself,
+that wins over the held head.
+
+## 2026-11-08 Waving spores use Emotecraft's wave (protocol v51)
+
+**Your request:** spores in The Carcass sometimes wave; when they do, they use Emotecraft's wave.
+
+**How Mycelium does it:** its Wave trigger (`WaveCurio`, a spore waving back, the dance and drum
+curios) puts the spore's Animator in the "Hello" state for about 3 s.
+
+**Changed:**
+- **Mycelium (`ColonyWatch`):** a bit per spore while its Animator is in "Hello", sent in the Colony
+  block (0x734, protocol v51). The log says "colony: X waves" and "X stops waving".
+- **Minecraft (`MycSporeBodies`, new `MycEmotes`):**
+  - When a spore starts waving, it gets a made-up player of its own, and Emotecraft's built-in
+    "Waving" emote (2.5 s) plays on it. Emotecraft is reached by name, unchanged (rule 7), and
+    without it nothing happens.
+  - That body isn't in the world, so the mod does what Minecraft's tick would: counts its ticks and
+    moves its animation on through Player Animation Library.
+  - It's posed every frame while the emote plays. Then the spore goes back to the shared body.
+- `-mcWaveTest` makes another spore wave 4 s into driving. The fake Minecraft prints the waving
+  bits.
+- Also fixed on the way: a second place writing the Colony block (no spore) missed the new field and
+  broke the build. The build script then hung after Unity's error, and was stopped.
+
+**Tested how:** stand-in, The Carcass, `-mcWaveTest`, `LINKTEST_MODEL=1 LINKTEST_STILL=1`.
+**Result:**
+- Suzie's wave (the test's) was in "Hello" for about 3 s, and her bit was set from +0.5 s until
+  "Hello" ended.
+- Spores waved by themselves too: 10 or more waves in 16 s, every one set and cleared.
+- The fake Minecraft read the bits (80, 82, c2, 446 …). No errors.
+
+**Not tested:** in Minecraft: the emote on the spores' bodies, its timing, and going back to the
+normal pose. The jar builds.
+
+## 2026-11-08 Emotecraft's emote wheel shows your spore's skin
+
+**Your report:** with Emotecraft added, its emote wheel shows your normal Minecraft skin, not your
+spore's.
+
+**Why:** Emotecraft draws you on the wheel as one of Minecraft's own mannequins (`ClientMannequin`;
+its `UnsafeMannequin` subclass, `PlayerPreview`), made from your profile. A mannequin looks its skin
+up from the profile. The mod gives you the spore's skin through `PlayerInfo.getSkin`
+(`PlayerInfoSkinMixin`), which the mannequin never asks.
+
+**Changed:** new `MannequinSkinMixin` on Minecraft's `ClientMannequin.getSkin`. A mannequin of you
+wears the spore's skin while Mycelium has a spore (`MycSkins.forPlayer`, the same as your body).
+Other mannequins keep their own. Emotecraft isn't changed (AGENTS.md rule 7): its mannequin doesn't
+replace `getSkin`, so this reaches it. The log says "skins: a mannequin of you … wears your spore's
+skin" the first time.
+
+**Tested how:** the jar builds. I read Emotecraft's classes (unpacked into the scratch folder, not
+the project) to see how it draws you.
+**Not tested:** in Minecraft.
+
+**Careful:** `Apply Mods.bat` empties the instance's mods folder and copies in `dist\minecraft-mods`.
+Emotecraft isn't in `dist`, so put its jar there first or it's deleted.
+
+## 2026-11-08 No flicker of the overlay and Mycelium's HUD when swapping spores
+
+**Your report:** swapping spores, the Minecraft overlay disappears for a split second, and
+Mycelium's UI comes back for that same moment.
+
+**Why:**
+- A swap made the mod start over as with a brand new player: phase Idle until the next physics step
+  (FixedUpdate), which scans the new spore's ground and sends Minecraft there.
+- In the log that was about 50 ms (13.64 s → 13.69 s), several frames at these frame rates.
+- In Idle everything that means "Minecraft drives" switched off: the overlay, your Minecraft body
+  (the spore was drawn), the input bridge, and the hiding of the nutrient panel, health bar and
+  colony meter. All of it came back a few frames later.
+
+**Changed:**
+- `MinecraftDriver.FindPlayer`: a swap while Minecraft drives goes straight to WaitingForTeleport,
+  and `FixedUpdate` sends the teleport to the new spore at its next step ("spore swapped").
+- The nutrient panel, health bar and colony meter count WaitingForTeleport as driving (`Steering`),
+  as the overlay and your body already did.
+- `-mcSporeSwapTest` counts a pop-up's happiness faces apart from the spore's own renderers. The
+  first run counted a pop-up on the spore next to you as "5 spore renderers drawn".
+
+**Tested how:** stand-in, The Carcass, `-mcSporeSwapTest` (two swaps), `LINKTEST_MODEL=1`.
+
+**Result:**
+- **Before:** "phase Driving -> Idle (new player)", then in the same frame "nutrients … back as it
+  was", "health … back as it was", "colony meter back as it was", "player model: hidden",
+  "input bridge … Minecraft isn't driving".
+- **After:** "phase Driving -> WaitingForTeleport (spore swapped …)", the teleport 40 ms later,
+  confirmed 20–30 ms after that, then Driving. None of those lines in between.
+- Every other spore: 0 of its renderers drawn after each swap (one had its pop-up open, 5 faces,
+  drawn on purpose). No errors.
+- One earlier run had an error inside the test's own pop-up step (opening a pop-up on a spore whose
+  pop-up was already up); the next run didn't.
+
+**Not tested:** in Minecraft (how it looks; a real Minecraft confirms the teleport in its own time,
+during which the overlay now stays).
+
+## 2026-11-08 Mycelium's health bar hidden while Minecraft's hearts show your health
+
+**Your request:** remove Mycelium's health bar from its HUD, and leave the name part.
+
+**Changed:** new `HealthPanel.cs`, the same rule as the nutrient panel. While Minecraft drives with
+the overlay on, two objects under Mycelium's `HUD` are switched off:
+- `HealthBarPanelCutoutMask`: the bar and its background;
+- `HPNumber`: the "240/240" beside it.
+
+The spore's name and trait (`SporeName`, `SporeTraitName`) stay. Mycelium keeps setting the bar and
+number while they're off, and if it switches them on, they're switched off again that frame. They
+come back as Mycelium had them when Minecraft stops driving, or with the overlay off. Test aid
+`-mcHudDump` logs the health HUD's objects and what's shown.
+
+**Tested how:** stand-in, Daybreak Arboretum, `-mcHudDump`, the fake Minecraft for 10 s, then gone.
+**Result:**
+- While it drove: "bar hidden, number hidden, name shown, trait shown", every second for 6 s.
+  Health kept changing underneath (240 → 226 from enemy hits, sent to Minecraft as hearts).
+- When the fake Minecraft stopped: "health bar back as it was (bar on: True, number on: True)".
+- No errors.
+
+**Not tested:** in Minecraft (how the HUD looks with the bar gone; the name may sit alone at the top
+left).
+
 ## 2026-11-08 Defense Mechanism's bubble and green particles are drawn
 
 **Your request:** Defense Mechanism's shield bubble shows in both third person views, and its green

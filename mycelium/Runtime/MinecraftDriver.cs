@@ -72,6 +72,8 @@ namespace MyceliumCraft
         // Blacksmith Ironspore opens Minecraft's smithing screen (ForgeWatch).
         readonly ForgeWatch forge = new ForgeWatch();
         readonly FuryWatch furyWatch = new FuryWatch();
+        readonly HealthPanel healthPanel = new HealthPanel();
+        readonly CurioKey curioKey = new CurioKey();
         bool forgeDriving, forgeScreenOpen; // as of this frame's Update, for the next frame's early catch
         // Test aid "-mcNoTraitFix": leave Mycelium's leftover trait hooks alone, as Mycelium does.
         static readonly bool NoTraitFix = Array.IndexOf(Environment.GetCommandLineArgs(), "-mcNoTraitFix") >= 0;
@@ -108,6 +110,9 @@ namespace MyceliumCraft
         bool mcWasAlive;
         bool driving;
         Phase phase = Phase.Idle;
+        bool swapWhileDriving, startAfterSwap; // a spore swap while Minecraft drives: no Idle in between
+        /// <summary>Minecraft drives the spore, or is being moved to it (a re-sync or a swap's teleport).</summary>
+        bool Steering => phase == Phase.Driving || phase == Phase.WaitingForTeleport;
 
         McState mc;
         uint lastEpoch;
@@ -204,7 +209,11 @@ namespace MyceliumCraft
             // The Blacksmith's Interact is caught before PlayerController reads it (ForgeWatch).
             var forgeCatch = new GameObject("MyceliumCraft forge catch").AddComponent<ForgeCatch>();
             DontDestroyOnLoad(forgeCatch.gameObject);
-            forgeCatch.EarlyUpdate = () => forge.Early(forgeDriving, forgeScreenOpen);
+            forgeCatch.EarlyUpdate = () =>
+            {
+                forge.Early(forgeDriving, forgeScreenOpen);
+                curioKey.Early(forgeDriving); // the Curio key with no decoration near: no wave
+            };
             forgeCatch.LateAfter = forge.Late;
 
             // Test aid: "-mcScene <name>" skips the menus and loads that level directly.
@@ -330,9 +339,28 @@ namespace MyceliumCraft
             // Test aid: "-mcRepickTest" picks up the nearest weapon lying in the world (tag "Weapon")
             // 8 s into driving, through WeaponInteraction.Interact (for thrown weapons).
             if (Array.IndexOf(args, "-mcRepickTest") >= 0) StartCoroutine(RepickTest());
+            // Test aid: "-mcCurioTest" (The Carcass) uses each decoration as your Curio key does and logs what follows.
+            if (Array.IndexOf(args, "-mcCurioTest") >= 0) StartCoroutine(CurioTest());
+            // Test aid: "-mcCurioKeyTest" (The Carcass) presses the Curio key away from any decoration.
+            if (Array.IndexOf(args, "-mcCurioKeyTest") >= 0) StartCoroutine(CurioKeyTest());
+            // Test aid: "-mcSeatTest" (The Carcass) has colony spores use the stump chairs and the bed, and logs where they sit and face.
+            if (Array.IndexOf(args, "-mcSeatTest") >= 0) StartCoroutine(SeatTest());
+            // Test aid: "-mcWaveTest" (The Carcass) has another spore wave 4 s into driving.
+            if (Array.IndexOf(args, "-mcWaveTest") >= 0) StartCoroutine(WaveTest());
+            // Test aid: "-mcHudDump" logs the health HUD's objects (what draws where) 3 s into driving.
+            if (Array.IndexOf(args, "-mcHudDump") >= 0) StartCoroutine(HudDump());
             // Test aid: "-mcDefenseTest" makes Defense Mechanism's bubble and green particles 4 s into driving
             // and logs which of their parts are drawn (run with LINKTEST_VIEW=0, 1 or 2).
             if (Array.IndexOf(args, "-mcDefenseTest") >= 0) StartCoroutine(DefenseTest());
+            // Test aid: "-mcMoodTest" raises then lowers the happiness of you and one other spore 4 s into
+            // driving, as Mycelium does, and logs whether their happy and sad particles are drawn.
+            if (Array.IndexOf(args, "-mcMoodTest") >= 0) StartCoroutine(MoodTest());
+            // Test aid: "-mcDrumTest" makes one other spore hit the beetle drum (Mycelium's DrumHit trigger)
+            // 4 s into driving, and logs its Animator state and its bones' turns every 0.05 s.
+            if (Array.IndexOf(args, "-mcDrumTest") >= 0) StartCoroutine(DrumTest());
+            // Test aid: "-mcSporeCurioTest" puts one other spore on the dance pad (BustMoves), the bed (Sleep,
+            // then Lay) and the chair (SitFloor) 4 s into driving, 4 s each, as those curios do, and logs its pose.
+            if (Array.IndexOf(args, "-mcSporeCurioTest") >= 0) StartCoroutine(SporeCurioTest());
             // Test aid: "-mcFuryTest" switches Relentless Fury's effect on 4 s into driving, as the skill
             // does, and logs its stacks and the held weapon's damage every 0.5 s (run with LINKTEST_HIT=1).
             if (Array.IndexOf(args, "-mcFuryTest") >= 0) StartCoroutine(FuryTest());
@@ -423,6 +451,7 @@ namespace MyceliumCraft
                 colony.SceneLoaded();
                 birth.SceneLoaded();
                 nutrientPanel.SceneLoaded();
+                healthPanel.SceneLoaded();
                 bossBar.SceneLoaded();
                 shopUndo.SceneLoaded();
                 menuBody.SceneLoaded();
@@ -463,6 +492,15 @@ namespace MyceliumCraft
             BlockSkillsWhileCycloning(cycloning);
             // The dodge roll: Minecraft plays its combat roll animation on your body (MycSkillAnimation.java).
             if (rb != null && animator != null && animator.isActiveAndEnabled && animator.GetBool("Roll")) flags |= Proto.MycRoll;
+            // A decoration in use (PlayerController.InteractWithCurio): Minecraft poses your body the same way.
+            string decorationState = null;
+            int decoration = rb != null ? DecorationPose(out decorationState) : 0;
+            if (decoration != 0 && decorationFaced == 0 && forgeDriving) FaceDecoration(decorationState);
+            decorationFaced = decoration;
+            if (decoration == 1) flags |= Proto.MycSit;
+            else if (decoration == 2) flags |= Proto.MycLie;
+            else if (decoration == 5) flags |= Proto.MycLie | Proto.MycLieFront;
+            else if (decoration == 4) flags |= Proto.MycAtDecoration;
             // Relentless Fury as its description says: the frenzy (FuryWatch); Minecraft shows red potion particles.
             furyWatch.Update(forgeDriving, weapons);
             if (furyWatch.On) flags |= Proto.MycFury;
@@ -484,16 +522,18 @@ namespace MyceliumCraft
                                rb != null ? SporeName() : ""); // Minecraft's player goes by it (MycName.java)
 
             // Your nutrients: Minecraft's experience level, on the overlay, instead of Mycelium's panel.
-            nutrientPanel.Update(McConfig.Overlay && rb != null && phase == Phase.Driving && link.MinecraftAlive);
+            nutrientPanel.Update(McConfig.Overlay && rb != null && Steering && link.MinecraftAlive);
+            // Mycelium's health bar and number: Minecraft's hearts show your health (the name stays).
+            healthPanel.Update(McConfig.Overlay && rb != null && Steering && link.MinecraftAlive);
             // The final boss's health: Minecraft's boss bar instead of Mycelium's (BossBar, MycBossBar.java).
             bossBar.Update(link, McConfig.Overlay && rb != null && phase != Phase.Idle && link.MinecraftAlive,
                            heldByMycelium && !this.controlsWhy.EndsWith("knockback"));
 
             // Your colony: in Minecraft's player list instead of Mycelium's colony meter (ColonyWatch, MycColony.java).
-            if (colony.Update(rb != null && phase == Phase.Driving && link.MinecraftAlive, (float)map.Scale))
+            if (colony.Update(rb != null && Steering && link.MinecraftAlive, (float)map.Scale))
             {
-                if (rb != null) link.WriteColony(colony.Count, colony.Colors, colony.Caps, colony.Speeds, colony.Emerges, colony.Happiness, colony.Names, colony.Average, colony.Current, colony.NutrientBonus);
-                else link.WriteColony(0, colony.Colors, colony.Caps, colony.Speeds, colony.Emerges, colony.Happiness, colony.Names, -1f, -1, -1);
+                if (rb != null) link.WriteColony(colony.Count, colony.Colors, colony.Caps, colony.Speeds, colony.Emerges, colony.Happiness, colony.Names, colony.Average, colony.Current, colony.NutrientBonus, colony.Waving, colony.Drums, colony.Poses, colony.Yaws);
+                else link.WriteColony(0, colony.Colors, colony.Caps, colony.Speeds, colony.Emerges, colony.Happiness, colony.Names, -1f, -1, -1, 0u, colony.Drums, colony.Poses, colony.Yaws);
             }
 
             // You and the other spores collide in Minecraft (ColonyPush), not in Mycelium's physics (ColonyPassThrough).
@@ -539,6 +579,7 @@ namespace MyceliumCraft
             bool myceliumControls = MyceliumHasControls(out string bridgeWhy) && !(mcScreenOpen && bridgeWhy.EndsWith("knockback"));
             uint playReason = !(alive && phase != Phase.Idle) ? Proto.ReasonNotDriving
                             : myceliumControls && bridgeWhy.EndsWith("knockback") ? Proto.ReasonKnockback
+                            : myceliumControls && DecorationPose(out _) != 0 ? Proto.ReasonLookOnly
                             : myceliumControls ? Proto.ReasonMyceliumControls
                             : Proto.ReasonActive;
             uint reason = !McConfig.InputBridge || BackgroundWindow.Enabled ? Proto.ReasonOff
@@ -578,11 +619,15 @@ namespace MyceliumCraft
             else if (controlsSince < 0f) controlsSince = Time.realtimeSinceStartup;
             // A hit's knockback never hides it (it lasts until the "Hurt" animation is half done, up to
             // about half a second: the grace alone wasn't enough).
-            bool overlayBlocked = controls && !controlsWhy.EndsWith("knockback")
+            // Using a decoration takes the controls too (canAct off until you move), but it's still
+            // play: the overlay stays (your request, 2026-11-08).
+            bool overlayBlocked = controls && !controlsWhy.EndsWith("knockback") && DecorationPose(out _) == 0
                                   && (controlsWhy == "paused" || Time.realtimeSinceStartup - controlsSince >= OverlayControlsGrace);
             birth.Update(alive && phase != Phase.Idle); // a spore grown in the shop: no HUD, no overlay
             overlay.Update(link, McConfig.Overlay && alive && phase != Phase.Idle && !overlayBlocked && !covered && !birth.On);
             // Minecraft's pause menu (Escape) pauses Mycelium too.
+            // Emotecraft's wave on you: spores near you and in front of you may wave back (CurioKey).
+            curioKey.EmoteWave(forgeDriving && (lastCamMc.Flags & Proto.McEmoteWave) != 0);
             FreezeForMinecraftPause(alive && phase == Phase.Driving && camFresh2 && (lastCamMc.Flags & Proto.McPaused) != 0);
             pauseBlur.Update();
             // Third person: your Minecraft body at the spore's feet, instead of the spore.
@@ -771,11 +816,12 @@ namespace MyceliumCraft
                     }
             }
 
-            if (phase == Phase.Idle || mc.Epoch != lastEpoch)
+            if (phase == Phase.Idle || mc.Epoch != lastEpoch || startAfterSwap)
             {
-                bool newWorld = phase != Phase.Idle;
+                bool newWorld = phase != Phase.Idle && mc.Epoch != lastEpoch;
                 lastEpoch = mc.Epoch;
-                SendTeleport(newWorld ? "Minecraft entered a new world" : "start", setFacing: true);
+                SendTeleport(newWorld ? "Minecraft entered a new world" : startAfterSwap ? "spore swapped" : "start", setFacing: true);
+                startAfterSwap = false;
                 return;
             }
 
@@ -1059,6 +1105,114 @@ namespace MyceliumCraft
             return min == float.MaxValue ? 0f : max - min;
         }
 
+        // What your spore does at a decoration: PlayerController.InteractWithCurio fires the curio's
+        // animation trigger and sets the Animator's InActionState until you move. The triggers are
+        // used up at once, so the state it's in tells: 0 none, 1 sit, 2 lie, 3 wave.
+        internal static readonly (string state, int pose)[] DecorationAnims = {
+            ("SitFloor(Beg)", 1), ("SitFloor(Mid)", 1), ("SitFloor(End)", 1), ("SitStump(Beg)", 1), ("SitStump(Mid)", 1), ("SitStump(End)", 1),
+            ("Sleep(Beg)", 2), ("Sleep(Mid)", 2), ("Sleep(End)", 2), ("Lay(Beg)", 5), ("Lay(Mid)", 5), ("Lay(End)", 5), // 2 on your back, 5 on your front
+            ("Bustin Moves", 4), ("Bustin Metal Moves", 4) }; // 4: standing there (dancing)
+        Animator decorationAnimator;
+        readonly System.Collections.Generic.HashSet<string> decorationParams = new System.Collections.Generic.HashSet<string>();
+        int lastDecoration, decorationFaced;
+
+        /// <summary>
+        /// You sit or lie at a decoration on its seat, facing the same way every time, wherever you
+        /// stood and looked (your requests, 2026-11-08). Mycelium plays the animation where you stand
+        /// and doesn't turn you; its other spores walk to one of the decoration's seats
+        /// (Curio.traversalTransforms) first. A stump chair's seat is on top of the stump.
+        /// - Where: the seat nearest you, of the decoration Mycelium used (FindClosestCurioInRange).
+        /// - Facing on a stump: the seat's own direction (your choice; Mycelium's "away from the middle"
+        ///   rule is near random there, as the seat is almost at the middle).
+        /// - Facing on the bed: Mycelium's rule from the seat, away from the bed to sleep, towards it to lie.
+        /// - Facing at the bonfire and the game board: towards it; on the dance pad: towards its drum
+        ///   (Mycelium's lookTarget for its spores there), from the seat.
+        /// The spore is moved and turned, and Minecraft gets a teleport there with that facing, which
+        /// turns its look, body and head (your camera then looks the way you face).
+        /// </summary>
+        void FaceDecoration(string state)
+        {
+            Type ct = Type.GetType("Curio, Assembly-CSharp");
+            // The decoration Mycelium used: the one its PlayerController finds (FindClosestCurioInRange).
+            Component curio = controller != null ? playerControllerType.GetMethod("FindClosestCurioInRange", BindingFlags.NonPublic | BindingFlags.Instance)?.Invoke(controller, null) as Component : null;
+            if (curio == null) { McLog.Info($"decoration: Mycelium found no decoration near ({state}); you stay as you are"); return; }
+            Transform seat = null;
+            float best = float.MaxValue;
+            if (ct?.GetField("traversalTransforms")?.GetValue(curio) is System.Collections.IList seats)
+                foreach (object s in seats)
+                {
+                    var t = s.GetType().GetField("transform")?.GetValue(s) as Transform;
+                    if (t == null) continue;
+                    float d = Vector3.Distance(t.position, rb.position);
+                    if (d < best) { best = d; seat = t; }
+                }
+            Vector3 at = seat != null ? seat.position + Vector3.up * feetOffset : rb.position;
+            Vector3 face;
+            string how;
+            if (curio.GetType().Name == "ChairCurio" && seat != null)
+            {
+                face = Vector3.ProjectOnPlane(seat.forward, Vector3.up);
+                how = $"the seat's direction (yaw {seat.eulerAngles.y:F0})";
+            }
+            else if (curio.GetType().Name == "BedCurio")
+            {
+                Vector3 away = at - curio.transform.position;
+                away.y = 0f;
+                bool towards = state != null && state.StartsWith("Lay");
+                face = towards ? -away : away;
+                how = towards ? "towards it, from the seat" : "away from it, from the seat";
+            }
+            else
+            {
+                // BonfireCurio, GameCurio: towards it (Mycelium's lookTarget). DanceCurio: towards its drum.
+                Transform target = curio.transform;
+                if (curio.GetType().Name == "DanceCurio" && curio.GetType().GetField("drumTransform", BindingFlags.NonPublic | BindingFlags.Instance)?.GetValue(curio) is Transform drum && drum != null) target = drum;
+                face = target.position - at;
+                face.y = 0f;
+                how = target == curio.transform ? "towards it, from the seat" : $"towards '{target.name}', from the seat";
+            }
+            if (face.sqrMagnitude < 1e-6f) face = rb.transform.forward;
+            Quaternion turn = Quaternion.LookRotation(face.normalized, Vector3.up);
+            Vector3 from = rb.position;
+            rb.position = at;
+            rb.transform.position = at;
+            rb.velocity = Vector3.zero;
+            rb.rotation = turn;
+            rb.MoveRotation(turn);
+            McLog.Info($"decoration: on '{(seat != null ? seat.name : "no seat")}' of '{curio.gameObject.name}' ({curio.GetType().Name}), moved {Vector3.Distance(from, at):F2} units to {at:F2}, facing {how}, yaw {turn.eulerAngles.y:F0}; Minecraft moved and turned to match");
+            SendTeleport("a decoration places you", setFacing: true);
+        }
+
+        int DecorationPose(out string which)
+        {
+            which = null;
+            Animator a = rb != null ? rb.GetComponent<Animator>() : null;
+            if (a == null || !a.isActiveAndEnabled) return 0;
+            if (!ReferenceEquals(a, decorationAnimator))
+            {
+                decorationAnimator = a;
+                decorationParams.Clear();
+                foreach (AnimatorControllerParameter p in a.parameters) if (p.type == AnimatorControllerParameterType.Bool) decorationParams.Add(p.name);
+            }
+            int pose = 0;
+            if (decorationParams.Contains("InActionState") && a.GetBool("InActionState"))
+            {
+                AnimatorStateInfo s = a.GetCurrentAnimatorStateInfo(0);
+                // Mid-blend from one part to the next (Beg to Mid), the state it's going to counts too.
+                AnimatorStateInfo next = a.IsInTransition(0) ? a.GetNextAnimatorStateInfo(0) : s;
+                foreach (var (name, p) in DecorationAnims)
+                    if (s.IsName(name) || next.IsName(name)) { pose = p; which = name; break; }
+                // Still at the decoration (InActionState stays on until you move), between two of its states: keep the pose.
+                if (pose == 0) pose = lastDecoration;
+            }
+            if (pose != lastDecoration)
+            {
+                lastDecoration = pose;
+                McLog.Info(pose == 0 ? "decoration: done (you moved): your Minecraft body stands again" : $"decoration: '{which}': your Minecraft body {(pose == 1 ? "sits" : pose == 2 ? "lies down on its back" : pose == 5 ? "lies down on its front" : "stands there")}; the overlay stays");
+            }
+            return pose;
+        }
+
         void SetPhase(Phase next, string why)
         {
             if (phase == next) return;
@@ -1075,6 +1229,10 @@ namespace MyceliumCraft
                 McLog.Info($"spore swapped: Minecraft follows '{now.name}' now");
                 controller = null;
                 nextFindTime = 0f;
+                // Minecraft keeps driving through the swap (your report, 2026-11-08): no Idle in
+                // between, which for a few frames hid the overlay and your Minecraft body and brought
+                // Mycelium's HUD back. Its move to the new spore is sent at the next physics step.
+                swapWhileDriving = phase != Phase.Idle;
             }
             if (controller != null || playerControllerType == null || Time.realtimeSinceStartup < nextFindTime) return;
             nextFindTime = Time.realtimeSinceStartup + 0.5f;
@@ -1098,7 +1256,13 @@ namespace MyceliumCraft
             needScan = true;
             firstScan = true;
             rescanCompare = false;
-            SetPhase(Phase.Idle, "new player");
+            if (swapWhileDriving)
+            {
+                swapWhileDriving = false;
+                startAfterSwap = true;
+                SetPhase(Phase.WaitingForTeleport, "spore swapped; Minecraft goes on driving, its move to the new spore comes at the next physics step");
+            }
+            else SetPhase(Phase.Idle, "new player");
             McLog.Info($"found PlayerController on '{controller.gameObject.name}', rigidbody on '{rb.gameObject.name}' (layer {LayerMask.LayerToName(rb.gameObject.layer)}, useGravity={rb.useGravity}, interpolation={rb.interpolation}) at {rb.position:F2}, feet y={FeetY(rb.position.y):F2}");
             McLog.Info($"ground layers: {ground.LayerNames}");
 
@@ -2418,9 +2582,14 @@ namespace MyceliumCraft
                 yield return new WaitForSeconds(1f);
                 for (int i = 0; i < colony.Count; i++)
                 {
-                    int drawn = 0;
-                    foreach (Renderer r in colony.Spores[i].GetComponentsInChildren<Renderer>(true)) if (!r.forceRenderingOff) drawn++;
-                    McLog.Info($"spore swap test: {colony.Names[i]}{(i == colony.Current ? " (you)" : "")}: {drawn} spore renderers drawn (want 0)");
+                    int drawn = 0, popUp = 0;
+                    foreach (Renderer r in colony.Spores[i].GetComponentsInChildren<Renderer>(true))
+                    {
+                        if (r.forceRenderingOff) continue;
+                        if (r.GetComponentInParent<Canvas>() != null) popUp++; // a pop-up's happiness faces: drawn on purpose
+                        else drawn++;
+                    }
+                    McLog.Info($"spore swap test: {colony.Names[i]}{(i == colony.Current ? " (you)" : "")}: {drawn} spore renderers drawn (want 0){(popUp > 0 ? $", {popUp} pop-up parts" : "")}");
                 }
             }
             // The popup on another spore: its happiness faces are sprites under that spore.
@@ -2790,6 +2959,424 @@ namespace MyceliumCraft
                     parts.Add($"{root}/{r.name} {(drawn ? "DRAWN" : "not drawn")} (enabled {r.enabled}, off {r.forceRenderingOff}, {r.shadowCastingMode})");
                 }
                 McLog.Info($"defense test: +{i * 0.5f:F1} s, view {cameraSync.Mode}: {(parts.Count == 0 ? "no Defense parts on the spore" : string.Join("; ", parts))}");
+            }
+        }
+
+        /// <summary>Test aid (-mcSporeCurioTest): another spore on the bed and the chair, as BedCurio and ChairCurio do.</summary>
+        System.Collections.IEnumerator SporeCurioTest()
+        {
+            while (phase != Phase.Driving) yield return null;
+            yield return new WaitForSeconds(4f);
+            GameObject you = GameObject.FindWithTag("currentPlayer"), spore = null;
+            for (int i = 0; i < colony.Count; i++)
+                if (colony.Spores[i] != null && colony.Spores[i] != you) { spore = colony.Spores[i]; break; }
+            if (spore == null) { McLog.Info("spore curio test: no other spore"); yield break; }
+            Animator animator = spore.GetComponent<Animator>();
+            Rigidbody body = spore.GetComponent<Rigidbody>();
+            Behaviour wander = spore.GetComponent(Type.GetType("WanderingSpore, Assembly-CSharp")) as Behaviour;
+            if (wander != null) wander.enabled = false; // the test moves it, not its wandering
+            RigidbodyConstraints was = body != null ? body.constraints : RigidbodyConstraints.None;
+            if (body != null) body.constraints = RigidbodyConstraints.FreezeAll;
+            Transform Seat(string type)
+            {
+                Type t = Type.GetType(type + ", Assembly-CSharp");
+                UnityEngine.Object c = t != null ? FindObjectOfType(t) : null;
+                if (c == null) return null;
+                var seats = t.GetField("traversalTransforms")?.GetValue(c) as System.Collections.IList;
+                object first = seats != null && seats.Count > 0 ? seats[0] : null;
+                return first?.GetType().GetField("transform")?.GetValue(first) as Transform ?? ((Component)c).transform;
+            }
+            foreach (var (curio, trigger) in new[] { ("DanceCurio", "BustMoves"), ("BedCurio", "Sleep"), ("BedCurio", "Lay"), ("ChairCurio", "SitFloor") })
+            {
+                Transform seat = Seat(curio);
+                if (seat == null) { McLog.Info($"spore curio test: no {curio}"); continue; }
+                spore.transform.position = seat.position;
+                if (body != null) body.position = seat.position;
+                McLog.Info($"spore curio test: '{spore.name}' on {curio}'s seat at {seat.position:F2}, {trigger}");
+                animator.SetBool("InActionState", true);
+                animator.SetTrigger(trigger);
+                yield return new WaitForSeconds(4f);
+                animator.SetBool("InActionState", false);
+                yield return new WaitForSeconds(1.5f);
+            }
+            if (body != null) body.constraints = was;
+            if (wander != null) wander.enabled = true;
+            McLog.Info("spore curio test: done");
+        }
+
+        /// <summary>Test aid (-mcDrumTest): a spore's drum hit, as Mycelium's DrumCurio triggers it, sampled.</summary>
+        System.Collections.IEnumerator DrumTest()
+        {
+            while (phase != Phase.Driving) yield return null;
+            yield return new WaitForSeconds(4f);
+            GameObject you = GameObject.FindWithTag("currentPlayer"), spore = null;
+            for (int i = 0; i < colony.Count; i++)
+                if (colony.Spores[i] != null && colony.Spores[i] != you) { spore = colony.Spores[i]; break; }
+            if (spore == null) { McLog.Info("drum test: no other spore"); yield break; }
+            Animator animator = spore.GetComponent<Animator>();
+            SkinnedMeshRenderer sk = spore.GetComponentInChildren<SkinnedMeshRenderer>(true);
+            if (animator == null || sk == null) { McLog.Info($"drum test: animator {animator != null}, skinned mesh {sk != null}"); yield break; }
+            // Hold it still, as DrumCurio does (its rigidbody frozen).
+            Rigidbody body = spore.GetComponent<Rigidbody>();
+            if (body != null) body.constraints = RigidbodyConstraints.FreezeAll;
+            Transform Bone(string n) { foreach (Transform t in sk.bones) if (t != null && t.name == n) return t; return null; }
+            Transform armL = Bone("DEF-upper_arm.L"), handL = Bone("DEF-hand.L"), armR = Bone("DEF-upper_arm.R"), handR = Bone("DEF-hand.R");
+            Transform hips = Bone("DEF-spine"), chest = Bone("DEF-spine.004"), head = Bone("head");
+            Transform thighL = Bone("DEF-thigh.L"), footL = Bone("DEF-foot.L"), thighR = Bone("DEF-thigh.R"), footR = Bone("DEF-foot.R");
+            if (armL == null || handL == null || armR == null || handR == null || hips == null || chest == null || head == null)
+            { McLog.Info("drum test: missing a bone"); yield break; }
+            foreach (AnimationClip clip in animator.runtimeAnimatorController.animationClips)
+                if (clip.name.Contains("Smash")) { McLog.Info($"drum test: clip '{clip.name}' {clip.length:F3} s at {clip.frameRate} frames/s"); break; }
+            Transform me = spore.transform;
+            Renderer model = spore.transform.Find("SporeModel")?.GetComponent<Renderer>();
+            float height = model != null ? model.bounds.size.y : 1f;
+            float baseHeight = me.InverseTransformPoint(hips.position).y;
+            McLog.Info($"drum test: spore {height:F2} units tall; Minecraft angles (radians) in the torso's frame, the torso's lean in the spore's");
+            // The torso's frame: up from the hips to the chest, right as the spore's right, forward from those.
+            Vector3 up = Vector3.up, right = Vector3.right, fwd = Vector3.forward;
+            // A limb as Minecraft's xRot/zRot (rotationZYX): its direction d in Minecraft's model space
+            // (x = left, y = down, z = back) is (-sin z cos x, cos z cos x, sin x).
+            string Mc(Transform from, Transform to)
+            {
+                if (from == null || to == null) return "-";
+                Vector3 w = me.InverseTransformDirection(to.position - from.position).normalized;
+                float R = Vector3.Dot(w, right), U = Vector3.Dot(w, up), F = Vector3.Dot(w, fwd);
+                float x = Mathf.Asin(Mathf.Clamp(-F, -1f, 1f)), z = Mathf.Atan2(R, -U);
+                if (Mathf.Abs(z) > Mathf.PI / 2f) { z -= Mathf.Sign(z) * Mathf.PI; x = (x >= 0f ? Mathf.PI : -Mathf.PI) - x; }
+                return $"{x:F2}/{z:F2}";
+            }
+            for (int hit = 0; hit < 2; hit++)
+            {
+                McLog.Info($"drum test: DrumHit {hit + 1}");
+                animator.SetTrigger("DrumHit");
+                float start = Time.time;
+                while (Time.time - start < 1.8f)
+                {
+                    AnimatorStateInfo now = animator.GetCurrentAnimatorStateInfo(0), next = animator.GetNextAnimatorStateInfo(0);
+                    float t = now.IsName("Drum Hit") ? now.normalizedTime : next.IsName("Drum Hit") ? next.normalizedTime : -1f;
+                    Vector3 torso = me.InverseTransformDirection(chest.position - hips.position).normalized;
+                    up = torso;
+                    right = Vector3.ProjectOnPlane(Vector3.right, up).normalized;
+                    fwd = Vector3.Cross(right, up);
+                    float lean = Mathf.Atan2(torso.z, torso.y), side = Mathf.Atan2(torso.x, torso.y);
+                    Vector3 headUp = me.InverseTransformDirection(head.up);
+                    float nod = Vector3.SignedAngle(up, headUp, right) * Mathf.Deg2Rad;
+                    McLog.Info($"drum test: t {t:F3}{(animator.IsInTransition(0) ? " blending" : "")}: rightArm {Mc(armR, handR)} leftArm {Mc(armL, handL)} rightLeg {Mc(thighR, footR)} leftLeg {Mc(thighL, footL)} " +
+                        $"head {nod:F2} lean {lean:F2} side {side:F2} lift {(me.InverseTransformPoint(hips.position).y - baseHeight) / height:F3}");
+                    yield return new WaitForSeconds(0.025f);
+                }
+            }
+        }
+
+        /// <summary>Test aid (-mcMoodTest): happiness up then down on you and one other spore, and whether the particles are drawn.</summary>
+        System.Collections.IEnumerator MoodTest()
+        {
+            while (phase != Phase.Driving) yield return null;
+            yield return new WaitForSeconds(4f);
+            Type cst = Type.GetType("CharacterStats, Assembly-CSharp");
+            var spores = new System.Collections.Generic.List<GameObject>();
+            GameObject you = GameObject.FindWithTag("currentPlayer");
+            if (you != null) spores.Add(you);
+            for (int i = 0; i < colony.Count; i++)
+                if (colony.Spores[i] != null && colony.Spores[i] != you) { spores.Add(colony.Spores[i]); break; }
+            if (cst == null || spores.Count == 0) { McLog.Info($"mood test: CharacterStats {cst != null}, {spores.Count} spore(s)"); yield break; }
+            foreach (float amount in new[] { 0.05f, -0.05f })
+            {
+                foreach (GameObject s in spores)
+                {
+                    Component stats = s.GetComponent(cst);
+                    if (stats == null) { McLog.Info($"mood test: '{s.name}' has no CharacterStats"); continue; }
+                    cst.GetMethod("ModifyHappiness")?.Invoke(stats, new object[] { amount });
+                }
+                McLog.Info($"mood test: happiness {(amount > 0 ? "up" : "down")} {Mathf.Abs(amount):F2} on {spores.Count} spore(s), view {cameraSync.Mode}");
+                for (int k = 1; k <= 3; k++)
+                {
+                    yield return new WaitForSeconds(0.5f);
+                    foreach (GameObject s in spores)
+                    {
+                        int drawn = 0, notDrawn = 0;
+                        foreach (Renderer r in s.GetComponentsInChildren<Renderer>(true))
+                        {
+                            if (!CameraSync.MoodEffect(r.transform, s.transform)) continue;
+                            if (r.enabled && r.gameObject.activeInHierarchy && !r.forceRenderingOff && r.shadowCastingMode != UnityEngine.Rendering.ShadowCastingMode.ShadowsOnly) drawn++;
+                            else notDrawn++;
+                        }
+                        McLog.Info($"mood test: +{k * 0.5f:F1} s, '{s.name}'{(s == you ? " (you)" : "")}: {drawn} happy/sad particle part(s) drawn, {notDrawn} not drawn");
+                    }
+                }
+                yield return new WaitForSeconds(3f); // Mycelium makes no new ones while the old ones are still there
+            }
+        }
+
+        /// <summary>Test aid (-mcHudDump): the health HUD's objects, what draws in each, and where they are.</summary>
+        System.Collections.IEnumerator HudDump()
+        {
+            while (phase != Phase.Driving) yield return null;
+            yield return new WaitForSeconds(3f);
+            Type ht = Type.GetType("HUDHealth, Assembly-CSharp");
+            var hud = ht != null ? FindObjectOfType(ht) as Component : null;
+            if (hud == null) { McLog.Info("hud dump: no HUDHealth"); yield break; }
+            const BindingFlags any = BindingFlags.Public | BindingFlags.NonPublic | BindingFlags.Instance;
+            var bar = ht.GetField("healthBar", any)?.GetValue(hud) as Component;
+            var num = ht.GetField("healthNumberText", any)?.GetValue(hud) as Component;
+            var name = ht.GetField("sporeNameText", any)?.GetValue(hud) as Component;
+            string P(Component c)
+            {
+                if (c == null) return "none";
+                string p = c.name;
+                for (Transform t = c.transform.parent; t != null; t = t.parent) p = t.name + "/" + p;
+                return p;
+            }
+            McLog.Info($"hud dump: HUDHealth on '{P(hud)}'; bar '{P(bar)}'; number '{P(num)}'; name '{P(name)}'");
+            // From the HUDHealth object's parent down, every object with what draws in it.
+            Transform root = hud.transform;
+            foreach (Component c in new[] { bar, num, name })
+            {
+                if (c == null) continue;
+                // Climb root until it holds all three.
+                while (root.parent != null && !c.transform.IsChildOf(root)) root = root.parent;
+            }
+            void Dump(Transform t, int depth)
+            {
+                var rt = t as RectTransform;
+                var draws = new System.Collections.Generic.List<string>();
+                foreach (Component c in t.GetComponents<Component>())
+                    if (c is UnityEngine.UI.Graphic g) draws.Add($"{c.GetType().Name}{(g.enabled ? "" : " (off)")}");
+                McLog.Info($"hud dump: {new string(' ', depth * 2)}'{t.name}' active {t.gameObject.activeSelf}{(rt != null ? $", at {rt.anchoredPosition.x:F0},{rt.anchoredPosition.y:F0} size {rt.rect.width:F0}x{rt.rect.height:F0}" : "")}{(draws.Count > 0 ? ", draws " + string.Join(", ", draws) : "")}");
+                if (depth < 8) for (int i = 0; i < t.childCount; i++) Dump(t.GetChild(i), depth + 1);
+            }
+            Dump(root, 0);
+            for (int i = 0; i < 6; i++)
+            {
+                McLog.Info($"hud dump: +{i} s: {HealthPanel.Report()}");
+                yield return new WaitForSeconds(1f);
+            }
+        }
+
+        /// <summary>Test aid (-mcWaveTest): another spore waves, as Mycelium's curios make it (its Animator's Wave trigger).</summary>
+        System.Collections.IEnumerator WaveTest()
+        {
+            while (phase != Phase.Driving) yield return null;
+            yield return new WaitForSeconds(4f);
+            int other = colony.Current == 0 ? 1 : 0;
+            if (colony.Count < 2) { McLog.Info("wave test: no other spore"); yield break; }
+            Animator a = colony.Spores[other].GetComponent<Animator>();
+            if (a == null) { McLog.Info("wave test: no Animator"); yield break; }
+            McLog.Info($"wave test: {colony.Names[other]} waves (Wave trigger)");
+            a.SetTrigger("Wave");
+            for (int i = 1; i <= 8; i++)
+            {
+                yield return new WaitForSeconds(0.5f);
+                AnimatorStateInfo s = a.GetCurrentAnimatorStateInfo(0);
+                McLog.Info($"wave test: +{i * 0.5f:F1} s: in Hello {s.IsName("Hello")}, waving bits {colony.Waving:X}");
+            }
+        }
+
+        /// <summary>Test aid (-mcCurioTest): each decoration in The Carcass used as your Curio key does, and what follows.</summary>
+        System.Collections.IEnumerator CurioTest()
+        {
+            while (phase != Phase.Driving) yield return null;
+            yield return new WaitForSeconds(4f);
+            Type ct = Type.GetType("Curio, Assembly-CSharp");
+            if (ct == null || controller == null || rb == null) { McLog.Info("curio test: no Curio type, controller or spore"); yield break; }
+            var all = new System.Collections.Generic.List<Component>();
+            // Locked furniture is switched off in the level: switched on here to try it ("-mcCurioTest all").
+            bool everything = Array.IndexOf(Environment.GetCommandLineArgs(), "all") >= 0;
+            foreach (UnityEngine.Object o in Resources.FindObjectsOfTypeAll(ct))
+            {
+                if (!(o is Component c) || !c.gameObject.scene.IsValid()) continue;
+                if (!c.gameObject.activeInHierarchy)
+                {
+                    if (!everything) continue;
+                    for (Transform t = c.transform; t != null; t = t.parent) t.gameObject.SetActive(true);
+                    McLog.Info($"curio test: '{c.gameObject.name}' ({c.GetType().Name}) was switched off (locked); on for the test");
+                }
+                all.Add(c);
+            }
+            if (everything)
+            {
+                // The dance spot is open only while the drum plays (DrumCurio.AllowPlayerDancing): open it.
+                playerControllerType.GetField("canDance")?.SetValue(controller, true);
+                all.Sort((x, y) => string.CompareOrdinal(x.GetType().Name, y.GetType().Name));
+                all.RemoveAll(x => x.GetType().Name == "ChairCurio" || x.GetType().Name == "BedCurio" || !(ct.GetField("interactAnimationStrings")?.GetValue(x) is System.Collections.Generic.List<string> l && l.Count > 0));
+            }
+            McLog.Info($"curio test: before: overlay {overlay.Visible}");
+            McLog.Info($"curio test: {all.Count} decorations: " + string.Join("; ", all.ConvertAll(c =>
+            {
+                var anims = ct.GetField("interactAnimationStrings")?.GetValue(c) as System.Collections.Generic.List<string>;
+                return $"'{c.gameObject.name}' {c.GetType().Name} [{(anims != null ? string.Join(", ", anims) : "?")}] range {ct.GetField("playerInteractRange")?.GetValue(c)} self {ct.GetField("selfCurio")?.GetValue(c)}, {Vector3.Distance(c.transform.position, rb.position):F0} units away";
+            })));
+            MethodInfo use = playerControllerType.GetMethod("InteractWithCurio", BindingFlags.NonPublic | BindingFlags.Instance);
+            Animator a = rb.GetComponent<Animator>();
+            var rounds = new System.Collections.Generic.List<(Component c, int side)>();
+            foreach (Component c in all) for (int side = 0; side < 3; side++) rounds.Add((c, side));
+            foreach (var (c, side) in rounds)
+            {
+                var anims = ct.GetField("interactAnimationStrings")?.GetValue(c) as System.Collections.Generic.List<string>;
+                if (anims == null || anims.Count == 0 || (ct.GetField("selfCurio")?.GetValue(c) is bool self && self)) continue;
+                string anim = anims[c.GetType().Name == "BedCurio" ? (Time.frameCount % 2) : 0];
+                foreach (Component other in all) if (other != c && other.transform.position.y > -900f && !(ct.GetField("selfCurio")?.GetValue(other) is bool os && os)) other.transform.position += Vector3.down * 1000f; // the others out of the way
+                Vector3[] sides = { rb.transform.forward, rb.transform.right, -rb.transform.forward };
+                c.transform.position = rb.position + sides[side] * 1.2f; // next to you, as when you walk up to it: in front, to the right, behind
+                yield return new WaitForSeconds(0.2f);
+                var found = playerControllerType.GetMethod("FindClosestCurioInRange", BindingFlags.NonPublic | BindingFlags.Instance)?.Invoke(controller, null) as Component;
+                McLog.Info($"curio test: Mycelium's own lookup (FindClosestCurioInRange) finds '{(found != null ? found.gameObject.name : "nothing")}'{(found != null ? $" {Vector3.Distance(found.transform.position, rb.position):F1} units away" : "")}; colliders on '{c.gameObject.name}': {string.Join(", ", System.Array.ConvertAll(c.GetComponentsInChildren<Collider>(), k => $"{k.gameObject.name} layer {LayerMask.LayerToName(k.gameObject.layer)}{(k.GetComponent(ct) != null ? " (has the Curio)" : "")}"))}");
+                McLog.Info($"curio test: your facing before: yaw {rb.rotation.eulerAngles.y:F0}");
+                var seats = ct.GetField("traversalTransforms")?.GetValue(c) as System.Collections.IList;
+                if (seats != null)
+                    foreach (object seat in seats)
+                    {
+                        var st = seat.GetType().GetField("transform")?.GetValue(seat) as Transform;
+                        if (st != null) McLog.Info($"curio test: seat '{st.name}' at {(st.position - c.transform.position):F2} from '{c.gameObject.name}', yaw {st.eulerAngles.y:F0}");
+                    }
+                McLog.Info($"curio test: using '{c.gameObject.name}' ({c.GetType().Name}) with '{anim}', as PlayerController does after your Curio key");
+                var routine = use.Invoke(controller, new object[] { c, anim }) as System.Collections.IEnumerator;
+                (controller as MonoBehaviour).StartCoroutine(routine);
+                for (int i = 1; i <= 4; i++)
+                {
+                    yield return new WaitForSeconds(0.75f);
+                    var s = a != null ? a.GetCurrentAnimatorStateInfo(0) : default;
+                    string state = "?";
+                    if (a != null) foreach (string n in new[] { "Idle", "Walk", "Hello", "Bustin Moves", "Bustin Metal Moves", "SitStump(Beg)", "SitStump(Mid)", "SitFloor(Beg)", "SitFloor(Mid)", "Lay(Beg)", "Lay(Mid)", "Sleep(Beg)", "Sleep(Mid)", "Drum Hit", "Bustin Moves", "Bustin Metal Moves" }) if (s.IsName(n)) state = n;
+                    // Where the spore's head is while it lies: from its root bone to the bone named like a head, across the ground, against its facing.
+                    {
+                        var sk = rb.GetComponentInChildren<SkinnedMeshRenderer>();
+                        Transform headBone = null, rootBone = sk != null ? sk.rootBone : null;
+                        if (sk != null) foreach (Transform b in sk.bones) if (b != null && b.name.ToLowerInvariant().Contains("head") && (headBone == null || b.name.Length < headBone.name.Length)) headBone = b;
+                        if (i == 1 && sk != null) McLog.Info($"curio test: bones with 'head': {string.Join(", ", System.Array.ConvertAll(System.Array.FindAll(sk.bones, b => b != null && b.name.ToLowerInvariant().Contains("head")), b => b.name))}");
+                        if (i == 3 && c.GetType().Name == "BedCurio")
+                        {
+                            // The surface along where your Minecraft body lies (head behind you for Sleep, ahead for Lay), as the ground scan sees it.
+                            Vector3 dir = (anim == "Lay" ? 1f : -1f) * new Vector3(rb.transform.forward.x, 0f, rb.transform.forward.z).normalized;
+                            var heights = new System.Collections.Generic.List<string>();
+                            for (float along = 0f; along <= 2.01f; along += 0.25f)
+                            {
+                                Vector3 top = rb.position + dir * along + Vector3.up * 3f;
+                                string h = "-";
+                                if (Physics.Raycast(top, Vector3.down, out RaycastHit hit, 6f, ground.LayerMask, QueryTriggerInteraction.Ignore))
+                                    h = $"{hit.point.y - (rb.position.y - feetOffset):F2} ({hit.collider.name})";
+                                heights.Add($"{along:F2}: {h}");
+                            }
+                            McLog.Info($"curio test: the bed's surface along your body ({anim}), units along: height above your feet: {string.Join("; ", heights)}; ground grid cells {GroundScanner.CellBlocks} blocks");
+                        }
+                        if (headBone != null && rootBone != null)
+                        {
+                            Vector3 d = headBone.position - rb.position;
+                            Vector3 flat = new Vector3(d.x, 0f, d.z);
+                            float headYaw = flat.sqrMagnitude > 1e-6f ? Quaternion.LookRotation(flat).eulerAngles.y : float.NaN;
+                            McLog.Info($"curio test: side {side}, +{i * 0.75f:F2} s: head '{headBone.name}' {flat.magnitude:F2} across and {d.y:F2} up from the spore's feet point, towards yaw {headYaw:F0}; the spore faces {rb.rotation.eulerAngles.y:F0}: head {Mathf.DeltaAngle(rb.rotation.eulerAngles.y, headYaw):F0} from its facing");
+                        }
+                    }
+                    var skin = rb.GetComponentInChildren<SkinnedMeshRenderer>();
+                    Transform bone = skin != null ? skin.rootBone : null;
+                    float boneTurn = bone != null ? Mathf.DeltaAngle(rb.rotation.eulerAngles.y, Quaternion.LookRotation(Vector3.ProjectOnPlane(bone.forward, Vector3.up).sqrMagnitude > 1e-4f ? Vector3.ProjectOnPlane(bone.forward, Vector3.up) : rb.transform.forward).eulerAngles.y) : float.NaN;
+                    Transform nearSeat = null;
+                    if (seats != null) foreach (object seat in seats) { var st2 = seat.GetType().GetField("transform")?.GetValue(seat) as Transform; if (st2 != null && (nearSeat == null || Vector3.Distance(st2.position, rb.position) < Vector3.Distance(nearSeat.position, rb.position))) nearSeat = st2; }
+                    McLog.Info($"curio test: side {side}, +{i * 0.75f:F2} s: {(nearSeat != null ? Vector3.Distance(new Vector3(rb.position.x, 0, rb.position.z), new Vector3(nearSeat.position.x, 0, nearSeat.position.z)) : float.NaN):F2} units from the seat across, feet {rb.position.y - feetOffset - (nearSeat != null ? nearSeat.position.y : 0f):F2} above it, yaw {rb.rotation.eulerAngles.y:F0} (seat yaw {(nearSeat != null ? nearSeat.eulerAngles.y : float.NaN):F0})");
+                    McLog.Info($"curio test: +{i * 0.75f:F2} s: spore yaw {rb.rotation.eulerAngles.y:F0}, its root bone '{(bone != null ? bone.name : "none")}' turned {boneTurn:F0} from it (model faces {rb.rotation.eulerAngles.y + boneTurn:F0}), state time {(a != null ? a.GetCurrentAnimatorStateInfo(0).normalizedTime : 0f):F2}");
+                    McLog.Info($"curio test: +{i * 0.75f:F2} s: spore animation {state}, canAct {canActField?.GetValue(controller)}, Mycelium has the controls {MyceliumHasControls(out string why)} ({why}), phase {phase}, overlay {overlay.Visible}, your Minecraft body shown {playerModel.Shown}");
+                }
+                // As your movement key does: Mycelium's InteractWithCurio waits for its Move action, then ends.
+                a.SetBool(anim, false);
+                a.SetBool("InActionState", false);
+                a.Play("Idle");
+                controller.GetType().GetMethod("EnableController", Type.EmptyTypes)?.Invoke(controller, null);
+                (controller as MonoBehaviour).StopCoroutine(routine);
+                yield return new WaitForSeconds(1f);
+            }
+        }
+
+        /// <summary>Test aid (-mcCurioKeyTest): the Curio key pressed far from any decoration, through Unity's input system.</summary>
+        System.Collections.IEnumerator CurioKeyTest()
+        {
+            while (phase != Phase.Driving) yield return null;
+            yield return new WaitForSeconds(4f);
+            var action = playerControllerType?.GetField("curioInteract", BindingFlags.NonPublic | BindingFlags.Instance)?.GetValue(controller) as UnityEngine.InputSystem.InputAction;
+            var mouse = UnityEngine.InputSystem.Mouse.current;
+            if (action == null || mouse == null) { McLog.Info($"curio key test: Curio action {action != null}, mouse {mouse != null}"); yield break; }
+            var paths = new System.Collections.Generic.List<string>();
+            foreach (var b in action.bindings) paths.Add(b.effectivePath);
+            McLog.Info($"curio key test: the Curio action is bound to {string.Join(", ", paths)}; pressing the middle mouse button");
+            Animator a = rb != null ? rb.GetComponent<Animator>() : null;
+            for (int round = 0; round < 2; round++)
+            {
+                var press = new UnityEngine.InputSystem.LowLevel.MouseState();
+                press = press.WithButton(UnityEngine.InputSystem.LowLevel.MouseButton.Middle, true);
+                UnityEngine.InputSystem.InputSystem.QueueStateEvent(mouse, press);
+                UnityEngine.InputSystem.InputSystem.Update();
+                bool seen = action.triggered;
+                McLog.Info($"curio key test: round {round + 1}: right after the press, triggered {seen}");
+                if (!seen)
+                {
+                    McLog.Info("curio key test: the press didn't reach Mycelium's input (its window has no focus in a test run): not tested this way");
+                }
+                yield return new WaitForSeconds(1.5f);
+                var s = a != null ? a.GetCurrentAnimatorStateInfo(0) : default;
+                McLog.Info($"curio key test: 1.5 s later: spore waving {(a != null && s.IsName("Hello"))}, InActionState {(a != null && a.GetBool("InActionState"))}, canAct {canActField?.GetValue(controller)}");
+                UnityEngine.InputSystem.InputSystem.QueueStateEvent(mouse, new UnityEngine.InputSystem.LowLevel.MouseState());
+                UnityEngine.InputSystem.InputSystem.Update();
+                yield return new WaitForSeconds(0.5f);
+            }
+        }
+
+        /// <summary>Test aid (-mcSeatTest): a colony spore uses each stump chair and the bed, as it would by itself; where it ends up and which way it faces.</summary>
+        System.Collections.IEnumerator SeatTest()
+        {
+            while (phase != Phase.Driving) yield return null;
+            yield return new WaitForSeconds(3f);
+            Type ct = Type.GetType("Curio, Assembly-CSharp");
+            Type wt = Type.GetType("WanderingSpore, Assembly-CSharp");
+            if (ct == null || wt == null) yield break;
+            var curios = new System.Collections.Generic.List<Component>();
+            foreach (UnityEngine.Object o in FindObjectsOfType(ct))
+                if (o is Component c && c.gameObject.activeInHierarchy && (c.GetType().Name == "ChairCurio" || c.GetType().Name == "BedCurio")) curios.Add(c);
+            // What each seat faces: the first thing its forward line passes near.
+            foreach (Component curio in curios)
+            {
+                var list = ct.GetField("traversalTransforms")?.GetValue(curio) as System.Collections.IList;
+                if (list == null) continue;
+                foreach (object seatObj in list)
+                {
+                    var st = seatObj.GetType().GetField("transform")?.GetValue(seatObj) as Transform;
+                    if (st == null) continue;
+                    var hits = new System.Collections.Generic.List<string>();
+                    for (float dist = 1f; dist <= 8f; dist += 1f)
+                    {
+                        Vector3 p = st.position + Vector3.ProjectOnPlane(st.forward, Vector3.up).normalized * dist;
+                        foreach (Collider col in Physics.OverlapSphere(p, 0.8f))
+                        {
+                            string n = col.transform.root.name + "/" + col.name;
+                            if (!hits.Contains(n) && col.gameObject != curio.gameObject && !col.transform.IsChildOf(curio.transform) && hits.Count < 6) hits.Add($"{n} at {dist:F0}");
+                        }
+                    }
+                    McLog.Info($"seat test: '{curio.gameObject.name}' ({curio.GetType().Name}) seat '{st.name}' faces yaw {st.eulerAngles.y:F0}: along it: {(hits.Count > 0 ? string.Join(", ", hits) : "nothing within 8")}");
+                }
+            }
+            for (int k = 0; k < curios.Count; k++)
+            {
+                Component curio = curios[k];
+                int pick = (colony.Current + 1 + k) % Mathf.Max(1, colony.Count);
+                GameObject spore = colony.Spores[pick];
+                Component ws = spore != null ? spore.GetComponent(wt) : null;
+                if (ws == null || !(ws is Behaviour wb) || !wb.enabled) { McLog.Info($"seat test: {colony.Names[pick]} isn't wandering"); continue; }
+                // Close to it first, as a spore that chose it would walk up.
+                spore.transform.position = curio.transform.position + (spore.transform.position - curio.transform.position).normalized * 2.5f;
+                var seats = ct.GetField("traversalTransforms")?.GetValue(curio) as System.Collections.IList;
+                Transform seat = null;
+                if (seats != null && seats.Count > 0) seat = seats[0].GetType().GetField("transform")?.GetValue(seats[0]) as Transform;
+                McLog.Info($"seat test: {colony.Names[pick]} uses '{curio.gameObject.name}' ({curio.GetType().Name}) at {curio.transform.position:F2}; its seat at {(seat != null ? seat.position.ToString("F2") : "?")} yaw {(seat != null ? seat.eulerAngles.y : float.NaN):F0}");
+                var routine = wt.GetMethod("InteractWithCurio").Invoke(ws, new object[] { curio }) as System.Collections.IEnumerator;
+                (ws as MonoBehaviour).StartCoroutine(routine);
+                Animator a = spore.GetComponent<Animator>();
+                for (int i = 1; i <= 16; i++)
+                {
+                    yield return new WaitForSeconds(0.5f);
+                    bool acting = a != null && a.GetBool("InActionState");
+                    if (i % 2 == 0 || acting)
+                        McLog.Info($"seat test: +{i * 0.5f:F1} s: {colony.Names[pick]} at {(spore.transform.position - curio.transform.position):F2} from it ({(seat != null ? Vector3.Distance(spore.transform.position, seat.position) : float.NaN):F2} from the seat), yaw {spore.transform.eulerAngles.y:F0}, acting {acting}");
+                    if (acting && i >= 6) break;
+                }
+                yield return new WaitForSeconds(1f);
             }
         }
 

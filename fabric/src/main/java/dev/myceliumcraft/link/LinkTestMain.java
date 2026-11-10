@@ -60,6 +60,9 @@ public final class LinkTestMain {
 	// LINKTEST_FORGE=1: when Mycelium asks for the Blacksmith's screen, put the first three weapons he takes in its slots and take
 	// the result (a forge request); once answered, ask again with the same three (they're gone now: want a refusal).
 	private static final boolean FORGE = "1".equals(System.getenv("LINKTEST_FORGE"));
+	private static int decorationSeen;
+	// LINKTEST_EMOTEWAVE=1: you do Emotecraft's wave from 6 s to 8.5 s (McState's EMOTE_WAVE).
+	private static final boolean EMOTE_WAVE = "1".equals(System.getenv("LINKTEST_EMOTEWAVE"));
 	private static final MycLink.Forge forge = new MycLink.Forge();
 	private static int forgeOpenSeen = Integer.MIN_VALUE, forgeSent, forgeIds[], forgeStage;
 	private static String forgeSeen = "", forgePreview = "", forgePreviewNumbers = "";
@@ -366,6 +369,9 @@ public final class LinkTestMain {
 			if (PAUSE && t >= 4 && t < 7) {
 				flags |= Proto.MC_PAUSED | Proto.MC_SCREEN_OPEN;
 			}
+			if (EMOTE_WAVE && t >= 6 && t < 8.5) {
+				flags |= Proto.MC_EMOTE_WAVE; // as Emotecraft's 2.5 s wave on you
+			}
 			// LINKTEST_FOVEYE=1: sprint FOV (x1.15) and crouch eye height (x0.78) from 4 to 7 s.
 			boolean feel = FOVEYE && t >= 4 && t < 7;
 			int hand = HOLD != 0 ? HOLD : !HAND || t < 7.5 ? 0 : t < 8.5 ? 1 : t < 9.5 ? 0 : 2;
@@ -414,6 +420,11 @@ public final class LinkTestMain {
 				MycLink.writeBindings(kinds, codes, parts.length);
 			}
 			boolean cycloneNow = MycLink.readMycState(myc) && (myc.flags & Proto.MYC_CYCLONE) != 0;
+			int decorationNow = MycLink.readMycState(myc) ? myc.flags & (Proto.MYC_SIT | Proto.MYC_LIE | Proto.MYC_LIE_FRONT | Proto.MYC_WAVE | Proto.MYC_AT_DECORATION) : 0;
+			if (decorationNow != decorationSeen) {
+				decorationSeen = decorationNow;
+				System.out.printf("t=%.1f decoration: %s%n", t, decorationNow == Proto.MYC_SIT ? "you sit" : decorationNow == Proto.MYC_LIE ? "you lie down on your back" : decorationNow == (Proto.MYC_LIE | Proto.MYC_LIE_FRONT) ? "you lie down on your front" : decorationNow == Proto.MYC_AT_DECORATION ? "you stand at a decoration" : decorationNow == 0 ? "none" : "flags " + Integer.toHexString(decorationNow));
+			}
 			if (cycloneNow != cycloneSeen) {
 				cycloneSeen = cycloneNow;
 				System.out.printf("t=%.1f Mycelium's Living Cyclone %s%n", t, cycloneNow ? "spinning (third person behind)" : "over");
@@ -453,13 +464,20 @@ public final class LinkTestMain {
 							nextSproutPrint = t + 0.5;
 							System.out.printf("t=%.2f colony: %s sprouting, %.2f of the way%n", t, colony.names[i], colony.emerges[i]);
 						}
+						if (colony.poses[i] != 0 && t >= nextSproutPrint) {
+							nextSproutPrint = t + 0.5;
+							System.out.printf("t=%.2f colony: %s at a decoration, pose %d, facing yaw %.1f%n", t, colony.names[i], colony.poses[i], colony.yaws[i]);
+						}
+						if (colony.drums[i] >= 0f) {
+							System.out.printf("t=%.2f colony: %s hitting the beetle drum, %.3f of the way%n", t, colony.names[i], colony.drums[i]);
+						}
 					}
 					StringBuilder c = new StringBuilder();
 					for (int i = 0; i < colony.count; i++) {
 						c.append(i > 0 ? ", " : "").append(colony.names[i]).append(i == colony.current ? " (you)" : "")
 							.append(String.format(" %.2f body #%06X cap #%06X", colony.happiness[i], colony.colors[i], colony.caps[i]));
 					}
-					String seen = colony.count + " spore(s), average " + String.format("%.2f", colony.average) + ", nutrient bonus " + colony.nutrientBonus + ": " + c;
+					String seen = colony.count + " spore(s), average " + String.format("%.2f", colony.average) + ", nutrient bonus " + colony.nutrientBonus + ", waving bits " + Integer.toHexString(colony.waving) + ": " + c;
 					if (!seen.equals(colonySeen)) {
 						colonySeen = seen;
 						System.out.printf("t=%.2f colony: %s%n", t, seen);

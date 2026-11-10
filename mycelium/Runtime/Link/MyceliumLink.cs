@@ -550,7 +550,7 @@ namespace MyceliumCraft.Link
 
         /// <summary>A string as UTF-8, cut to fit (whole characters) and zero-terminated.</summary>
         /// <summary>Seqlock write of the Colony block (average -1: no colony; current -1: none).</summary>
-        public void WriteColony(int count, uint[] colors, uint[] caps, float[] speeds, float[] emerges, float[] happiness, string[] names, float average, int current, int nutrientBonus)
+        public void WriteColony(int count, uint[] colors, uint[] caps, float[] speeds, float[] emerges, float[] happiness, string[] names, float average, int current, int nutrientBonus, uint waving, float[] drums, byte[] poses, float[] yaws)
         {
             int b = Proto.OffColony;
             count = Math.Max(0, Math.Min(count, Proto.ColMax));
@@ -561,6 +561,7 @@ namespace MyceliumCraft.Link
             WriteF32(view, b + Proto.ColAverage, average);
             Marshal.WriteInt32(view, b + Proto.ColCurrent, current);
             Marshal.WriteInt32(view, b + Proto.ColNutrientBonus, nutrientBonus);
+            WriteU32(view, b + Proto.ColWaving, waving);
             for (int i = 0; i < count; i++)
             {
                 int e = b + Proto.ColList + Proto.ColSize * i;
@@ -569,6 +570,9 @@ namespace MyceliumCraft.Link
                 WriteF32(view, e + Proto.CeSpeed, speeds[i]);
                 WriteF32(view, e + Proto.CeEmerge, emerges[i]);
                 WriteF32(view, e + Proto.CeHappiness, happiness[i]);
+                WriteF32(view, b + Proto.ColDrums + 4 * i, drums[i]);
+                Marshal.WriteByte(view, b + Proto.ColPoses + i, poses[i]);
+                Marshal.WriteInt16(view, b + Proto.ColYaws + 2 * i, (short)Math.Max(0, Math.Min(3599, (int)(yaws[i] * 10f)))); // McYaw is already 0..360
                 WriteUtf8(view, e + Proto.CeName, Proto.CeNameBytes, names[i]);
             }
             Thread.MemoryBarrier();

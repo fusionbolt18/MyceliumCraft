@@ -187,8 +187,37 @@ Single-player and offline only.
   spores, and swaps work with a stand-in body in Mycelium. Minecraft's log shows the skins made and your player wearing one;
   you've seen the other spores as Minecraft characters. **Not tested in Minecraft:** their size
   matching yours, their walking, the cap's brightness.
+- **On the bed your head rests on the pillow** (always on your back; the body tilts up to it), held
+  still and tilted a little forward. **Not tested in Minecraft.**
+- **The other decorations too** (bonfire, game board, dance pad, when unlocked): on their nearest
+  spot, facing the fire, the board or the drum. Tested with a fake Minecraft.
+- **The Carcass's decorations work:** the Curio key is the middle mouse button (press Reset on it in
+  Controls if it shows unbound). Sitting at the stump chairs and lying on the mushroom bed pose your
+  Minecraft body (in third person), on the seat (the top of the stump) and always facing the same way; the mouse turns the camera
+  meanwhile, and the overlay stays. The Curio key with nothing near does nothing,
+  and spores in front of you may wave back at Emotecraft's wave.
+  Tested with a fake Minecraft; **not tested in Minecraft.**
+- **During an emote you keep facing one way** and the camera orbits around you. **Not tested in
+  Minecraft.**
+- **Waving spores use Emotecraft's wave.** Mycelium's side tested with a fake Minecraft; **the emote
+  is not tested in Minecraft.**
+- **The other spores sit and lie down at the curios** in Minecraft's poses, fitted to the bed as
+  yours. Mycelium's side tested with a fake Minecraft; **the poses are not tested in Minecraft.**
+- **Dancing at the beetle drum plays a random Emotecraft dance** (Club Penguin, Kazotsky Kick,
+  Roblox Potion Dance, Over here), for the other spores and for you. **Not tested in Minecraft.**
+- **Spores hitting the beetle drum are animated**, after Mycelium's own drum hit. Mycelium's side
+  tested with a fake Minecraft; **the pose is not tested in Minecraft.**
+- **Emotecraft's emote wheel shows your spore's skin** (the mannequin of you). **Not tested in
+  Minecraft.** Put Emotecraft's jar in `dist\minecraft-mods` too: `Apply Mods.bat` replaces the whole
+  mods folder.
+- **Swapping spores no longer flickers** the overlay and Mycelium's HUD. Tested with a fake
+  Minecraft; **not tested in Minecraft.**
+- **Mycelium's health bar and number are hidden while Minecraft drives** (Minecraft's hearts show your
+  health); the spore's name stays. Tested with a fake Minecraft; **not tested in Minecraft.**
 - **Defense Mechanism's shield bubble shows in third person, and its green particles in every
   view.** Tested with a fake Minecraft; **not tested in Minecraft.**
+- **The particles when happiness goes up or down show**, on you and on the other spores. Tested with
+  a fake Minecraft; **not tested in Minecraft.**
 - **Speed boosts widen the view past Minecraft's x1.5 limit** (up to x2.5 while Mycelium plays), so
   Mycotoxins shows while sprinting. **Not tested in Minecraft.**
 - **Relentless Fury is the frenzy its description says** (+30% attack speed, 5% of current health

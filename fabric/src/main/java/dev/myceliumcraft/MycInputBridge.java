@@ -55,15 +55,18 @@ public final class MycInputBridge {
 		MycLink.poll();
 		boolean read = MycLink.mapped() && MycLink.myceliumAlive() && MycLink.readInput(IN);
 		boolean knockback = read && IN.reason == Proto.IN_REASON_KNOCKBACK;
+		// At a decoration in Mycelium (your request, 2026-11-08): the mouse still turns your look (the
+		// camera follows it), but keys and buttons are let go: a movement key gets you up in Mycelium.
+		boolean lookOnly = read && IN.reason == Proto.IN_REASON_LOOK_ONLY;
 		// A knockback keeps the bridge on (Minecraft still thinks its window is focused, the mouse
 		// stays grabbed), with only the keys let go and mouse movement ignored (below).
-		boolean nowActive = read && (IN.active() || knockback);
+		boolean nowActive = read && (IN.active() || knockback || lookOnly);
 		int reason = read ? IN.reason : -1;
 		if (reason != lastReason) {
 			lastReason = reason;
 			MycLink.LOG.info("MyceliumCraft: input bridge {}", reason == -1 ? "off (no Mycelium)"
 				: reason == 0 ? "ON: playing from Mycelium's keyboard and mouse"
-				: knockback ? "on, held (" + Proto.IN_REASONS[reason] + ")"
+				: knockback || lookOnly ? "on, held (" + Proto.IN_REASONS[reason] + ")"
 				: "off (" + (reason > 0 && reason < Proto.IN_REASONS.length ? Proto.IN_REASONS[reason] : "reason " + reason) + ")");
 		}
 		if (nowActive != active) {
@@ -111,6 +114,25 @@ public final class MycInputBridge {
 		}
 
 		long handle = minecraft.getWindow().handle();
+		if (lookOnly) {
+			releaseKeys(minecraft);
+			releaseButtons(minecraft);
+			lastScroll = IN.totalScroll;
+			lastText = IN.textCount;
+			if (minecraft.gui.screen() == null && !minecraft.mouseHandler.isMouseGrabbed()) {
+				minecraft.mouseHandler.grabMouse();
+			}
+			double ldx = IN.totalDX - lastDX, ldy = IN.totalDY - lastDY;
+			lastDX = IN.totalDX;
+			lastDY = IN.totalDY;
+			if (minecraft.gui.screen() == null && (ldx != 0 || ldy != 0)) {
+				virtualX += ldx;
+				virtualY += ldy;
+				moved += Math.abs(ldx) + Math.abs(ldy);
+				minecraft.mouseHandler.onMove(handle, virtualX, virtualY, ldx, ldy);
+			}
+			return;
+		}
 		// Minecraft only turns the player from mouse movement while it has "grabbed" the mouse.
 		// Grab it the normal way (the real cursor stays with Mycelium; see InputConstantsMixin).
 		if (minecraft.gui.screen() == null && !minecraft.mouseHandler.isMouseGrabbed()) {

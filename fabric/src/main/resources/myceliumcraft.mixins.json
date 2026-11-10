@@ -22,6 +22,7 @@
     "InputConstantsMixin",
     "LevelRendererMixin",
     "LightingAccessor",
+    "MannequinSkinMixin",
     "MinecraftMixin",
     "PlayerDisplayNameMixin",
     "PlayerInfoAccessor",

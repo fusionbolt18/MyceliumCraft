@@ -181,6 +181,7 @@ namespace MyceliumCraft
             Proto.ReasonMyceliumControls => "Mycelium has the controls: menu, pause or cutscene",
             Proto.ReasonNotDriving => "Minecraft isn't driving the spore",
             Proto.ReasonKnockback => "a hit's knockback has the spore (mouse buttons kept)",
+            Proto.ReasonLookOnly => "at a decoration (mouse look only)",
             _ => "bridge turned off (inputBridge=0)",
         };
     }

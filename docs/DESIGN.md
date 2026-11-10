@@ -113,6 +113,13 @@ superflat world's own ground at y −60.
    Minecraft teleports only once it has a ground grid, so it never lands in empty air. It moves both
    its own player and the integrated server's copy, as SkyCraft does, so the server doesn't pull
    the player back.
+   - **A spore swap while driving** (since 2026-11-08) goes straight from Driving to
+     WaitingForTeleport. The new spore is scanned and teleported to at the next physics step. Before,
+     it went through Idle for a few frames (until that physics step), and everything that means
+     "Minecraft drives" switched off and back: the overlay, your Minecraft body, the input bridge,
+     the hidden nutrient panel, health bar and colony meter (your report). Those panels count
+     WaitingForTeleport as driving too (`Steering`), so a slow teleport confirmation doesn't flicker
+     them either.
 4. **Driving:** every physics step:
    - **Target, timed by Minecraft's ticks** (protocol v8, as SkyCraft does):
      - Minecraft sends its last two physics ticks (it moves the player 20 times a second), plus
@@ -381,6 +388,11 @@ the first time one is held back. Advancements and recipes are still earned; only
     from 100 to 150 and current from 50.3 to 75.4 (50 %); Vitality −5 took 150 to 100 and 77.1 to
     51.4 (51 %, after some regeneration). No hurt tilt.
 - **Outside Mycelium's levels** (max 0 or no spore): not synced, and max health is put back to 20.
+
+- **Mycelium's health bar is hidden** (since 2026-11-08, `HealthPanel`): while Minecraft drives with
+  the overlay on, the HUD's `HealthBarPanelCutoutMask` (bar and background) and `HPNumber` are
+  switched off, and Minecraft's hearts show your health. The spore's name and trait above them stay.
+  Same rule as the nutrient panel: put back as Mycelium had them otherwise.
 
 ### 5.0.2.2 Walking speed follows Mycelium's Speed stat (since 2026-10-21)
 
@@ -1807,6 +1819,117 @@ While Mycelium shows a level (and `overlay=1`), Mycelium sets `OVERLAY` in its s
   - **Log** (every 10 s): frames the arms were drawn, how many came from the world's list and how
     many we posed, and the most things in that list.
 
+### 5.3.7 Decorations: sitting, lying, waving (since 2026-11-08, protocol v52)
+
+- The Curio key (Mycelium's `PlayerController.InteractWithCurio`) defaults to the middle mouse
+  button.
+- While your spore's Animator has `InActionState` on, its state tells what you're doing, sent as
+  MycState `SIT` / `LIE` / `WAVE` (`MinecraftDriver.DecorationPose`):
+  - SitFloor/SitStump states → sitting;
+  - Sleep/Lay states → lying;
+  - Hello → waving.
+
+  The animation names are triggers, used up at once, so the state is read, including the one being
+  blended into, and the last pose is kept while `InActionState` stays on.
+- The overlay isn't hidden meanwhile, though Mycelium has the controls.
+- **Minecraft (`MycPlayerModel.decorationPose`):** the captured body gets `isPassenger` (the riding
+  pose), moved down 0.62 × scale so it sits on the floor.
+  - Or `Pose.SLEEPING` with no bed direction, turned by its body yaw at any angle: body yaw = 90 −
+    the head's yaw.
+  - The head goes behind your facing for "Sleep" and ahead for "Lay" (MycState `LIE_FRONT`), as
+    Mycelium's spore lies (measured on its head bone). Always on your back (your choice).
+  - Slid 0.3 blocks towards the foot of the bed. The head's middle is half its depth above the
+    highest ground (`GroundGrid.groundAt`) between halfway along the body and the head: the pillow.
+    The feet end is the lowest that keeps the body's underside on the ground all along it. The tilt
+    between them is at most 35 degrees.
+  - The head is fixed, tilted 20 degrees forward.
+- **The Curio key with no decoration near does nothing** (since 2026-11-08, `CurioKey`): before
+  `PlayerController` reads it, the press is cleared with `InputAction.Reset()` (a hard reset;
+  `Disable()` keeps "pressed this frame"). WAVE isn't sent any more.
+- **SIT / LIE also switch first person to third person behind** until you get up (`updateViewOverride`).
+- **While at one** (since 2026-11-08, protocol v54): the input bridge's reason is 6 "look only".
+  Minecraft follows only mouse movement, so the camera orbits; keys and buttons are let go, and a
+  movement key still gets you up in Mycelium.
+  - Your facing is held (`MycEmotes.holdFacing`). On sitting or lying down you're first placed on
+    the nearest seat (`traversalTransforms`) of the decoration `FindClosestCurioInRange` gives, as
+    Mycelium's spores walk there (a stump's seat is its top).
+  - A stump turns you to the seat's own direction (your choice). The bed uses Mycelium's rule from
+    the seat: away from it to sleep, towards it to lie. The bonfire and game board turn you towards
+    them, and the dance pad towards its drum (Mycelium's `lookTarget` for its spores there).
+  - Dancing (Bustin Moves states) is MycState `AT_DECORATION` (v55): third person and your facing
+    held as for SIT/LIE, with no pose.
+  - Minecraft is sent a teleport there with that facing, which turns its body and head too.
+- **Your Emotecraft wave:** McState `EMOTE_WAVE` while it plays on you; Mycelium calls
+  `PlayerController.GoadWaveBack` when it starts, so spores in front of you may wave back.
+
+### 5.3.8 Waving spores use Emotecraft's wave (since 2026-11-08, protocol v51)
+
+- **Mycelium:** `ColonyWatch` sets a spore's bit in Colony 0x734 while its Animator is in "Hello"
+  (Mycelium's Wave trigger).
+- **Minecraft:** `MycSporeBodies` gives a newly waving spore its own made-up `RemotePlayer` and
+  plays Emotecraft's "Waving" emote (uuid 33b912f8-…) on it through Emotecraft's `IPlayerEntity`
+  (`MycEmotes`, by reflection).
+  - Bodies aren't in the world, so once per game tick the mod adds to its `tickCount` and calls
+    PAL's `AvatarAnimManager.handleAnimations(0, true, false)`, as `Avatar.tick` does.
+  - The body is posed and sent every frame until `isPlayingEmote` is false. Then the slot goes back
+    to the shared body.
+  - A wave that starts again while the emote still plays doesn't restart it.
+
+- **Your own emotes** (since 2026-11-08): while Emotecraft plays one on you, `MycEmotes.holdFacing`
+  (end of each client tick) holds your body and head yaw where the body faced when it started. The
+  spore faces your body, so it stays put, while Mycelium's camera, which follows your look, orbits.
+
+### 5.3.8a Spores hitting the beetle drum (since 2026-11-09, protocol v57)
+
+- **Mycelium:** `DrumCurio` triggers "DrumHit" on the beat; the spore's Animator plays "Drum Hit"
+  (SmashAnim at speed 2). `ColonyWatch.DrumOf` reads that state's normalised time (also while
+  blending into it) and sends it per spore in Colony `drums` (0x738, f32 each, -1 = none). While
+  any spore drums, the colony is looked at every frame, as during a sprout.
+- **Minecraft:** `MycSporeBodies` sets `DrumPose.setCapturing(t)` around posing that spore's body,
+  and `HumanoidEmergeMixin` calls `DrumPose.apply` after `setupAnim`.
+- **The keys** were measured from Mycelium's own animation with `-mcDrumTest`: each limb's
+  direction in the torso's frame (in Minecraft model space: x left, y down, z back), the head's nod,
+  the torso's lean forward and to the side, and how high the hips rise as a share of the height.
+  - Limbs are turned the shortest way (`Quaternionf.rotationTo`) from hanging down to the blended
+    direction, so a swing goes round the shoulder, without a sudden twist.
+  - The whole body turns about the hips (y 12) by the lean.
+  - From the slam on (t 0.436) the keys are hand-made, not measured: Mycelium's spore holds a
+    Smash weapon there, and without one its 75-degree fold hit the drum with the head. The right
+    arm swings over the top onto the drum, the lean is 0.6 rad and the legs stay under the body.
+  - A weight (0 at t 0.03, 1 from 0.086 to 0.55, 0 at 0.74) blends from Minecraft's own pose,
+    because Mycelium's idle pose holds the arms out at about 47 degrees.
+- The time comes from Mycelium every frame, so the pose stays in step with the drum's sound.
+
+### 5.3.8b Other spores at decorations (since 2026-11-09, protocol v58)
+
+- **Mycelium:** `ColonyWatch.PoseOf` reads each other spore's Animator as `DecorationPose` reads
+  yours (`MinecraftDriver.DecorationAnims`; standing/dancing counts as 0) and sends it in Colony
+  `poses` (u8 at 0x798), with the spore's facing (`WorldMapping.McYaw`) in `yaws` (i16 tenths of a
+  degree at 0x7B0). That's up to 10 times a second, as the rest of the colony.
+- **Minecraft:** `MycSporeBodies` passes the pose, the spore's feet (SporeMoves) and its yaw to
+  `MycPlayerModel.sporeDecorationPose`, which poses the shared body before it's captured (the
+  capture now takes a PoseStack). Lying goes through `MycPlayerModel.lie`, shared with yours: the
+  body is drawn facing south ('local' facing 0), and the ground is read along the spore's world
+  facing. The pose, and for lying the spore's place and yaw, are part of what decides a re-send.
+
+### 5.3.8c Dancing at the beetle drum (since 2026-11-09)
+
+- A spore dancing (Colony `poses` 4): `MycSporeBodies` gives it its own body (the waving slot),
+  `MycEmotes.pickDance` picks one of `MycEmotes.DANCES` (Emotecraft's built-in Club Penguin Dance,
+  Kazotsky Kick, Roblox Potion Dance, Over here, by uuid) and it's ticked as the wave is. If it
+  ends while the spore still dances (Over here doesn't loop) it plays again; when the pose ends the
+  slot goes back to the shared body.
+- You: `MycEmotes.danceYou` (END_CLIENT_TICK) starts a random dance on your player while MycState
+  `AT_DECORATION` is on (your spore's Bustin Moves) and stops it when it goes off. Your player is in
+  the world, so Minecraft ticks its animation; the facing is held as for any emote.
+
+### 5.3.9 Your spore's skin on mannequins of you (since 2026-11-08)
+
+Emotecraft's emote wheel draws you as a Minecraft mannequin (`ClientMannequin`) made from your
+profile, which gets its skin from the profile rather than `PlayerInfo`. `MannequinSkinMixin`
+answers `ClientMannequin.getSkin` with the spore's skin when the mannequin's profile id is yours
+(`MycSkins.forPlayer`), as `PlayerInfoSkinMixin` does for your player.
+
 ### 5.4.0 Skill effects on you stay drawn (since 2026-11-08)
 
 The spore's renderers are hidden while your Minecraft body stands in for it (`CameraSync.HideSpore`,
@@ -1819,6 +1942,11 @@ some of them:
 
 They're matched by the object's name up the hierarchy, and looked at again every frame, so a view
 change shows or hides the bubble at once.
+
+Mycelium's happiness particles (`HappyParticles`, `SadParticles`, made under the spore by
+`CharacterStats.ModifyHappiness`) stay drawn too, in every view (since 2026-11-09):
+`CameraSync.MoodEffect` matches them by name, and both `CameraSync.Shown` (you) and
+`McColonyBodies.Update` (the other spores) skip them when hiding a spore.
 
 ### 5.4.1 Your Minecraft body instead of the spore, in third person
 

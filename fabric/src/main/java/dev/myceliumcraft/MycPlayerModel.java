@@ -124,16 +124,16 @@ public final class MycPlayerModel implements SubmitNodeCollector {
 	}
 
 	/** Take one colony spore's body from its render state and send it (slot = its place in the colony). False: nothing came out. */
-	static boolean sendBody(int slot, EntityRenderState state, Minecraft minecraft) {
-		return INSTANCE.captureBody(slot, state, minecraft);
+	static boolean sendBody(int slot, EntityRenderState state, Minecraft minecraft, PoseStack poses) {
+		return INSTANCE.captureBody(slot, state, minecraft, poses);
 	}
 
-	private boolean captureBody(int slot, EntityRenderState state, Minecraft minecraft) {
+	private boolean captureBody(int slot, EntityRenderState state, Minecraft minecraft, PoseStack poses) {
 		for (Batch b : this.batches.values()) {
 			b.count = 0;
 		}
 		CameraRenderState cameraState = minecraft.gameRenderer.gameRenderState().levelRenderState.cameraRenderState;
-		minecraft.getEntityRenderDispatcher().submit(state, cameraState, 0.0, 0.0, 0.0, new PoseStack(), this);
+		minecraft.getEntityRenderDispatcher().submit(state, cameraState, 0.0, 0.0, 0.0, poses, this);
 		this.capture.flush();
 		Batch skin = null;
 		for (Batch b : this.batches.values()) {
@@ -157,6 +157,162 @@ public final class MycPlayerModel implements SubmitNodeCollector {
 		return true;
 	}
 
+	private static int lastDecoration = -1;
+	private static final float BODY_HALF_THICKNESS = 0.125f; // a body lying flat: half its 4-pixel depth, in blocks before scaling
+	private static final float HEAD_TILT_ON_BED = 20f; // degrees, towards the chest
+	private static final float HEAD_FROM_FEET = 1.75f; // blocks before scaling: the head's middle, lying (28 of 32 model pixels)
+	private static final float HEAD_HALF_DEPTH = 0.25f; // blocks before scaling: half the head's 8 pixels
+	private static final float MAX_TILT = 35f; // degrees
+	private static final float SLIDE_DOWN_BED = 0.3f; // blocks: the body moved this far from the head's end
+	private static int lastLie = -1;
+	private static float lastTilt = -1f;
+
+	/**
+	 * A decoration in use in Mycelium (MycState SIT / LIE, your requests, 2026-11-08): your body in
+	 * Minecraft's own sitting pose (the riding pose, lowered so you sit on the floor as at Mycelium's
+	 * stump chairs) or sleeping pose, as Mycelium's spore lies on its bed:
+	 * - "Sleep" (LIE): on your back, the head behind where you face (measured: Mycelium's head bone
+	 *   ends 178 degrees from the spore's facing), so it's on the bed's pillow side;
+	 * - "Lay" (LIE + LIE_FRONT): the head ahead (Mycelium's spore lies on its front then; you stay on
+	 *   your back, your choice).
+	 * Minecraft's sleeping pose with no bed direction turns the body by its body yaw at any angle (no
+	 * four-way snap, no shift), and its head then points along yaw 90 - bodyRot (LivingEntityRenderer.
+	 * setupRotations: Y(bodyRot), Z(90), Y(270)). It's lifted by half its thickness so it lies on the
+	 * bed, not half in it, and tilted up from the feet so the back of the head rests on what's under
+	 * it: the pillow, read from Mycelium's ground (GroundGrid, which has the bed's shape) where the
+	 * head lies, against the ground under the feet (your report: the head was inside the pillow). On
+	 * the bed the head doesn't follow your look: straight, tilted a little forward (towards the chest).
+	 */
+	private static void decorationPose(EntityRenderState state, PoseStack poses, Minecraft minecraft, float partialTick) {
+		int flags = MyceliumCraftClient.mycFlags();
+		boolean front = (flags & Proto.MYC_LIE_FRONT) != 0;
+		int now = (flags & Proto.MYC_SIT) != 0 ? 1 : (flags & Proto.MYC_LIE) != 0 ? (front ? 3 : 2) : 0;
+		if (now != lastDecoration) {
+			lastDecoration = now;
+			MycLink.LOG.info("MyceliumCraft: player model: {}", now == 1 ? "sitting at a decoration" : now == 2 ? "lying on its back on a decoration, head behind" : now == 3 ? "lying on its front on a decoration, head ahead" : "standing");
+		}
+		if (now == 1 && state instanceof net.minecraft.client.renderer.entity.state.HumanoidRenderState humanoid) {
+			humanoid.isPassenger = true;
+			// The riding pose keeps the hips at standing height (12 of 32 model pixels up): down by that, so you sit on the floor.
+			poses.translate(0.0, -0.62 * humanoid.scale, 0.0);
+		} else if (now >= 2 && state instanceof net.minecraft.client.renderer.entity.state.LivingEntityRenderState living) {
+			// Your body is drawn turned to where you face, so its own facing is the world's.
+			var stand = minecraft.player != null ? minecraft.player.getPosition(partialTick) : null;
+			float facing = living.bodyRot; // your held facing (MycEmotes), the spore's
+			double[] fit = lie(living, poses, stand, facing, facing, front);
+			if (fit != null && (now != lastLie || Math.abs(fit[2] - lastTilt) > 2f)) {
+				lastLie = now;
+				lastTilt = (float) fit[2];
+				MycLink.LOG.info("MyceliumCraft: player model: on the bed, head towards yaw {}: pillow top {} above where you stand, feet end {} above where you stand; tilted up {} degrees",
+					String.format("%.0f", fit[3]), Double.isNaN(fit[0]) ? "none" : String.format("%.2f", fit[0]), String.format("%.2f", fit[1]), String.format("%.0f", fit[2]));
+			}
+		}
+	}
+
+	/**
+	 * Lying on a decoration (Minecraft's sleeping pose), for you and the other spores. 'local' is the
+	 * facing the body is drawn with, 'world' the facing in the world (the same for you; a spore's body
+	 * is drawn facing south and Mycelium turns it to the spore's facing). 'stand': where the body
+	 * stands in the world (null = unknown: it lies flat, lifted by half its thickness).
+	 *
+	 * The body as a straight line from its feet to its head (your reports, 2026-11-09):
+	 * - slid 0.3 blocks towards the foot of the bed, so the head, not the upper back, is on the pillow;
+	 * - the head's middle half the head's depth above the pillow's top: the highest ground from
+	 *   halfway along the body to the head (Mycelium's ground, GroundGrid, half-block cells);
+	 * - the feet end as low as the bed lets it: the lowest line from the head down that keeps the
+	 *   body's underside (half its thickness below its middle line) on top of the ground everywhere
+	 *   along it. Holding the feet at your standing height floated the legs over the bed's slope.
+	 * Returns { pillow top above the stand (NaN = none), feet end above it, tilt degrees, head's world
+	 * yaw }, or null without the ground or a stand.
+	 */
+	private static double[] lie(net.minecraft.client.renderer.entity.state.LivingEntityRenderState living, PoseStack poses,
+			net.minecraft.world.phys.Vec3 stand, float local, float world, boolean front) {
+		float head = front ? local : local + 180f; // where the head goes, as drawn
+		float headWorld = front ? world : world + 180f;
+		living.pose = net.minecraft.world.entity.Pose.SLEEPING;
+		living.bedOrientation = null; // turned by bodyRot, at any angle
+		living.bodyRot = 90f - head;
+		double rad = Math.toRadians(head);
+		float hx = (float) -Math.sin(rad), hz = (float) Math.cos(rad); // the head's direction as drawn
+		double wrad = Math.toRadians(headWorld);
+		double wx = -Math.sin(wrad), wz = Math.cos(wrad); // and in the world, for the ground
+		float s = living.scale;
+		double lift = BODY_HALF_THICKNESS * s, tilt = 0.0;
+		double[] fit = null;
+		var grid = dev.myceliumcraft.world.MycCollision.grid();
+		if (grid != null && stand != null) {
+			var feet = stand.add(-wx * SLIDE_DOWN_BED, 0.0, -wz * SLIDE_DOWN_BED);
+			double reach = HEAD_FROM_FEET * s;
+			double headGround = Double.NaN;
+			for (double along = 0.5 * reach; along <= reach + 1e-6; along += 0.125) {
+				double g = grid.groundAt(feet.x + wx * along, stand.y + 0.6, feet.z + wz * along);
+				if (!Double.isNaN(g) && (Double.isNaN(headGround) || g > headGround)) {
+					headGround = g;
+				}
+			}
+			double headY = (Double.isNaN(headGround) ? stand.y : headGround) + HEAD_HALF_DEPTH * s; // the head's middle
+			// The lowest feet height (middle line) that keeps the underside above the ground at each point.
+			double feetY = Double.NEGATIVE_INFINITY;
+			for (double along = 0.0; along <= 0.85 * reach + 1e-6; along += 0.125) {
+				double g = grid.groundAt(feet.x + wx * along, stand.y + 0.6, feet.z + wz * along);
+				if (Double.isNaN(g)) {
+					continue;
+				}
+				double t = along / reach;
+				feetY = Math.max(feetY, (g + BODY_HALF_THICKNESS * s - headY * t) / (1.0 - t));
+			}
+			if (feetY == Double.NEGATIVE_INFINITY) {
+				feetY = stand.y + BODY_HALF_THICKNESS * s;
+			}
+			feetY = Math.min(feetY, headY); // the feet never above the head
+			lift = feetY - stand.y;
+			tilt = Math.toDegrees(Math.atan2(headY - feetY, reach));
+			tilt = Math.max(-MAX_TILT, Math.min(MAX_TILT, tilt));
+			fit = new double[] { Double.isNaN(headGround) ? Double.NaN : headGround - stand.y, lift, tilt, ((headWorld % 360f) + 360f) % 360f };
+		}
+		poses.translate(-hx * SLIDE_DOWN_BED, lift, -hz * SLIDE_DOWN_BED);
+		if (tilt != 0.0) {
+			// About the line across the body at the feet; the head end goes up.
+			poses.mulPose(new org.joml.Matrix4f().rotation((float) -Math.toRadians(tilt), hz, 0f, -hx));
+		}
+		if (living instanceof net.minecraft.client.renderer.entity.state.HumanoidRenderState humanoid) {
+			humanoid.yRot = 0f; // the head doesn't turn with the look on the bed
+			humanoid.xRot = HEAD_TILT_ON_BED;
+		}
+		return fit;
+	}
+
+	private static final int[] SPORE_POSE = new int[Proto.COL_MAX];
+	private static final float[] SPORE_TILT = new float[Proto.COL_MAX];
+
+	/**
+	 * Another spore at a decoration (your request, 2026-11-09), as yours: 1 sitting (the riding pose,
+	 * lowered to the floor), 2 lying on its back with the head behind, 5 lying with the head ahead.
+	 * The body is drawn facing south (local facing 0); 'world' is the spore's facing, 'stand' where it
+	 * stands (null = unknown).
+	 */
+	static void sporeDecorationPose(EntityRenderState state, PoseStack poses, int slot, String name, int pose,
+			net.minecraft.world.phys.Vec3 stand, float world) {
+		if (pose == 1 && state instanceof net.minecraft.client.renderer.entity.state.HumanoidRenderState humanoid) {
+			humanoid.isPassenger = true;
+			poses.translate(0.0, -0.62 * humanoid.scale, 0.0);
+		} else if ((pose == 2 || pose == 5) && state instanceof net.minecraft.client.renderer.entity.state.LivingEntityRenderState living) {
+			double[] fit = lie(living, poses, stand, 0f, world, pose == 5);
+			float tilt = fit != null ? (float) fit[2] : 0f;
+			if (pose != SPORE_POSE[slot] || Math.abs(tilt - SPORE_TILT[slot]) > 2f) {
+				SPORE_TILT[slot] = tilt;
+				MycLink.LOG.info("MyceliumCraft: spore bodies: {} on the bed, head towards yaw {}: {}",
+					name, fit != null ? String.format("%.0f", fit[3]) : "?",
+					fit == null ? "where it stands isn't known, lying flat" : String.format("pillow top %s above where it stands, feet end %.2f above; tilted up %.0f degrees",
+						Double.isNaN(fit[0]) ? "none" : String.format("%.2f", fit[0]), fit[1], fit[2]));
+			}
+		}
+		if (pose != SPORE_POSE[slot]) {
+			SPORE_POSE[slot] = pose;
+			MycLink.LOG.info("MyceliumCraft: spore bodies: {} {}", name, pose == 1 ? "sits at a decoration" : pose == 2 ? "lies on its back at a decoration, head behind" : pose == 5 ? "lies at a decoration, head ahead" : pose == 4 ? "dances at the beetle drum" : "stands again");
+		}
+	}
+
 	private void capture(Minecraft minecraft, Camera camera, float partialTick) {
 		for (Batch b : this.batches.values()) {
 			b.count = 0;
@@ -166,12 +322,14 @@ public final class MycPlayerModel implements SubmitNodeCollector {
 			dispatcher.prepare(camera, minecraft.crosshairPickEntity);
 			EntityRenderState state = dispatcher.extractEntity(minecraft.player, partialTick);
 			state.nameTag = null;
+			PoseStack poses = new PoseStack();
+			decorationPose(state, poses, minecraft, partialTick);
 			CameraRenderState cameraState = minecraft.gameRenderer.gameRenderState().levelRenderState.cameraRenderState;
 			// At the origin: positions come out relative to the player's feet.
 			// Mycelium's sprout: digging out of the ground (HumanoidEmergeMixin, while this runs).
 			EmergePose.setCapturing(MyceliumCraftClient.emergeProgress());
 			try {
-				dispatcher.submit(state, cameraState, 0.0, 0.0, 0.0, new PoseStack(), this);
+				dispatcher.submit(state, cameraState, 0.0, 0.0, 0.0, poses, this);
 			} finally {
 				EmergePose.setCapturing(Float.NaN);
 			}
