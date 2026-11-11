@@ -153,7 +153,7 @@ Single-player and offline only.
   (`-mcLevelEndTest`); not tested in play.
 - **Mycelium's keys are set in Minecraft's menu: not tested in real Minecraft.** Options →
   Controls → Key Binds has a "Mycelium" section (Interact, Show Stats, Subspecies Skill, Salvage,
-  Attack, Curio, Dodge Roll, Skill 1, Skill 2, Navigate Camera, Reset Camera). A key bound there
+  Curio, Dodge Roll, Skill 1, Skill 2). A key bound there
   belongs to Mycelium and isn't sent to Minecraft; every other key goes to Minecraft. Defaults:
   R interact, Tab show stats, V subspecies skill, middle click salvage, the rest unbound. A key
   that is also Minecraft's List Players (Tab, by default) goes to both games, and the player list

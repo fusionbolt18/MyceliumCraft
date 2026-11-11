@@ -1576,7 +1576,10 @@ Minecraft's window.
 Options → Controls → Key Binds has a "Mycelium" section, registered by `MyceliumKeys.java` as
 ordinary Minecraft key binds. Minecraft does the editing, saving (its `options.txt`), the red
 conflict marks and "Reset"; the binds do nothing in Minecraft itself. Every frame Minecraft sends
-what they're bound to (Bindings block, protocol v9). Mycelium then:
+what they're bound to (Bindings block, protocol v9). Attack (Mycelium), Navigate Camera and Reset
+Camera aren't in the menu (your request, 2026-11-10): their slots stay in the list, so the action
+ids don't change, and Minecraft always sends them as unbound, which is what they defaulted to.
+Mycelium then:
 - sets each action's first keyboard/mouse binding to that key, and switches its other
   keyboard/mouse bindings off (gamepad bindings stay);
 - re-does this within a frame if you change a bind while playing;

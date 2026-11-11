@@ -1,5 +1,18 @@
 # MODLOG
 
+## 2026-11-10 Attack (Mycelium), Navigate Camera and Reset Camera are gone from Key Binds
+
+**Your request:** remove those three from the Mycelium section of Minecraft's Key Binds.
+
+**Changed:**
+- `MyceliumKeys.java` doesn't register those three any more.
+- Their places in the list stay, so every other action keeps its number in the protocol. Mycelium
+  is always told they're unbound, which was already their default. If you had bound one of them
+  yourself, it's now unbound.
+- Their names are removed from `en_us.json`. No protocol change.
+
+**Tested how:** the jar builds. **Not tested in Minecraft.**
+
 ## 2026-11-10 The boss's pull when you stand still: measured, logged each second
 
 **Your report:** standing still with no movement keys, the pull didn't move you.
