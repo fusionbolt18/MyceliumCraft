@@ -33,6 +33,10 @@ namespace MyceliumCraft
         bool wantCoverage = true;
         bool sizeLogged;
 
+        // Blip watch (your report, 2026-11-10: for a split second Minecraft's things vanish): gaps
+        // between pictures and slow Mycelium frames, logged only when they happen.
+        float lastGapLog, lastSlowLog;
+
         /// <summary>For the -mcOverlayCheck test aid: hide the picture even when it would show.</summary>
         public bool ForceHidden;
         public bool Visible => visible;
@@ -66,6 +70,15 @@ namespace MyceliumCraft
                     wantCoverage = false;
                     coveragePercent = Coverage(frame);
                 }
+                if (lastPictureTime >= 0f && visible)
+                {
+                    float gap = Time.realtimeSinceStartup - lastPictureTime;
+                    if (gap > 0.1f && Time.realtimeSinceStartup - lastGapLog > 0.5f)
+                    {
+                        lastGapLog = Time.realtimeSinceStartup;
+                        McLog.Info($"overlay blip: no new picture from Minecraft for {gap * 1000f:F0} ms (the last one stayed up), now #{frame.FrameId}");
+                    }
+                }
                 texture.LoadRawTextureData(frame.Pixels, frame.Width * frame.Height * 4);
                 texture.Apply(false, false);
                 // Unity textures run bottom to top too; a top-down picture is flipped.
@@ -82,6 +95,12 @@ namespace MyceliumCraft
                         : "";
                     McLog.Info($"overlay: Minecraft's picture is {frame.Width}x{frame.Height}, Mycelium's window {Screen.width}x{Screen.height}{shape}; color space {QualitySettings.activeColorSpace}");
                 }
+            }
+
+            if (visible && Time.unscaledDeltaTime > 0.1f && Time.realtimeSinceStartup - lastSlowLog > 0.5f)
+            {
+                lastSlowLog = Time.realtimeSinceStartup;
+                McLog.Info($"overlay blip: Mycelium's frame took {Time.unscaledDeltaTime * 1000f:F0} ms");
             }
 
             bool fresh = lastPictureTime >= 0f && Time.realtimeSinceStartup - lastPictureTime <= StaleSeconds;

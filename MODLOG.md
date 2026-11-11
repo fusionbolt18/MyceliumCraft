@@ -1,5 +1,122 @@
 # MODLOG
 
+## 2026-11-10 The second kind of blip: the colony read as empty for a frame
+
+**Your report:** another blip around 22:50.
+
+**Found:**
+- Minecraft didn't think Mycelium had left the level this time. There was no name reset, no
+  overlay off, and the earlier fix held back one failed state read at 22:47:51.
+- At 22:48:11, 22:49:57 and 22:50:00, the colony read as empty for a frame: "colony: no colony",
+  "skin: your player wears its Minecraft skin again", "spore bodies: 0 sent". All of it came back
+  straight away.
+- Mycelium's log had 13 spores the whole time, so these were failed reads. The colony is a big
+  block (names, colours, poses), so it's caught mid-write more often. `MycColony` counted a failed
+  read as "no colony".
+
+**Changed:**
+- `MycColony.readColony` keeps the last good colony for up to 0.25 s, read into a spare copy and
+  swapped in when good, as `readMyc` does. Log: "link: N read(s) of Mycelium's colony failed ...;
+  the last good one was kept".
+- `MycLink.readColony` and `readMycState`: while Mycelium is mid-write, after 8 quick tries each
+  further try first yields to let it finish, so fewer reads fail at all.
+
+**Tested how:** the jar builds, and a stand-in run read the colony (13 spores) as before. **Not
+tested in Minecraft.**
+
+## 2026-11-10 Living Cyclone lasts the same at any Speed
+
+**Your report:** Living Cyclone ends too quickly with a higher Speed stat; it should last the same.
+
+**Why:** Mycelium's own rule. `LivingCyclone` does 3 spins, each `baseSpinDuration /
+(animatorSpeed x speedAnimationScalar)` long (0.5 and 0.75 in its prefab). The animator speed is
+`attackSpeedBase + (Speed level - 1) x attackSpeedIncrement` (1 + 0.071 a level). So it spun for
+2.0 s at level 1 and about 1.0 s at level 15. Mycelium's skill bar timer always counts 1.5 s.
+
+**Changed:** new `CycloneLength.cs`, called every frame, linked to Minecraft or not. Each
+LivingCyclone's `speedAnimationScalar` becomes its own value x attackSpeedBase / the spore's
+animatorSpeed, so the spinning is as long as at Speed level 1: 2.0 s. Mycelium's code isn't
+changed. The short arm wind-up before the spins still follows the animator speed. Log:
+"cyclone length: animator speed ... spin scalar 0.750 -> 0.376 ...".
+
+**Tested how:** stand-in run in The Carcass (`-mcSkillCooldownTest`, `LINKTEST_STILL=1
+LINKTEST_LENGTH=60`). Your spore is at full Speed (animator speed 1.994), and the scalar went from
+0.750 to 0.376. Living Cyclone ran for 2.28 s: 2.0 s of spins plus the wind-up. **Not tested in
+Minecraft.**
+
+## 2026-11-10 The overlay goes away at once when a Mycelium menu opens
+
+**Your report:** Minecraft's overlay takes too long to go away when you open menus, the shop and
+so on.
+
+**Why:** the overlay hid only after Mycelium had kept the controls for 0.3 s (since 2026-10-19),
+so that brief control dips didn't make it blink. A hit's knockback has its own exception now,
+but skills (`Skill.ActivateSkill`) still take the controls for a moment, so the wait stays for
+them. Your logs show the shop opening and the overlay hiding a few lines later; this change
+isn't new.
+
+**Changed:** `MinecraftDriver.HudFadingOut`. Mycelium's menus (the shop's `LevelUpInitiate`,
+choosing a spore in `CharSelectManagerNew`, pause) call `HUDController.FadeHUD(false)`, which
+lowers the "HUD" CanvasGroup's alpha from the first frame. Skills don't. So when Mycelium has the
+controls and its HUD is fading out, the overlay hides at once. Log line: "overlay: Mycelium's HUD
+is fading out with the controls taken (...): a menu, so hidden at once".
+
+**Tested how:** Mycelium builds. **Not tested** (the stand-in doesn't open the shop).
+
+## 2026-11-10 The split-second disconnect: one bad read reset everything for a frame
+
+**Your test:** a drop-out around 22:20.
+
+**Found:**
+- At 22:20:01 Minecraft's log shows, all in the same second: your name and skin back to
+  Minecraft's, the colony cleared, the player model hidden ("overlay off"), 0 spore bodies sent,
+  and your size back to 1.0. Then all of it came straight back.
+- Mycelium's log shows the matching moment: "player model: hidden (Minecraft sent no body)" and
+  "0 other spore(s) shown", then shown again.
+- No "hiccup", phase change, picture gap or slow frame in either log.
+- So Minecraft decided for one frame that Mycelium wasn't in a level. Everything there checks
+  "state read AND alive AND in a level". The most likely cause is that one read of Mycelium's
+  state failed: all 16 tries landed while Mycelium was writing it, for example because Windows
+  paused Mycelium mid-write. A one-frame gap in Mycelium's in-level flag would look the same.
+- My first blip watch (picture coverage) gave no useful information. It learned "usual" from a
+  full-screen menu, so normal play looked "empty". It's removed. The gap and slow-frame lines
+  stay.
+
+**Changed:** `MyceliumCraftClient.readMyc`.
+- A failed read keeps the last good state for up to 0.25 s.
+- "Not in a level" must be read 3 times in a row before Minecraft acts on it.
+- The read goes into a spare copy, swapped in only when it's good, so a failed read can't leave
+  half-copied values.
+- New log lines: "link: N read(s) of Mycelium's state failed ... and N 'not in a level' blip(s)
+  were held back", and "link: Mycelium said 'not in a level' for N read(s) only; ignored". The
+  next log tells which cause it was.
+
+**Tested how:** the jar builds. **Not tested in Minecraft.** Leaving a level now takes 3 frames
+longer to notice, which is about 25 ms.
+
+## 2026-11-10 Watching for the split-second drop-outs
+
+**Your report:** occasionally, for a split second, it looks like the two games disconnect and
+Minecraft's things vanish for a frame.
+
+**Found in your last session's logs:**
+- No "hiccup" lines: Mycelium never lost Minecraft's state.
+- The overlay was never switched off mid-play.
+- The player model hid only on view changes, and nothing switched on and off rapidly.
+- The picture hand-off can't tear: Minecraft writes one copy while Mycelium shows another.
+- So it's most likely a picture from Minecraft that's empty for a frame, or one game stalling.
+  The logs so far only had once-a-second summaries, which can't show one frame.
+
+**Changed (logging only, no fix yet):**
+- `McOverlay.cs` and `MycOverlay.java` check every picture: how much of it is covered, against
+  the usual.
+- They log a nearly empty picture, a gap of over 100 ms between pictures, and any frame over
+  100 ms on either side.
+- Lines start "overlay blip:" (details in docs/DESIGN.md section 6).
+
+**Tested how:** both build. A stand-in run showed no errors, but the stand-in sends no pictures,
+so **the watch itself is not tested**. Next: you play until it happens, then I read the blip lines.
+
 ## 2026-11-10 New default keys for Mycelium's actions
 
 **Your request:** defaults Dodge Roll Left Alt, Interact right click, Skill 1 X, Skill 2 C,

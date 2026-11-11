@@ -22,7 +22,10 @@ public final class MyceliumCraftClient implements ClientModInitializer {
 	private static int teleportAck;
 	private static double appliedScale = Double.NaN; // last scale we asked the server for, in this level
 	private static boolean frozeWorld; // we froze the world's ticking (Mycelium paused)
-	private static final MycLink.MycState MYC = new MycLink.MycState();
+	// Mycelium's state as last read well (readMyc). Swapped with SCRATCH after a good read, so a read
+	// that fails part way never leaves half of it behind.
+	private static MycLink.MycState MYC = new MycLink.MycState();
+	private static MycLink.MycState SCRATCH = new MycLink.MycState();
 	private static final MycLink.Tick TICK = new MycLink.Tick();
 	private static long qpcFreq;
 	private static volatile long frameStartQpc;
@@ -64,6 +67,63 @@ public final class MyceliumCraftClient implements ClientModInitializer {
 		net.fabricmc.fabric.api.client.rendering.v1.EntityRendererRegistry.register(dev.myceliumcraft.combat.EnemyProxies.TYPE, net.minecraft.client.renderer.entity.NoopRenderer::new);
 		net.fabricmc.fabric.api.client.rendering.v1.EntityRendererRegistry.register(dev.myceliumcraft.combat.SporeProxies.TYPE, net.minecraft.client.renderer.entity.NoopRenderer::new);
 		MycLink.LOG.info("MyceliumCraft: rules: no fall damage for players, no natural health regeneration (always, while the mod is installed)");
+	}
+
+	/** A failed read (Mycelium mid-write the whole time) keeps the last good state this long. */
+	private static final long KEEP_LAST_GOOD_MS = 250;
+	/** Mycelium's "not in a level" must come this many good reads in a row before it counts. */
+	private static final int LEAVE_AFTER_READS = 3;
+	private static long lastGoodMs;
+	private static int outReads, failedReads, heldOuts;
+	private static long nextReadLogMs;
+
+	/**
+	 * Read Mycelium's state for this frame (your report, 2026-11-10: for a split second everything
+	 * Minecraft gives Mycelium vanished, and Minecraft's log showed the name, skin, colony, size and
+	 * overlay all reset and come back within the same second). Every part checks "state read AND
+	 * alive AND in a level", so one read failing (all 16 tries landing while Mycelium was writing), or
+	 * one frame without IN_LEVEL, reset everything for that frame. Now a failed read keeps the last
+	 * good state for up to 0.25 s, and leaving the level needs 3 good reads in a row without
+	 * IN_LEVEL. Each held-back moment is counted and logged, so the log tells which one it was.
+	 */
+	private static boolean readMyc() {
+		long now = System.currentTimeMillis();
+		if (!MycLink.readMycState(SCRATCH)) {
+			if (lastGoodMs > 0 && now - lastGoodMs <= KEEP_LAST_GOOD_MS) {
+				failedReads++;
+				logReads(now);
+				return true; // MYC is still the last good state
+			}
+			return false;
+		}
+		lastGoodMs = now;
+		boolean wasIn = MYC.inLevel();
+		if (wasIn && !SCRATCH.inLevel() && ++outReads < LEAVE_AFTER_READS) {
+			heldOuts++;
+			logReads(now);
+			return true; // keep the in-level state until it's said again
+		}
+		if (SCRATCH.inLevel()) {
+			if (outReads > 0 && wasIn) {
+				MycLink.LOG.info("MyceliumCraft: link: Mycelium said 'not in a level' for {} read(s) only; ignored (a blip)", outReads);
+			}
+			outReads = 0;
+		}
+		MycLink.MycState t = MYC;
+		MYC = SCRATCH;
+		SCRATCH = t;
+		logReads(now);
+		return true;
+	}
+
+	private static void logReads(long now) {
+		if ((failedReads > 0 || heldOuts > 0) && now >= nextReadLogMs) {
+			nextReadLogMs = now + 1000;
+			MycLink.LOG.info("MyceliumCraft: link: {} read(s) of Mycelium's state failed (Mycelium mid-write) and {} 'not in a level' blip(s) were held back; the last good state was kept",
+				failedReads, heldOuts);
+			failedReads = 0;
+			heldOuts = 0;
+		}
 	}
 
 	/** MycState's flags as last read (MycPlayerModel: a decoration in use). */
@@ -142,7 +202,7 @@ public final class MyceliumCraftClient implements ClientModInitializer {
 				grid.version, grid.n, grid.n, grid.cell, grid.originX, grid.originX + grid.n * grid.cell, grid.originZ, grid.originZ + grid.n * grid.cell);
 		}
 
-		boolean haveMyc = MycLink.readMycState(MYC);
+		boolean haveMyc = readMyc();
 		if (haveMyc && MycLink.myceliumAlive()) {
 			MycWindowSize.follow(minecraft, MYC.windowW, MYC.windowH); // Minecraft's window the size of Mycelium's
 		}

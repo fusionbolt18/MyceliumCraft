@@ -61,6 +61,7 @@ namespace MyceliumCraft
         readonly WeaponBag weapons = new WeaponBag();
         readonly SkillAim skillAim = new SkillAim();
         readonly DashWatch dash = new DashWatch();
+        readonly CycloneLength cycloneLength = new CycloneLength(); // Living Cyclone as long at any Speed
         readonly GoalWatch goal = new GoalWatch(); // the level's goal, on Minecraft's locator bar
         readonly PullWatch pull = new PullWatch(); // the final boss's sand pull, for Minecraft's player
         readonly ColonyWatch colony = new ColonyWatch();
@@ -477,6 +478,7 @@ namespace MyceliumCraft
         void Update()
         {
             BackgroundWindow.Update();
+            cycloneLength.Update(); // always, linked or not (your request, 2026-11-10)
             frameQpc = MyceliumLink.Qpc();
             frameUnscaled = Time.unscaledTimeAsDouble;
             if (link == null) return;
@@ -644,8 +646,17 @@ namespace MyceliumCraft
             // about half a second: the grace alone wasn't enough).
             // Using a decoration takes the controls too (canAct off until you move), but it's still
             // play: the overlay stays (your request, 2026-11-08).
+            // A menu (the shop, choosing a spore, pause) fades Mycelium's HUD out as it takes the controls;
+            // a skill takes them too but leaves the HUD. So with the HUD fading out the overlay hides at
+            // once, not after the grace (your report, 2026-11-10: it took too long to go away).
+            bool menu = controls && HudFadingOut();
+            if (menu != wasMenuFade)
+            {
+                wasMenuFade = menu;
+                if (menu) McLog.Info($"overlay: Mycelium's HUD is fading out with the controls taken ({controlsWhy}): a menu, so hidden at once");
+            }
             bool overlayBlocked = controls && !controlsWhy.EndsWith("knockback") && DecorationPose(out _) == 0
-                                  && (controlsWhy == "paused" || Time.realtimeSinceStartup - controlsSince >= OverlayControlsGrace);
+                                  && (controlsWhy == "paused" || menu || Time.realtimeSinceStartup - controlsSince >= OverlayControlsGrace);
             birth.Update(alive && phase != Phase.Idle); // a spore grown in the shop: no HUD, no overlay
             overlay.Update(link, McConfig.Overlay && alive && phase != Phase.Idle && !overlayBlocked && !covered && !birth.On);
             // Minecraft's pause menu (Escape) pauses Mycelium too.
@@ -1600,7 +1611,24 @@ namespace MyceliumCraft
             ratioLastMax = max;
         }
 
-        const float OverlayControlsGrace = 0.3f; // Mycelium must keep the controls this long before the overlay hides
+        const float OverlayControlsGrace = 0.3f; // Mycelium must keep the controls this long before the overlay hides (unless its HUD fades out: a menu)
+
+        CanvasGroup hudGroup;
+        string hudGroupScene;
+        bool wasMenuFade;
+
+        /// <summary>Mycelium's own HUD ("HUD" CanvasGroup) is fading out or faded: HUDController.FadeHUD(false), which its menus call.</summary>
+        bool HudFadingOut()
+        {
+            string scene = SceneManager.GetActiveScene().name;
+            if (hudGroup == null || hudGroupScene != scene)
+            {
+                hudGroupScene = scene;
+                GameObject h = GameObject.Find("HUD");
+                hudGroup = h != null ? h.GetComponent<CanvasGroup>() : null;
+            }
+            return hudGroup != null && hudGroup.alpha < 0.99f;
+        }
         float controlsSince = -1f;
         bool frozenByMinecraft;
         float timeScaleBefore = 1f;

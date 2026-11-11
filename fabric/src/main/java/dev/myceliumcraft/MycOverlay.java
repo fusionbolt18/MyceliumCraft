@@ -32,6 +32,9 @@ public final class MycOverlay {
 	private static boolean loggedFormat;
 	private static long lastLogMs;
 	private static int shipped, skipped, tooBig;
+	// Blip watch (your report, 2026-11-10): slow Minecraft frames, logged only when they happen.
+	private static long lastCaptureNs;
+	private static long lastSlowLogMs;
 
 	private static final class Staging {
 		GpuBuffer buffer;
@@ -63,6 +66,12 @@ public final class MycOverlay {
 			return;
 		}
 		shipReadyFrames();
+		long nowNs = System.nanoTime();
+		if (lastCaptureNs != 0 && nowNs - lastCaptureNs > 100_000_000L && System.currentTimeMillis() - lastSlowLogMs > 500) {
+			lastSlowLogMs = System.currentTimeMillis();
+			MycLink.LOG.info("MyceliumCraft: overlay blip: Minecraft's frame took {} ms", (nowNs - lastCaptureNs) / 1_000_000L);
+		}
+		lastCaptureNs = nowNs;
 
 		RenderTarget target = minecraft.gameRenderer.mainRenderTarget();
 		GpuTexture color = target.getColorTexture();

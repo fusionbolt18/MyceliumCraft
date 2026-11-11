@@ -32,7 +32,14 @@ public final class MycColony {
 	private static final float FILL_PER_SECOND = 0.6f;
 	private static final int HAPPY = 0x38DB35, CONTENT = 0xFFD700, UNHAPPY = 0xC83434;
 
-	private static final MycLink.Colony COLONY = new MycLink.Colony();
+	// As last read well; swapped with SCRATCH after a good read, so a failed read leaves nothing half-copied.
+	private static MycLink.Colony COLONY = new MycLink.Colony();
+	private static MycLink.Colony SCRATCH = new MycLink.Colony();
+	/** A failed read keeps the last good colony this long (your report, 2026-11-10: blips at 22:48 and 22:50). */
+	private static final long KEEP_LAST_GOOD_MS = 250;
+	private static long lastGoodMs;
+	private static int failedReads;
+	private static long nextFailLogMs;
 	private static float shown = -1f;
 	private static long lastNanos;
 	private static String lastList = "";
@@ -50,7 +57,7 @@ public final class MycColony {
 		long now = System.nanoTime();
 		float dt = lastNanos == 0 ? 0f : Math.min(0.25f, (now - lastNanos) / 1e9f);
 		lastNanos = now;
-		boolean have = active && MycLink.readColony(COLONY) && COLONY.count > 0 && COLONY.average >= 0f;
+		boolean have = active && readColony() && COLONY.count > 0 && COLONY.average >= 0f;
 		present = have;
 		if (!have) {
 			if (footerSet) {
@@ -98,6 +105,32 @@ public final class MycColony {
 			MycLink.LOG.info("MyceliumCraft: colony: {} spore(s), {} other row(s) in the player list, average happiness {} ({}), footer {}",
 				COLONY.count, rows.size(), String.format("%.2f", target), word(target), inRun ? "Nutrient Multiplier: +" + COLONY.nutrientBonus + "%" : "bar " + filled + "/" + SEGMENTS);
 		}
+	}
+
+	/**
+	 * Read Mycelium's colony. A read that fails (Mycelium mid-write the whole time: it's a big block)
+	 * keeps the last good colony for up to 0.25 s. Before, it counted as "no colony" for that frame:
+	 * your skin went back to Minecraft's and every spore body vanished (22:48:11, 22:49:57 and 22:50:00
+	 * on 2026-11-10, while Mycelium's own log had 13 spores throughout).
+	 */
+	private static boolean readColony() {
+		long now = System.currentTimeMillis();
+		if (MycLink.readColony(SCRATCH)) {
+			MycLink.Colony t = COLONY;
+			COLONY = SCRATCH;
+			SCRATCH = t;
+			lastGoodMs = now;
+		} else if (lastGoodMs > 0 && now - lastGoodMs <= KEEP_LAST_GOOD_MS) {
+			failedReads++;
+		} else {
+			return false;
+		}
+		if (failedReads > 0 && now >= nextFailLogMs) {
+			nextFailLogMs = now + 1000;
+			MycLink.LOG.info("MyceliumCraft: link: {} read(s) of Mycelium's colony failed (Mycelium mid-write); the last good one was kept", failedReads);
+			failedReads = 0;
+		}
+		return true;
 	}
 
 	/** Your colony as last read, or null when there is none. */

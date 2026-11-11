@@ -732,7 +732,12 @@ public final class MycLink {
 		for (int attempt = 0; attempt < 16; attempt++) {
 			int seq1 = (int) INT.getAcquire(s, b + COL_SEQ);
 			if ((seq1 & 1) != 0) {
-				Thread.onSpinWait();
+				// Mycelium is writing. After 8 quick tries, let it finish (it may have been paused mid-write).
+				if (attempt < 8) {
+					Thread.onSpinWait();
+				} else {
+					Thread.yield();
+				}
 				continue;
 			}
 			out.count = Math.max(0, Math.min(COL_MAX, s.get(JAVA_INT, b + COL_COUNT)));
@@ -805,7 +810,12 @@ public final class MycLink {
 		for (int attempt = 0; attempt < 16; attempt++) {
 			int seq1 = (int) INT.getAcquire(s, b + MY_SEQ);
 			if ((seq1 & 1) != 0) {
-				Thread.onSpinWait();
+				// Mycelium is writing. After 8 quick tries, let it finish (it may have been paused mid-write).
+				if (attempt < 8) {
+					Thread.onSpinWait();
+				} else {
+					Thread.yield();
+				}
 				continue;
 			}
 			out.flags = s.get(JAVA_INT, b + MY_FLAGS);

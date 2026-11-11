@@ -1188,6 +1188,12 @@ person, third person behind until it's over. The body isn't hidden.
   spores use their skills on their own as moves (`IdleWalking`, `SkillCurio`). Taking one over
   mid-move in the shop otherwise counted as play and showed the overlay there. Such a move still
   gets its cooldown started when it ends.
+- **Same length at any Speed** (since 2026-11-10, `CycloneLength.cs`). Mycelium makes each of
+  its 3 spins `baseSpinDuration / (animatorSpeed x speedAnimationScalar)` long, so more Speed made
+  it shorter: 2.0 s at level 1, about 1.0 s at level 15. Every frame each LivingCyclone's
+  `speedAnimationScalar` is set to its own value x `attackSpeedBase` / the spore's
+  `animatorSpeed`, so the spins always take 2.0 s. The arm wind-up before them still follows
+  Speed. Measured: 2.28 s at full Speed.
 - **Not a control takeover** (since 2026-11-01): Living Cyclone switches `canAct` off while it
   spins, which counted as Mycelium having the controls. After 0.3 s that hid the overlay (your
   hotbar, your report) and stopped the bridge. `MyceliumHasControls` now ignores "canAct off"
@@ -1784,7 +1790,9 @@ While Mycelium shows a level (and `overlay=1`), Mycelium sets `OVERLAY` in its s
 - **Hidden:**
   - while a Mycelium menu, pause or cutscene has the controls (2026-10-19):
     - its pause hides it at once;
-    - other control takeovers only after 0.3 s;
+    - other control takeovers only after 0.3 s (skills take the controls for a moment), except
+      when Mycelium's HUD fades out with them (`HudFadingOut`: a menu calls
+      `HUDController.FadeHUD(false)`): then at once (since 2026-11-10);
     - a hit's knockback never does. Mycelium switches "can act" off until the "Hurt" animation is
       half done (from a few ms to about 0.4 s seen) and sets `isInvincible` for exactly that time;
       that's how it's recognised.
@@ -2196,6 +2204,23 @@ handled on that server.
   - ticks of 250 ms or more are logged when they end.
 
 ## 6. Logs ("log, don't look")
+
+**Blip watch** (since 2026-11-10). Lines that appear only when something is unusual:
+- "overlay blip:" Mycelium had no new picture for over 100 ms while the overlay shows (the last one
+  stays up). Also a frame over 100 ms, on either side.
+- "link:" from Minecraft (`MyceliumCraftClient.readMyc`, below): reads of Mycelium's state that
+  failed, and "not in a level" blips, both held back.
+
+**Mycelium's state is read once a frame** (`readMyc`). A failed seqlock read (all 16 tries while
+Mycelium was mid-write, e.g. paused by Windows) keeps the last good state for up to 0.25 s.
+Leaving the level needs 3 good reads in a row without `IN_LEVEL`. Before this, either one reset
+your name, skin, size, colony, overlay and bodies for a frame: your "split second disconnect"
+(Minecraft's log at 22:20:01 on 2026-11-10 showed all of them reset and come back in the same
+second). The read goes into a spare copy that's swapped in only when it's good, so a failed read
+leaves nothing half-copied.
+The colony (`MycColony.readColony`, since 2026-11-10) is read the same way: a failed read keeps
+the last good colony for up to 0.25 s. Before, a failed read cleared your skin and all spore
+bodies for a frame. Both seqlock readers yield after 8 quick tries while Mycelium is mid-write.
 
 | File | What |
 |---|---|
