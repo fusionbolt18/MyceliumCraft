@@ -123,7 +123,7 @@ namespace MyceliumCraft.Link
 
         public const int MappingBytes = OffForge + ForgeBytes;
         public const uint Magic = 0x4343594D; // "MYCC"
-        public const uint Version = 59;
+        public const uint Version = 60;
         public const ulong HeartbeatTimeoutMs = 3000;
 
         // Header @0x000
@@ -175,6 +175,7 @@ namespace MyceliumCraft.Link
         public const uint MycAtDecoration = 1u << 10; // at a decoration standing (the dance pad): third person, facing held, no pose; since v55
         public const uint MycWave = 1u << 9;     // not sent since v53 (the Curio key with nothing near does nothing now)
         public const uint MycFury = 1u << 6;     // Relentless Fury's frenzy is on: Minecraft shows red potion particles; since v50
+        public const uint MycRain = 1u << 12;    // it's raining in Mycelium (WeatherSettingsScript.isRaining): Minecraft has a thunderstorm; since v60
         public const uint MycRoll = 1u << 5;     // the dodge roll is on (the spore's Animator "Roll"): Minecraft plays its roll animation; since v37
 
         // McState @0x200 (Minecraft -> Mycelium, seqlock)

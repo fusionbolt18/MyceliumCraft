@@ -82,6 +82,7 @@ public final class MyceliumCraftClient implements ClientModInitializer {
 		MycBossPull.tick(minecraft, on); // the final boss's sand pull
 		MycSkillAnimation.tick(minecraft, on && (MYC.flags & Proto.MYC_CYCLONE) != 0, on && (MYC.flags & Proto.MYC_ROLL) != 0);
 		MycFury.tick(minecraft, on && (MYC.flags & Proto.MYC_FURY) != 0); // Relentless Fury: red potion particles
+		MycWeather.tick(minecraft, on, (MYC.flags & Proto.MYC_RAIN) != 0); // Mycelium's rain: a thunderstorm
 		blockAttackWhileCycloning(minecraft);
 	}
 

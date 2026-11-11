@@ -162,8 +162,9 @@ Single-player and offline only.
   with a fake Minecraft: Mycelium followed the binds it sent, and a change during play was picked
   up within a frame. See DESIGN §5.3.
 - **Mycelium's key hints show your Minecraft binds** ("Press [R] to Open", the skill bar's keys,
-  the attack key for curios), and the skill menu assigns slots with your Skill 1 / Skill 2 keys.
-  Tested in Mycelium with a fake Minecraft's binds; not seen in play.
+  your Curio key above curios), and the skill menu assigns slots with your Skill 1 / Skill 2 keys.
+  Tested in Mycelium with a fake Minecraft's binds; not seen in play. The curio indicators were
+  fixed on 2026-11-10 (they showed Mycelium's Attack hint, often RT); not tested in Minecraft.
 - **Your Minecraft body in third person: not tested in real Minecraft.** In both F5 third-person
   views, your Minecraft player (skin, armour, cape, its own walking and swinging) stands where the
   spore is, and the spore is hidden. The body casts its own shadow (the spore's is gone), in first
@@ -206,6 +207,9 @@ Single-player and offline only.
   yours. Mycelium's side tested with a fake Minecraft; **the poses are not tested in Minecraft.**
 - **The final boss's sand pull moves you towards it.** Tested with a fake Minecraft; **not tested
   in Minecraft.**
+- **Mycelium's rain makes a thunderstorm in Minecraft, and lightning can't hit you.** The rain
+  signal was tested with a fake Minecraft; **the thunderstorm and the lightning are not tested in
+  Minecraft.**
 - **Dancing at the beetle drum plays a random Emotecraft dance** (Club Penguin, Kazotsky Kick,
   Roblox Potion Dance, Over here), for the other spores and for you. **Not tested in Minecraft.**
 - **Spores hitting the beetle drum are animated**, after Mycelium's own drum hit. Mycelium's side

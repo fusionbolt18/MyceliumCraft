@@ -73,6 +73,7 @@ public final class LinkTestMain {
 	private static double nextSproutPrint;
 	private static final MycLink.Colony colony = new MycLink.Colony();
 	private static final float[] bossPull = new float[2];
+	private static boolean rainWas;
 	private static double nextPullPrint;
 	private static long pullTick = -1;
 	// LINKTEST_THROW_RESOURCE=1: once Mycelium lists 3 resources, the first is thrown 1 s later, flying
@@ -429,6 +430,11 @@ public final class LinkTestMain {
 				MycLink.writeBindings(kinds, codes, parts.length);
 			}
 			boolean cycloneNow = MycLink.readMycState(myc) && (myc.flags & Proto.MYC_CYCLONE) != 0;
+			boolean rainNow = MycLink.readMycState(myc) && (myc.flags & Proto.MYC_RAIN) != 0;
+			if (rainNow != rainWas) {
+				rainWas = rainNow;
+				System.out.printf("t=%.2f weather: %s%n", t, rainNow ? "Mycelium says rain: Minecraft would have a thunderstorm" : "Mycelium says no rain: clear");
+			}
 			int decorationNow = MycLink.readMycState(myc) ? myc.flags & (Proto.MYC_SIT | Proto.MYC_LIE | Proto.MYC_LIE_FRONT | Proto.MYC_WAVE | Proto.MYC_AT_DECORATION) : 0;
 			if (decorationNow != decorationSeen) {
 				decorationSeen = decorationNow;

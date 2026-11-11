@@ -19,6 +19,12 @@ namespace MyceliumCraft
     /// KeyOwnership uses), the skill bar is refreshed (HUDControls.ChangeHUDControls), and Mycelium's
     /// own texts are put back when it stops. Re-applied whenever the bindings change or Mycelium makes
     /// a new InputManager (a scene change). Mycelium's code is unchanged.
+    ///
+    /// Curios (your report, 2026-11-10: their indicator didn't show the key): a curio is used with
+    /// Mycelium's Curio action (PlayerController: curioInteract), but the indicator above it
+    /// (Curio.PopInteractCanvas) always shows the Attack hint, and there's no curio hint to change.
+    /// So while Minecraft drives, every curio's indicator text (its interactCanvas's TMP_Text) is set
+    /// to the key bound to Curio in Minecraft, in the same colours, whenever Mycelium writes it again.
     /// </summary>
     sealed class KeyHints
     {
@@ -30,6 +36,17 @@ namespace MyceliumCraft
             ("goalCameraHint", 9), ("orientationCameraHint", 10),
         };
         const int MinecraftAttack = 11; // Minecraft's own attack key: what attacks while Mycelium's Attack is unbound
+        const int CurioId = 5;          // Mycelium's Curio action (MyceliumKeys.java "curio")
+        const float CurioLook = 0.1f;   // seconds between looks at the curios' indicators
+        const float CurioFind = 1f;     // seconds between finding the curios again
+
+        string curioLabel, curioText;   // the Curio key, and the indicator text it makes
+        float nextCurioLook, nextCurioFind;
+        UnityEngine.Object[] curios = new UnityEngine.Object[0];
+        static readonly Type CurioType = Type.GetType("Curio, Assembly-CSharp");
+        static readonly Type TmpText = Type.GetType("TMPro.TMP_Text, Unity.TextMeshPro");
+        // Curio's own private field: looked up on Curio (a bed's or chair's type doesn't list its base's private fields).
+        static readonly FieldInfo CanvasField = CurioType?.GetField("interactCanvas", BindingFlags.NonPublic | BindingFlags.Instance);
 
         static readonly string[] MouseNames = { null, "LMB", "MMB", "RMB", "MB4", "MB5" }; // other buttons: MB<n> (your choice, 2026-11-01)
 
@@ -65,14 +82,66 @@ namespace MyceliumCraft
                 labels[i] = label ?? "Unbound";
             }
             string sig = string.Join("|", labels);
-            if (sig == applied) return;
-            for (int i = 0; i < Hints.Length; i++) Set(Hints[i].hint, labels[i]);
-            applied = sig;
-            RefreshHud();
-            var parts = new List<string>();
-            for (int i = 0; i < Hints.Length; i++) parts.Add($"{Hints[i].hint}=[{labels[i]}]");
-            McLog.Info("key hints: Mycelium's hints show your Minecraft key binds: " + string.Join(", ", parts) + ". " + AsPopUpWouldSay());
+            if (sig != applied)
+            {
+                for (int i = 0; i < Hints.Length; i++) Set(Hints[i].hint, labels[i]);
+                applied = sig;
+                RefreshHud();
+                var parts = new List<string>();
+                for (int i = 0; i < Hints.Length; i++) parts.Add($"{Hints[i].hint}=[{labels[i]}]");
+                McLog.Info("key hints: Mycelium's hints show your Minecraft key binds: " + string.Join(", ", parts) + ". " + AsPopUpWouldSay());
+            }
+            Curios(Label(CurioId, count, kinds, codes) ?? "Unbound");
         }
+
+        /// <summary>Every curio's indicator shows the Curio key (Mycelium writes the Attack hint there).</summary>
+        void Curios(string label)
+        {
+            if (CurioType == null || TmpText == null) return;
+            if (label != curioLabel)
+            {
+                curioLabel = label;
+                // Mycelium's look: "[<color=#..>key</color>]" in the keyboard attack hint's colour.
+                object attack = Field(keyboard, "attackHint");
+                string made = null;
+                try
+                {
+                    string key = attack?.GetType().GetField("controlText")?.GetValue(attack) as string;
+                    string whole = attack?.GetType().GetMethod("GenerateColoredHintString")?.Invoke(attack, new object[] { false }) as string;
+                    if (whole != null && key != null && whole.Contains(">" + key + "</color>"))
+                        made = whole.Replace(">" + key + "</color>", ">" + label + "</color>");
+                }
+                catch (Exception e) { McLog.Info($"key hints: couldn't build the curio hint in Mycelium's colours: {(e.InnerException ?? e).Message}"); }
+                curioText = made ?? $"[<color=#BDFFD3>{label}</color>]";
+                McLog.Info($"key hints: curio indicators show the Curio key [{label}] (Mycelium shows the Attack hint there): {curioText}");
+            }
+            float now = Time.unscaledTime;
+            if (now >= nextCurioFind)
+            {
+                nextCurioFind = now + CurioFind;
+                curios = UnityEngine.Object.FindObjectsOfType(CurioType);
+            }
+            if (now < nextCurioLook) return;
+            nextCurioLook = now + CurioLook;
+            int changed = 0;
+            foreach (UnityEngine.Object c in curios)
+            {
+                if (c == null) continue;
+                if (!(CanvasField?.GetValue(c) is GameObject canvas) || canvas == null) continue;
+                Component text = canvas.GetComponentInChildren(TmpText, true);
+                if (text == null) continue;
+                PropertyInfo p = TmpText.GetProperty("text");
+                if (p == null || p.GetValue(text) as string == curioText) continue;
+                p.SetValue(text, curioText);
+                changed++;
+            }
+            if (changed > 0 && now >= nextCurioLog)
+            {
+                nextCurioLog = now + 5f;
+                McLog.Info($"key hints: {changed} curio indicator(s) set to [{curioLabel}] ({curios.Length} curio(s) in the level)");
+            }
+        }
+        float nextCurioLog;
 
         /// <summary>The interact hint as a pop-up builds it (LootCache: GetLatestController().interactHint), for the log.</summary>
         string AsPopUpWouldSay()

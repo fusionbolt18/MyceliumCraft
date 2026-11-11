@@ -7,6 +7,8 @@
     "FallDamageMixin",
     "FoodDataMixin",
     "HealthFloorMixin",
+    "LightningAimMixin",
+    "LightningHitMixin",
     "PlayerFallDamageMixin",
     "ServerPlayerRegenMixin"
   ],

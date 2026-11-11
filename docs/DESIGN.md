@@ -1649,6 +1649,16 @@ logging which Mycelium actions register as pressed:
   changes).
 - **Hints:** interact, show stats, subspecies skill, salvage, attack, dodge, skill 1, skill 2,
   navigate camera (`goalCameraHint`), reset camera (`orientationCameraHint`).
+- **Curios** (your report, 2026-11-10): a curio is used with Mycelium's Curio action, but the
+  indicator above it (`Curio.PopInteractCanvas`, after an area is cleared) always shows the
+  *latest controller's* Attack hint, so it said "RT" (an Xbox pad was Mycelium's latest controller)
+  or LMB. There's no curio hint to change. While Minecraft drives, every 0.1 s each curio's
+  indicator text (`Curio.interactCanvas`, a private field of `Curio`: looked up on `Curio` itself)
+  is set to the key bound to Curio in Minecraft, in the keyboard attack hint's colours. Mycelium
+  writes it again each time it pops in, and it's set back within 0.1 s.
+- **Test aid** `-mcKeyHintTest`: hints on in a background run (no focus), and 3 s into driving the
+  area is cleared as `LevelEnd` does, the curios pop their indicators in, and their text is logged
+  three times, 3 s apart.
 - **Attack:** while Mycelium's Attack is unbound, its hint shows Minecraft's own Attack key, which
   is what attacks. Minecraft sends that key as Bindings id 11.
 - **Gamepad controllers' hints** aren't changed.
@@ -1939,6 +1949,11 @@ While Mycelium shows a level (and `overlay=1`), Mycelium sets `OVERLAY` in its s
   with `Entity.move` (collisions apply). It doesn't touch the velocity, where friction would make
   it build up.
 - The pull's strength depends on Mycelium's frame rate, as in Mycelium itself.
+- How strong it really is (measured 2026-11-10 with `-mcBossPullNative`, Mycelium alone at 60
+  fps): a spore standing still is pulled about 1.8 units a second (about 1.3 blocks a second). That
+  is about a fifth of a sped-up spore's walk. Minecraft's player moved the same, about 1.2 to 1.4
+  blocks a second. While pulling, Minecraft logs every second how far the pull asked to move you,
+  how far you moved, ticks blocked, and ticks with no movement keys.
 
 ### 5.3.9 Your spore's skin on mannequins of you (since 2026-11-08)
 
@@ -1946,6 +1961,30 @@ Emotecraft's emote wheel draws you as a Minecraft mannequin (`ClientMannequin`) 
 profile, which gets its skin from the profile rather than `PlayerInfo`. `MannequinSkinMixin`
 answers `ClientMannequin.getSkin` with the spore's skin when the mannequin's profile id is yours
 (`MycSkins.forPlayer`), as `PlayerInfoSkinMixin` does for your player.
+- **Jumping during the pull:** a sideways-only `Entity.move` always leaves the player "not on the
+  ground", which stopped the jump checked just after in the tick. `MycBossPull` keeps the on-ground
+  state from before its move (since 2026-11-10).
+
+### 5.3.8e Weather: Mycelium's rain is a thunderstorm in Minecraft (since 2026-11-10, protocol v60)
+- **Mycelium's rain** is one switch, `WeatherSettingsScript.isRaining`, turned on and off by
+  `RainEvent` objects in a level (`UpdateRain`). `MinecraftDriver.Raining()` reads it every frame
+  and sends it as MycState flag bit 12 `RAIN`. It logs "weather: it's raining in Mycelium" and
+  "Mycelium's rain stopped".
+- **Minecraft** (`MycWeather.java`, client tick): while Mycelium is in a level, the integrated server
+  gets a thunderstorm while `RAIN` is on and clear weather while it's off, the same call
+  `/weather thunder` and `/weather clear` make (`MinecraftServer.setWeatherParameters`, 10 minutes).
+  It's set when the flag changes and again every 30 s, so Minecraft's own weather cycle never takes
+  over while linked. Not linked: Minecraft's weather is left alone.
+- **Lightning can't hit you** (`world/MycLightning.java`, always on):
+  - A thunderstorm's bolt aims at a random spot and moves onto a creature near it
+    (`ServerLevel.findLightningTargetAround`). `LightningAimMixin` moves a spot within 10 blocks of a
+    player to 20 blocks away from them, onto the ground there. The bolt still strikes, so the
+    thunder is heard; its fire and its 3-block hit are far away. Logged at most every 10 s:
+    "lightning: a strike aimed at ... was too close to a player".
+  - As well, `LightningHitMixin` cancels `Entity.thunderHit` for players: a bolt that reaches you
+    anyway (a trident, a command) does nothing to you.
+- **Test aid** `-mcRainTest`: Mycelium's own rain on for 10 s, off for 10 s, while driving. The
+  stand-in prints the `RAIN` flag's changes.
 
 ### 5.4.0 Skill effects on you stay drawn (since 2026-11-08)
 

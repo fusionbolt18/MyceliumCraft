@@ -82,6 +82,7 @@ namespace MyceliumCraft
         readonly MenuBody menuBody = new MenuBody();
         readonly VanishWatch vanish = new VanishWatch();
         readonly KeyHints keyHints = new KeyHints();
+        int keyHintTest = -1; // -mcKeyHintTest: 1 on, 0 off, -1 not looked yet
         readonly SkillIconWatch skillIcons = new SkillIconWatch();
         bool vanished;
         bool aimDriving;
@@ -325,6 +326,9 @@ namespace MyceliumCraft
             // Test aid: "-mcBossPullTest" switches the final boss's attacks on 3 s into driving, as the intro's end
             // does: its sand pull starts 5 s later and lasts 5 s (PullWatch logs it).
             if (Array.IndexOf(args, "-mcBossPullTest") >= 0) StartCoroutine(BossPullTest());
+            // Test aid: "-mcBossPullNative" (run without Minecraft): the boss's attacks on with nobody driving,
+            // then how far Mycelium's own pull moves a spore that stands still, every second.
+            if (Array.IndexOf(args, "-mcBossPullNative") >= 0) StartCoroutine(BossPullNativeTest());
             // Test aid: "-mcLoop <n>" starts on that loop, to see its nutrient bonus.
             int loopArg = Array.IndexOf(args, "-mcLoop");
             if (loopArg >= 0 && loopArg + 1 < args.Length && int.TryParse(args[loopArg + 1], out int loop))
@@ -362,6 +366,11 @@ namespace MyceliumCraft
             // Test aid: "-mcDrumTest" makes one other spore hit the beetle drum (Mycelium's DrumHit trigger)
             // 4 s into driving, and logs its Animator state and its bones' turns every 0.05 s.
             if (Array.IndexOf(args, "-mcDrumTest") >= 0) StartCoroutine(DrumTest());
+            // Test aid: "-mcKeyHintTest" also clears the area 3 s into driving (as LevelEnd does), so the
+            // curios make their indicators, pops them in as when you come near, and logs their text.
+            if (Array.IndexOf(args, "-mcKeyHintTest") >= 0) StartCoroutine(CurioHintTest());
+            // Test aid: "-mcRainTest" turns Mycelium's rain on for 10 s, then off for 10 s, and so on, while driving.
+            rainTest = Array.IndexOf(args, "-mcRainTest") >= 0;
             // Test aid: "-mcSporeCurioTest" puts one other spore on the dance pad (BustMoves), the bed (Sleep,
             // then Lay) and the chair (SitFloor) 4 s into driving, 4 s each, as those curios do, and logs its pose.
             if (Array.IndexOf(args, "-mcSporeCurioTest") >= 0) StartCoroutine(SporeCurioTest());
@@ -508,6 +517,8 @@ namespace MyceliumCraft
             // Relentless Fury as its description says: the frenzy (FuryWatch); Minecraft shows red potion particles.
             furyWatch.Update(forgeDriving, weapons);
             if (furyWatch.On) flags |= Proto.MycFury;
+            // Mycelium's rain (RainEvent -> WeatherSettingsScript.UpdateRain): Minecraft has a thunderstorm meanwhile (MycWeather.java).
+            if (Raining()) flags |= Proto.MycRain;
             combat.Frenzied = furyWatch.On;
             hurtTilt.IgnoreDrop += furyWatch.TakeDrained(); // the frenzy's drain isn't a hit
             // Mycelium's health, which Minecraft's follows (/ 5).
@@ -609,7 +620,9 @@ namespace MyceliumCraft
             else if (!keys.HasBindings) keys.SetBindings(0, null, null); // defaults until Minecraft sends some
             input.Update(link, reason == Proto.ReasonActive, reason, keys.OwnedScancodes, keys.OwnedButtons, mcScreenOpen);
             // Mycelium's hints ("Press [R] to Open", the skill bar) show those keys while Minecraft drives.
-            keyHints.Update(keys.Active, hintCount, bindKinds, bindCodes);
+            // Test aid: "-mcKeyHintTest" puts the hints on in a background run (no focus, so keys aren't Minecraft's).
+            if (keyHintTest < 0) keyHintTest = Array.IndexOf(Environment.GetCommandLineArgs(), "-mcKeyHintTest") >= 0 ? 1 : 0;
+            keyHints.Update(keys.Active || (keyHintTest == 1 && phase == Phase.Driving), hintCount, bindKinds, bindCodes);
             // Minecraft's hand, HUD and screens on top, during play (not over Mycelium's own menus).
             // ...and not over Mycelium's loading, fade, startup or death screens (it's drawn above all its UI).
             bool covered = ScreenCover.Showing(out string coverWhy);
@@ -2515,6 +2528,39 @@ namespace MyceliumCraft
             }
         }
 
+        /// <summary>Test aid (-mcBossPullNative): Mycelium's own pull on a spore that stands still, with nobody driving.</summary>
+        System.Collections.IEnumerator BossPullNativeTest()
+        {
+            GameObject boss = null;
+            Rigidbody spore = null;
+            while (boss == null || spore == null)
+            {
+                yield return new WaitForSeconds(0.5f);
+                boss = GameObject.Find("Rival Sporemother");
+                Type pc = Type.GetType("PlayerController, Assembly-CSharp");
+                var c = pc != null ? UnityEngine.Object.FindObjectOfType(pc) as Component : null;
+                spore = c != null ? c.GetComponent<Rigidbody>() ?? c.GetComponentInChildren<Rigidbody>() : null;
+                if (Time.frameCount % 5 == 0) McLog.Info($"boss pull native: waiting (boss {(boss != null)}, PlayerController type {(pc != null)}, found {(c != null)}, rigidbody {(spore != null)})");
+            }
+            yield return new WaitForSeconds(3f);
+            var attacks = boss.GetComponent(Type.GetType("MonsterBossAttack, Assembly-CSharp")) as Behaviour;
+            if (attacks == null) { McLog.Info("boss pull native: no MonsterBossAttack"); yield break; }
+            attacks.enabled = true;
+            McLog.Info($"boss pull native: the boss's attacks on, nobody driving; spore {Vector3.Distance(spore.position, boss.transform.position):F1} units from the boss, fixed step {Time.fixedDeltaTime:F3} s");
+            Vector3 last = spore.position;
+            int lastFrame = Time.frameCount;
+            for (int i = 1; i <= 16; i++)
+            {
+                yield return new WaitForSeconds(1f);
+                Vector3 d = spore.position - last;
+                d.y = 0f;
+                McLog.Info($"boss pull native: +{i} s: spore moved {d.magnitude:F2} units ({d.magnitude / map.Scale:F2} blocks) in the last second, {Vector3.Distance(spore.position, boss.transform.position):F1} units from the boss, " +
+                    $"{Time.frameCount - lastFrame} frames, pull particles {(GameObject.Find("BossSandPullParticles(Clone)") != null)}, velocity {spore.velocity:F2}");
+                last = spore.position;
+                lastFrame = Time.frameCount;
+            }
+        }
+
         /// <summary>Test aid (-mcBossDeathTest): BossHealth.EnemyTakeDamage with more than its health, then the hold and overlay every second.</summary>
         System.Collections.IEnumerator BossDeathTest()
         {
@@ -2990,6 +3036,72 @@ namespace MyceliumCraft
                     parts.Add($"{root}/{r.name} {(drawn ? "DRAWN" : "not drawn")} (enabled {r.enabled}, off {r.forceRenderingOff}, {r.shadowCastingMode})");
                 }
                 McLog.Info($"defense test: +{i * 0.5f:F1} s, view {cameraSync.Mode}: {(parts.Count == 0 ? "no Defense parts on the spore" : string.Join("; ", parts))}");
+            }
+        }
+
+        static Type weatherType;
+        static FieldInfo weatherInstance, weatherRaining;
+        bool rainWas;
+
+        /// <summary>Is it raining in Mycelium (WeatherSettingsScript.Instance.isRaining). Logged when it changes.</summary>
+        bool Raining()
+        {
+            if (weatherType == null)
+            {
+                weatherType = Type.GetType("WeatherSettingsScript, Assembly-CSharp");
+                weatherInstance = weatherType?.GetField("Instance", BindingFlags.Public | BindingFlags.Static);
+                weatherRaining = weatherType?.GetField("isRaining", BindingFlags.Public | BindingFlags.Instance);
+                if (weatherType == null) weatherType = typeof(void); // not found: don't look again
+            }
+            object w = weatherInstance?.GetValue(null);
+            if (rainTest && phase == Phase.Driving && w is UnityEngine.Object tw && tw != null)
+            {
+                // -mcRainTest: Mycelium's own rain on for 10 s, off for 10 s (as RainEvent turns it on and off).
+                bool want = Time.time % 20f < 10f;
+                if (weatherRaining?.GetValue(w) is bool cur && cur != want)
+                    weatherType.GetMethod("UpdateRain")?.Invoke(w, new object[] { want });
+            }
+            bool raining = w is UnityEngine.Object o && o != null && weatherRaining?.GetValue(w) is bool r && r;
+            if (raining != rainWas)
+            {
+                rainWas = raining;
+                McLog.Info(raining ? "weather: it's raining in Mycelium; Minecraft gets a thunderstorm" : "weather: Mycelium's rain stopped; Minecraft's weather clears");
+            }
+            return raining;
+        }
+        bool rainTest;
+
+        /// <summary>Test aid (-mcKeyHintTest): the curios' indicators, as after a cleared area.</summary>
+        System.Collections.IEnumerator CurioHintTest()
+        {
+            while (phase != Phase.Driving) yield return null;
+            yield return new WaitForSeconds(3f);
+            Type gd = Type.GetType("GlobalData, Assembly-CSharp"), ct = Type.GetType("Curio, Assembly-CSharp");
+            Type tmp = Type.GetType("TMPro.TMP_Text, Unity.TextMeshPro");
+            if (gd == null || ct == null || tmp == null) { McLog.Info("curio hint test: no GlobalData, Curio or TMP_Text"); yield break; }
+            gd.GetField("areaCleared")?.SetValue(null, true);
+            UnityEngine.Object[] curios = FindObjectsOfType(ct);
+            foreach (UnityEngine.Object c in curios)
+            {
+                var b = (MonoBehaviour)c;
+                b.gameObject.SetActive(false);
+                b.gameObject.SetActive(true); // OnEnable: makes its indicator (it's cleared now)
+                ct.GetProperty("isPlayerInInteractTextRange")?.SetValue(c, true);
+            }
+            yield return null;
+            foreach (UnityEngine.Object c in curios)
+                if (ct.GetField("canBeActivated")?.GetValue(c) is bool can && can)
+                    ((MonoBehaviour)c).StartCoroutine((System.Collections.IEnumerator)ct.GetMethod("PopInteractCanvas").Invoke(c, new object[] { true, false }));
+            McLog.Info($"curio hint test: area cleared, {curios.Length} curio(s) popped in");
+            for (int round = 0; round < 3; round++)
+            {
+                yield return new WaitForSeconds(round == 0 ? 0f : 3f);
+                foreach (UnityEngine.Object c in curios)
+                {
+                    var canvas = ct.GetField("interactCanvas", BindingFlags.NonPublic | BindingFlags.Instance)?.GetValue(c) as GameObject;
+                    Component text = canvas != null ? canvas.GetComponentInChildren(tmp, true) : null;
+                    McLog.Info($"curio hint test: '{c.name}' shows {(text != null ? tmp.GetProperty("text").GetValue(text) : "(no indicator)")}");
+                }
             }
         }
 

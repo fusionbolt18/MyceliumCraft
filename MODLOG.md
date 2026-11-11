@@ -1,5 +1,98 @@
 # MODLOG
 
+## 2026-11-10 The boss's pull when you stand still: measured, logged each second
+
+**Your report:** standing still with no movement keys, the pull didn't move you.
+
+**Found (measured, not guessed):**
+- Mycelium's own pull, with nobody driving (new test aid `-mcBossPullNative`, run without
+  Minecraft at 60 fps): a spore standing still moves about 1.8 units a second, which is about 1.3
+  blocks a second. The first second is slower because the pull builds up.
+- Your 19:32 session in Minecraft: about 1.36 blocks a second on average. In the one full second
+  with no keys held (19:32:44) you moved 1.2 blocks. So Minecraft does what Mycelium does.
+- The pull at 19:32:59 started while you stood still, and you moved only 0.34 blocks in the first
+  second. Mycelium's own pull is that slow in its first second too.
+- The pull is weak: your spore walks at about 11.4 units a second, so the pull is about a fifth
+  of that. It's easy to miss.
+- I could not find a moment where you stood still, the pull was on, and you didn't move. Mycelium's
+  log for your session is gone: my test runs overwrote it. Minecraft's log has no per-second pull
+  numbers, so a short stuck moment would not show.
+- The run went back to The Carcass because the spore stood next to the boss and died.
+
+**Changed:**
+- `MycBossPull.java`: logs every second of a pull. It records how far Mycelium asked to move you,
+  how far you moved, how many ticks something blocked the move, how many ticks you had no
+  movement keys held and how far you moved in those, and whether you were on the ground or
+  against a wall.
+- `MinecraftDriver.cs`: new test aid `-mcBossPullNative` (described above).
+
+**Tested how:** the native measurement above (`-mcScene "Impact Barrens" -mcBossPullNative -mcFps
+60`, without the stand-in). The jar builds. The new log line is **not tested in Minecraft**.
+
+## 2026-11-10 You can jump during the boss's sand pull
+
+**Your report:** during the boss's pull you can't jump.
+
+**Why:** `MycBossPull` moves you sideways at the start of every tick. Minecraft's move only counts
+you as on the ground when a downward move hits the floor, so a sideways-only move always left you
+"in the air". The jump check comes right after in the same tick and needs the ground.
+
+**Changed:** `MycBossPull.java` keeps the on-ground state you had before its move. Your own
+movement later in the tick sets it properly (walking off a ledge still makes you fall). Log line,
+once per pull: "the boss's pull keeps the player on the ground, so it can jump".
+
+**Tested how:** the jar builds. **Not tested in Minecraft** (the stand-in can't jump).
+
+## 2026-11-10 Mycelium's rain is a thunderstorm in Minecraft; lightning can't hit you (protocol v60)
+
+**Your request:** when it rains in Mycelium, Minecraft should have a thunderstorm. Lightning should
+still strike, so the thunder is heard, but never hit the player.
+
+**Changed:**
+- Mycelium (`MinecraftDriver.Raining()`): reads Mycelium's rain (`WeatherSettingsScript.isRaining`)
+  and sends it as the new MycState flag bit 12 `RAIN`. Protocol version 60.
+- New `MycWeather.java`: while Mycelium is in a level, Minecraft's world gets a thunderstorm while
+  it rains in Mycelium and clear weather while it doesn't (as `/weather thunder` / `/weather clear`),
+  set again every 30 s. Not linked: Minecraft's weather is left alone.
+- New `world/MycLightning.java` with two hooks:
+  - `LightningAimMixin`: a strike aimed within 10 blocks of a player strikes 20 blocks away instead.
+  - `LightningHitMixin`: lightning never hurts a player, as a safety net.
+- Log lines: Mycelium "weather: it's raining in Mycelium" / "rain stopped"; Minecraft "weather: it
+  rains in Mycelium: Minecraft has a thunderstorm" / "no rain in Mycelium: ... clear", "lightning: a
+  strike aimed at ... was too close to a player; struck at ... instead", "lightning: a bolt reached
+  ...; no hit".
+- New test aid `-mcRainTest` (Mycelium's own rain on 10 s, off 10 s). The stand-in prints the flag.
+
+**Tested how:** stand-in run (`-mcScene "The Carcass" -mcBackground -mcRainTest`). Mycelium's rain
+went on and off, and the stand-in saw the flag follow each time. The jar builds. **Not tested in
+Minecraft:** the thunderstorm, the lightning being moved, and the no-hit hook. If a hook didn't fit
+Minecraft's code, Minecraft would refuse to start, so a normal start already says they're in place.
+
+## 2026-11-10 Curio indicators show your Curio key
+
+**Your report:** the key shown above curios isn't the key they're set to.
+
+**Why:** a curio is used with Mycelium's Curio action (in Minecraft's Controls, Mycelium section;
+middle mouse for you). Mycelium's indicator above a curio always shows the *Attack* hint, and of
+whichever controller Mycelium thinks you used last: in the test it said "RT" (an Xbox trigger).
+Our key hints never covered curios, because Mycelium has no curio hint to change.
+
+**Changed:**
+- `KeyHints.cs`: while Minecraft drives, every curio's indicator text is set to the key bound to
+  Curio in Minecraft (same colours as Mycelium's hints), checked every 0.1 s, since Mycelium writes
+  its own text again whenever the indicator pops in.
+- Log lines: "key hints: curio indicators show the Curio key [..]" and "N curio indicator(s) set
+  to [..]".
+- New test aid `-mcKeyHintTest` (see DESIGN, key hints).
+
+**Dead end on the way:** the first version found no indicators: `interactCanvas` is a private
+field of Mycelium's `Curio`, and asking a bed's or chair's own type for it finds nothing. It's
+looked up on `Curio` now.
+
+**Tested how:** stand-in run in The Carcass (`-mcBackground -mcKeyHintTest`, Curio bound to middle
+mouse, then Q after 5 s). The 7 curio indicators said "[RT]" from Mycelium, "[MMB]" right after,
+then "[Q]" after the change. Not tested in Minecraft.
+
 ## 2026-11-10 New weapons aren't selected in the hotbar
 
 **Your request:** new weapons shouldn't be selected automatically.
