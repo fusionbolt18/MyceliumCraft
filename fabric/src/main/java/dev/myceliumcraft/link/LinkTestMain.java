@@ -42,6 +42,8 @@ public final class LinkTestMain {
 	private static final boolean MODEL = "1".equals(System.getenv("LINKTEST_MODEL"));
 	/** "1": pretend Minecraft's pause menu is open from 4 to 7 s (Mycelium should freeze). */
 	private static final boolean PAUSE = "1".equals(System.getenv("LINKTEST_PAUSE"));
+	/** LINKTEST_HIDEHUD=1: Minecraft's HUD hidden (F1) from 4 to 8 s. */
+	private static final boolean HIDEHUD = "1".equals(System.getenv("LINKTEST_HIDEHUD"));
 	/** "1": sprint FOV and crouch eye height from 4 to 7 s. */
 	private static final boolean FOVEYE = "1".equals(System.getenv("LINKTEST_FOVEYE"));
 	/** "1": log Mycelium's enemy table once a second, and hit the nearest enemy for 2 points (10 Mycelium damage) every 2 s. */
@@ -379,6 +381,9 @@ public final class LinkTestMain {
 				flags |= Proto.MC_SCREEN_OPEN;
 			}
 			// LINKTEST_PAUSE=1: Minecraft's pause menu open from 4 to 7 s.
+			if (HIDEHUD && t >= 4 && t < 8) {
+				flags |= Proto.MC_HUD_HIDDEN;
+			}
 			if (PAUSE && t >= 4 && t < 7) {
 				flags |= Proto.MC_PAUSED | Proto.MC_SCREEN_OPEN;
 			}

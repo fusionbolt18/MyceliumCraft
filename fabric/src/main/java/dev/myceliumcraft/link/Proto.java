@@ -117,7 +117,7 @@ public final class Proto {
 
 	public static final long MAPPING_BYTES = OFF_FORGE + FORGE_BYTES;
 	public static final int MAGIC = 0x4343594D; // "MYCC"
-	public static final int VERSION = 63;
+	public static final int VERSION = 64;
 	/** A side is alive if its heartbeat is younger than this. */
 	public static final long HEARTBEAT_TIMEOUT_MS = 3000;
 
@@ -203,6 +203,7 @@ public final class Proto {
 	public static final int MC_SNEAKING = 1 << 3;
 	public static final int MC_SPRINTING = 1 << 4;
 	public static final int MC_EMOTE_WAVE = 1 << 6; // Emotecraft's wave is playing on you: Mycelium's spores may wave back; since v53
+	public static final int MC_HUD_HIDDEN = 1 << 7; // F1: Minecraft's HUD is hidden, so Mycelium's is too (UiHider.cs); since v64
 	public static final int MC_PAUSED = 1 << 5; // Minecraft's pause menu has paused the game (Mycelium freezes too)
 
 	// MycInput @0x300 (Mycelium -> Minecraft, seqlock): the input bridge

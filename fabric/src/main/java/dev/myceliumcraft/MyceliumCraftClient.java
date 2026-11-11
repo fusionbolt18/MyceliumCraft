@@ -263,6 +263,9 @@ public final class MyceliumCraftClient implements ClientModInitializer {
 		if (minecraft.isPaused()) {
 			flags |= Proto.MC_PAUSED; // Escape's pause menu: Mycelium freezes too
 		}
+		if (minecraft.gui.hud.isHidden()) {
+			flags |= Proto.MC_HUD_HIDDEN; // F1: Mycelium hides its interface too (UiHider.cs)
+		}
 		if (MycEmotes.emotingYou(player)) {
 			flags |= Proto.MC_EMOTE_WAVE; // an Emotecraft emote on you: Mycelium's spores may answer, with your emote (MycEmotes.answer)
 		}

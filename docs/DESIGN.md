@@ -2278,6 +2278,16 @@ finished screen with the overlay on and off:
 - the empty spot unchanged
 - about 60 pictures a second, 0.03–0.08 ms each to upload at 640×360
 
+## 5.8a F1 hides Mycelium's interface too (since 2026-11-11, protocol v64)
+
+Minecraft sends McState bit 7 `HUD_HIDDEN` (`Hud.isHidden()`, F1). `UiHider` switches off
+Mycelium's root canvases while it's on and it's play: the HUD, notifications, crosshair, and
+pop-ups and tooltips. Renderers under them aren't drawn either (`forceRenderingOff`): a spore pop-up's
+happiness faces are SpriteRenderers. New ones are caught every 0.25 s. Kept: `PauseMenuCanvas`, the loading,
+black, start-up, death and title canvases, and ours. They come back when F1 is off again, when
+Mycelium really has the controls (the overlay's rule: menus at once, not a skill's moment), or
+under a cover screen.
+
 ## 5.9 Server stalls (found and fixed, 2026-10-21)
 
 **Late hits come from Minecraft's integrated server stalling.** All hits on enemy stand-ins are

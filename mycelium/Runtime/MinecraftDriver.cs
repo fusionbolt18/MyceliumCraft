@@ -61,6 +61,7 @@ namespace MyceliumCraft
         readonly WeaponBag weapons = new WeaponBag();
         readonly SkillAim skillAim = new SkillAim();
         readonly DashWatch dash = new DashWatch();
+        readonly UiHider uiHider = new UiHider(); // Minecraft's F1 hides Mycelium's interface too
         readonly CycloneLength cycloneLength = new CycloneLength(); // Living Cyclone as long at any Speed
         readonly GoalWatch goal = new GoalWatch(); // the level's goal, on Minecraft's locator bar
         readonly PullWatch pull = new PullWatch(); // the final boss's sand pull, for Minecraft's player
@@ -481,6 +482,7 @@ namespace MyceliumCraft
                 shopUndo.SceneLoaded();
                 menuBody.SceneLoaded();
                 forge.SceneLoaded();
+                uiHider.SceneLoaded();
                 SetPhase(Phase.Idle, "new scene");
             };
             SceneManager.sceneLoaded += onSceneLoaded;
@@ -703,6 +705,8 @@ namespace MyceliumCraft
             }
             bool overlayBlocked = controls && !controlsWhy.EndsWith("knockback") && DecorationPose(out _) == 0
                                   && (controlsWhy == "paused" || menu || Time.realtimeSinceStartup - controlsSince >= OverlayControlsGrace);
+            // Minecraft's F1: Mycelium's interface goes too, during play; back for its menus and cover screens.
+            uiHider.Update(alive && phase == Phase.Driving && (lastCamMc.Flags & Proto.McHudHidden) != 0 && !overlayBlocked && !covered);
             birth.Update(alive && phase != Phase.Idle); // a spore grown in the shop: no HUD, no overlay
             overlay.Update(link, McConfig.Overlay && alive && phase != Phase.Idle && !overlayBlocked && !covered && !birth.On);
             // Minecraft's pause menu (Escape) pauses Mycelium too.

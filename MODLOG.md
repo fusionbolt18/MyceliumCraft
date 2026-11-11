@@ -1,5 +1,40 @@
 # MODLOG
 
+## 2026-11-11 F1: the spore pop-up's happiness faces hide too
+
+**Your report** (with a screenshot): with F1 on, the happiness faces in the spore pop-up stayed.
+
+**Why:** the faces are SpriteRenderers (`HappinessSlider`, a prefab inside the `Tooltip` prefab:
+5 SpriteRenderers, no canvas of its own). Switching the tooltip's canvas off hides its text but
+not sprites.
+
+**Changed:** `UiHider` also stops drawing every renderer under the canvases it hides
+(`forceRenderingOff`), including ones that appear later, and gives them back with the canvases.
+
+**Tested how:** stand-in run with `LINKTEST_HIDEHUD=1`. A tooltip appeared while F1 was on: "1
+more of Mycelium's canvases hidden", "5 more sprite(s) under Mycelium's hidden canvases not
+drawn". **Not tested** in Minecraft.
+
+## 2026-11-11 F1 hides Mycelium's interface too (protocol v64)
+
+**Your request:** when F1 hides Minecraft's UI, Mycelium's UI should disappear too.
+
+**Changed:**
+- Minecraft sends McState flag bit 7 `HUD_HIDDEN` while its HUD is hidden
+  (`Hud.isHidden()`). Protocol version 64.
+- New `UiHider.cs`: during play it switches off Mycelium's root canvases (HUD, notifications,
+  crosshair, pop-ups and tooltips over curios and spores). New ones are caught every 0.25 s.
+- Kept: its pause menu and the loading, black, start-up, death and title cards, and our own.
+- When F1 is pressed again, or Mycelium really takes the controls (menus, the shop: the same rule
+  as the overlay, so a skill's brief takeover doesn't bring it back), or a cover screen shows,
+  they're switched back on.
+- Stand-in: `LINKTEST_HIDEHUD=1` hides the HUD from 4 to 8 s.
+- The friends' zip is rebuilt.
+
+**Tested how:** stand-in run in The Carcass: "Minecraft's HUD is hidden (F1): 4 of Mycelium's
+canvases hidden too (Tooltip(Clone), NotificationCanvas, HUD, CrosshairCanvas)", then "3 ... shown
+again" (the tooltip was gone by then). **Not tested** in Minecraft.
+
 ## 2026-11-11 Third-person cameras after the tutorial: the orbit curve is measured again if it was flat
 
 **Your report:** the third-person views go weird only when you arrive in The Carcass straight

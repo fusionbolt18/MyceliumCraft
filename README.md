@@ -220,6 +220,8 @@ Single-player and offline only.
 - **Your world's settings apply in any world while linked: not tested in Minecraft.** Immediate
   respawn on, the day-night cycle off, and the time set to just after noon. A friend's own values
   are put back when Mycelium closes.
+- **F1 hides Mycelium's interface along with Minecraft's**: tested with the stand-in, not in
+  Minecraft.
 - **The giga beetle's two impaled spores are Minecraft spores**, standing, tilted with its
   mandibles: not tested in Minecraft.
 - **Minecraft's overlay hides for the tutorial's ending** (death and cutscene): tested with the

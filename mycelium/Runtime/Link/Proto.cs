@@ -126,7 +126,7 @@ namespace MyceliumCraft.Link
 
         public const int MappingBytes = OffForge + ForgeBytes;
         public const uint Magic = 0x4343594D; // "MYCC"
-        public const uint Version = 63;
+        public const uint Version = 64;
         public const ulong HeartbeatTimeoutMs = 3000;
 
         // Header @0x000
@@ -213,6 +213,7 @@ namespace MyceliumCraft.Link
         public const uint McSneaking = 1u << 3;
         public const uint McSprinting = 1u << 4;
         public const uint McEmoteWave = 1u << 6; // Emotecraft's wave is playing on you: the spores may wave back (CurioKey); since v53
+        public const uint McHudHidden = 1u << 7; // Minecraft's F1: its HUD is hidden, so Mycelium's is too (UiHider); since v64
         public const uint McPaused = 1u << 5;    // Minecraft's pause menu has paused the game (Mycelium freezes too)
 
         // MycInput @0x300 (Mycelium -> Minecraft, seqlock): the input bridge
