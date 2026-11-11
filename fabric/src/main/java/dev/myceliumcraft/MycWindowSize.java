@@ -30,6 +30,34 @@ public final class MycWindowSize {
 	private MycWindowSize() {
 	}
 
+	private static int fullscreenWas = -1; // Mycelium's full screen as last matched: -1 none yet, 0 window, 1 full screen
+
+	/**
+	 * Every frame while linked: Minecraft full screen while Mycelium is, in a window while it isn't
+	 * (your request, 2026-11-10). Only when Mycelium's changes (and once on linking), so F11 in
+	 * Minecraft still works in between. Minecraft's own full screen setting is used (borderless unless
+	 * you turned on its exclusive full screen).
+	 */
+	public static void matchFullscreen(Minecraft minecraft, boolean linked, boolean myceliumFullscreen) {
+		if (!linked) {
+			fullscreenWas = -1;
+			return;
+		}
+		int now = myceliumFullscreen ? 1 : 0;
+		if (now == fullscreenWas) {
+			return;
+		}
+		fullscreenWas = now;
+		boolean mc = minecraft.options.fullscreen().get();
+		if (mc == myceliumFullscreen) {
+			MycLink.LOG.info("MyceliumCraft: window: Mycelium is {}; Minecraft already is too", myceliumFullscreen ? "full screen" : "in a window");
+			return;
+		}
+		minecraft.options.fullscreen().set(myceliumFullscreen);
+		MycLink.LOG.info("MyceliumCraft: window: Mycelium went {}, so Minecraft does too (now {})", myceliumFullscreen ? "full screen" : "into a window",
+			minecraft.options.fullscreen().get() ? "full screen" : "in a window");
+	}
+
 	/** Every frame: follow Mycelium's window size (w, h in pixels; 0 = not known). */
 	public static void follow(Minecraft minecraft, int w, int h) {
 		if (w <= 0 || h <= 0) {

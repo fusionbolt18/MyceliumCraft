@@ -86,7 +86,7 @@ namespace MyceliumCraft
         bool Create()
         {
             if (root != null) return true;
-            Shader shader = Resources.Load<Shader>("MyceliumCraftLine");
+            Shader shader = McShaders.Load("MyceliumCraftLine");
             if (shader == null || !shader.isSupported)
             {
                 failed = true;

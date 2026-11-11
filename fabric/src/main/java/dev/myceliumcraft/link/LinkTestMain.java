@@ -76,6 +76,7 @@ public final class LinkTestMain {
 	private static final float[] goal = new float[3];
 	private static String goalWas = "";
 	private static boolean rainWas;
+	private static int fullscreenWas = -1;
 	private static double nextPullPrint;
 	private static long pullTick = -1;
 	// LINKTEST_THROW_RESOURCE=1: once Mycelium lists 3 resources, the first is thrown 1 s later, flying
@@ -433,6 +434,11 @@ public final class LinkTestMain {
 			}
 			boolean cycloneNow = MycLink.readMycState(myc) && (myc.flags & Proto.MYC_CYCLONE) != 0;
 			boolean rainNow = MycLink.readMycState(myc) && (myc.flags & Proto.MYC_RAIN) != 0;
+			int fullscreenNow = MycLink.readMycState(myc) && (myc.flags & Proto.MYC_FULLSCREEN) != 0 ? 1 : 0;
+			if (fullscreenNow != fullscreenWas) {
+				fullscreenWas = fullscreenNow;
+				System.out.printf("t=%.2f window: Mycelium says %s%n", t, fullscreenNow == 1 ? "full screen" : "in a window");
+			}
 			if (rainNow != rainWas) {
 				rainWas = rainNow;
 				System.out.printf("t=%.2f weather: %s%n", t, rainNow ? "Mycelium says rain: Minecraft would have a thunderstorm" : "Mycelium says no rain: clear");

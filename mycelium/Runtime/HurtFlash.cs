@@ -41,7 +41,7 @@ namespace MyceliumCraft
             if (failed || enemy == null) return;
             if (tint == null)
             {
-                Shader shader = Resources.Load<Shader>("MyceliumCraftHurtTint");
+                Shader shader = McShaders.Load("MyceliumCraftHurtTint");
                 if (shader == null || !shader.isSupported)
                 {
                     failed = true;

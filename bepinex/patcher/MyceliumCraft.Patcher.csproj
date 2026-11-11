@@ -1,0 +1,22 @@
+<Project Sdk="Microsoft.NET.Sdk">
+  <!--
+    BepInEx 5 preloader patcher (since 2026-11-11): as the game starts, gives it the Steam release's
+    Assembly-CSharp merged with Mycelium's newer code (tools/transplant, Patcher.cs). Built by
+    tools/build-plugin.ps1 together with the plugin.
+  -->
+  <PropertyGroup>
+    <TargetFramework>netstandard2.0</TargetFramework>
+    <AssemblyName>MyceliumCraft.Patcher</AssemblyName>
+    <LangVersion>9.0</LangVersion>
+    <Nullable>disable</Nullable>
+    <ImplicitUsings>disable</ImplicitUsings>
+    <DebugType>none</DebugType>
+    <Deterministic>true</Deterministic>
+    <GenerateDocumentationFile>false</GenerateDocumentationFile>
+    <BepInExCore Condition="'$(BepInExCore)' == ''">$(MSBuildThisFileDirectory)..\..\work\downloads\bepinex-5.4.23.6\extracted\BepInEx\core</BepInExCore>
+  </PropertyGroup>
+  <ItemGroup>
+    <Reference Include="BepInEx"><HintPath>$(BepInExCore)\BepInEx.dll</HintPath><Private>false</Private></Reference>
+    <Reference Include="Mono.Cecil"><HintPath>$(BepInExCore)\Mono.Cecil.dll</HintPath><Private>false</Private></Reference>
+  </ItemGroup>
+</Project>

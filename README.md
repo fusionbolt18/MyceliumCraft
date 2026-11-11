@@ -208,6 +208,12 @@ Single-player and offline only.
   yours. Mycelium's side tested with a fake Minecraft; **the poses are not tested in Minecraft.**
 - **The final boss's sand pull moves you towards it.** Tested with a fake Minecraft; **not tested
   in Minecraft.**
+- **The Mycelium part works as a mod for your friends' own Steam copy (BepInEx plugin): tested on
+  a copy of the Steam install with the stand-in, not in play.** Build it with
+  `tools/build-plugin.ps1`. It makes `dist/MyceliumCraft-for-Mycelium.zip`; the install steps are
+  in `docs/INSTALL-FRIENDS.md`.
+  It includes Mycelium's post-release commits (d64bf8d9, c5c14682), merged into the release's
+  code: tested loading The Carcass and Daybreak Arboretum with enemies, not in play.
 - **"Mycelium" game mode in Create New World: not tested in Minecraft.** It makes a world like
   yours, but in Survival: Peaceful, cheats on, Superflat, immediate respawn, no day-night cycle, just
   after noon, clear weather.

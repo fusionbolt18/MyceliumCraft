@@ -502,7 +502,7 @@ namespace MyceliumCraft
             if (trace == null)
             {
                 if (System.Array.IndexOf(System.Environment.GetCommandLineArgs(), "-mcCameraTrace") < 0) return;
-                string path = System.IO.Path.GetFullPath(System.IO.Path.Combine(Application.dataPath, "..", "camera_trace.csv"));
+                string path = McPaths.File("camera_trace.csv");
                 trace = new System.IO.StreamWriter(path, false);
                 trace.WriteLine("frame,time,mcFrame,pitch,wantDown,y,camX,camY,camZ,downBeforeTilt,tilt,targetY,mode,viewYaw,shakePos,shakeAngle,offAim,sporeYaw,sporeX,sporeY,sporeZ,targetX,targetZ,collisionPush");
                 McLog.Info($"camera: tracing every frame to {path}");

@@ -127,7 +127,7 @@ namespace MyceliumCraft
 
         bool Create()
         {
-            Shader shader = Resources.Load<Shader>("MyceliumCraftOverlay");
+            Shader shader = McShaders.Load("MyceliumCraftOverlay");
             if (shader == null || !shader.isSupported)
             {
                 failed = true;

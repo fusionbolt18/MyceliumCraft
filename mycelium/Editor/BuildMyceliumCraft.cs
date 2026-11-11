@@ -38,6 +38,25 @@ namespace MyceliumCraft.Editor
             EditorApplication.Exit(report.summary.result == BuildResult.Succeeded ? 0 : 1);
         }
 
+        /// <summary>
+        /// Our shaders as an AssetBundle, for the BepInEx plugin (McShaders): a plugin can't add shaders
+        /// to someone's Mycelium install, so they come from this bundle, built by the same Unity.
+        /// Called by toolsuild-mycelium.ps1 -BundleOnly:  -executeMethod MyceliumCraft.Editor.BuildMyceliumCraft.BuildShaderBundle -mcOut <folder>
+        /// </summary>
+        public static void BuildShaderBundle()
+        {
+            string outDir = Arg("-mcOut") ?? Path.GetFullPath(Path.Combine(Application.dataPath, "..", "..", "bundle"));
+            Directory.CreateDirectory(outDir);
+            string[] shaders = AssetDatabase.FindAssets("t:Shader", new[] { "Packages/dev.myceliumcraft/Runtime/Resources" })
+                .Select(AssetDatabase.GUIDToAssetPath).ToArray();
+            Debug.Log("[MyceliumCraft] shader bundle: " + shaders.Length + " shaders: " + string.Join(", ", shaders));
+            var build = new AssetBundleBuild { assetBundleName = "myceliumcraft.shaders", assetNames = shaders };
+            var manifest = BuildPipeline.BuildAssetBundles(outDir, new[] { build }, BuildAssetBundleOptions.None, BuildTarget.StandaloneWindows64);
+            bool ok = manifest != null && File.Exists(Path.Combine(outDir, "myceliumcraft.shaders"));
+            Debug.Log("[MyceliumCraft] shader bundle " + (ok ? "built" : "FAILED") + " -> " + outDir);
+            EditorApplication.Exit(ok ? 0 : 1);
+        }
+
         static string Arg(string name)
         {
             string[] args = Environment.GetCommandLineArgs();

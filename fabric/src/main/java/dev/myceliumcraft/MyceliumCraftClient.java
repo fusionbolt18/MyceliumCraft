@@ -204,7 +204,10 @@ public final class MyceliumCraftClient implements ClientModInitializer {
 
 		boolean haveMyc = readMyc();
 		if (haveMyc && MycLink.myceliumAlive()) {
+			MycWindowSize.matchFullscreen(minecraft, true, (MYC.flags & Proto.MYC_FULLSCREEN) != 0); // full screen when Mycelium is
 			MycWindowSize.follow(minecraft, MYC.windowW, MYC.windowH); // Minecraft's window the size of Mycelium's
+		} else {
+			MycWindowSize.matchFullscreen(minecraft, false, false);
 		}
 		LocalPlayer player = minecraft.player;
 		// Your player goes by the spore's name while Mycelium has one (MycName).

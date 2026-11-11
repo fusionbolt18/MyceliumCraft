@@ -108,7 +108,7 @@ namespace MyceliumCraft
 
         public static void Load()
         {
-            string path = Path.GetFullPath(Path.Combine(Application.dataPath, "..", "MyceliumCraft.cfg"));
+            string path = McPaths.File("MyceliumCraft.cfg");
             try
             {
                 if (!File.Exists(path))

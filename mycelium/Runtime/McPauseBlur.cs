@@ -53,8 +53,8 @@ namespace MyceliumCraft
         GameObject uiShownRoot;
         RawImage uiShown;
         bool coverageLogged;
-        readonly System.Collections.Generic.List<(Canvas canvas, RenderMode mode, Camera camera, float distance)> moved =
-            new System.Collections.Generic.List<(Canvas, RenderMode, Camera, float)>();
+        readonly System.Collections.Generic.List<(Canvas canvas, RenderMode mode, Camera camera, float distance, int layer)> moved =
+            new System.Collections.Generic.List<(Canvas, RenderMode, Camera, float, int)>();
 
         public bool On => on;
 
@@ -63,17 +63,55 @@ namespace MyceliumCraft
             if (blur == on) return;
             if (blur && volume == null && !Create()) return;
             on = blur;
-            volume.gameObject.SetActive(blur);
-            int ui = blur ? UiToOurCamera() : UiBack();
+            drawn = false;
+            // Test aids (2026-11-10, the plugin's laggy pause): leave out Mycelium's blur volume, or our UI blur.
+            string[] args = System.Environment.GetCommandLineArgs();
+            bool noVolume = System.Array.IndexOf(args, "-mcPauseNoVolume") >= 0, noUi = System.Array.IndexOf(args, "-mcPauseNoUi") >= 0;
+            if (noVolume || noUi) McLog.Info($"pause: test aid: blur volume {(noVolume ? "left out" : "on")}, UI blur {(noUi ? "left out" : "on")}");
+            volume.gameObject.SetActive(blur && !noVolume);
+            int ui = blur ? (noUi ? 0 : UiToOurCamera()) : UiBack();
             McLog.Info(blur ? $"pause: Mycelium blurred like its own pause ({ProfileName}), {ui} of its UI canvases blurred separately" : $"pause: blur off, {ui} UI canvases back");
         }
 
         /// <summary>Every frame while blurred: draw Mycelium's UI, blur it, show it.</summary>
+        // Timing while blurred (your report, 2026-11-10: the pause screen lagged in the BepInEx plugin).
+        readonly System.Diagnostics.Stopwatch watch = new System.Diagnostics.Stopwatch();
+        double spentMs;
+        int timedFrames;
+        float nextTimeLog;
+
         public void Update()
         {
             if (!on || uiCamera == null || moved.Count == 0) return;
+            watch.Restart();
+            try { Draw(); }
+            finally
+            {
+                spentMs += watch.Elapsed.TotalMilliseconds;
+                timedFrames++;
+                if (Time.realtimeSinceStartup >= nextTimeLog)
+                {
+                    if (nextTimeLog > 0f)
+                        McLog.Info($"pause: blur took {spentMs / Mathf.Max(1, timedFrames):F2} ms a frame over {timedFrames} frames (whole frame {Time.unscaledDeltaTime * 1000f:F1} ms), {moved.Count} canvases, material {(blurMaterial != null ? "made" : "none")}");
+                    nextTimeLog = Time.realtimeSinceStartup + 1f;
+                    spentMs = 0;
+                    timedFrames = 0;
+                }
+            }
+        }
+
+        // Drawn once per pause (and again if the window's size changes), not every frame: Mycelium's time
+        // is stopped, so its UI doesn't change, and each draw switches its renderer effects off and on
+        // (SSAO, Fog), which costs a lot at a big window: 150 ms a frame at 2560x1440, 5-7 fps on
+        // Minecraft's pause screen, and Esc presses missed between frames (your report, 2026-11-10).
+        bool drawn;
+
+        void Draw()
+        {
             int w = Mathf.Max(8, Screen.width), h = Mathf.Max(8, Screen.height);
-            if (full == null || full.width != w || full.height != h) MakeTextures(w, h);
+            if (full == null || full.width != w || full.height != h) { MakeTextures(w, h); drawn = false; }
+            if (drawn) return;
+            drawn = true;
             uiCamera.targetTexture = full;
             // Mycelium's render effects off for this one draw (the main camera still gets them).
             var effects = RendererEffects();
@@ -84,7 +122,7 @@ namespace MyceliumCraft
             Graphics.Blit(full, half);
             if (blurMaterial == null)
             {
-                Shader blur = Resources.Load<Shader>("MyceliumCraftBlur");
+                Shader blur = McShaders.Load("MyceliumCraftBlur");
                 if (blur != null) blurMaterial = new Material(blur);
             }
             if (blurMaterial != null)
@@ -128,18 +166,25 @@ namespace MyceliumCraft
         /// <summary>Mycelium's overlay canvases (not ours) are drawn by our hidden UI camera instead.</summary>
         int UiToOurCamera()
         {
-            int layers = 0;
+            // The UI camera draws only the UI layer, and the moved canvases go on it while blurred. Some
+            // of Mycelium's canvases are on Default, the world's layer: drawing that made the UI camera
+            // draw the whole world again every frame (5-7 fps on the pause screen in the BepInEx plugin,
+            // your report 2026-11-10). Their own layers are put back after.
+            int uiLayer = LayerMask.NameToLayer("UI");
+            if (uiLayer < 0) uiLayer = 5;
             foreach (Canvas c in Object.FindObjectsOfType<Canvas>())
             {
                 if (!c.isRootCanvas || c.renderMode != RenderMode.ScreenSpaceOverlay) continue;
                 if (c.gameObject.name.StartsWith("MyceliumCraft")) continue;
-                moved.Add((c, c.renderMode, c.worldCamera, c.planeDistance));
+                moved.Add((c, c.renderMode, c.worldCamera, c.planeDistance, c.gameObject.layer));
                 c.renderMode = RenderMode.ScreenSpaceCamera;
                 c.worldCamera = uiCamera;
                 c.planeDistance = 1f;
-                layers |= 1 << c.gameObject.layer;
+                c.gameObject.layer = uiLayer;
             }
+            int layers = 1 << uiLayer;
             uiCamera.cullingMask = layers;
+            McLog.Info("pause: canvases moved to the UI camera (on its UI layer while blurred): " + string.Join(", ", moved.ConvertAll(m => $"{m.canvas.gameObject.name} (was on {LayerMask.LayerToName(m.layer)})")));
             uiShownRoot.SetActive(moved.Count > 0);
             coverageLogged = false;
             return moved.Count;
@@ -148,9 +193,10 @@ namespace MyceliumCraft
         int UiBack()
         {
             int n = 0;
-            foreach (var (c, mode, camera, distance) in moved)
+            foreach (var (c, mode, camera, distance, layer) in moved)
             {
                 if (c == null) continue;
+                c.gameObject.layer = layer;
                 c.renderMode = mode;
                 c.worldCamera = camera;
                 c.planeDistance = distance;
@@ -212,7 +258,7 @@ namespace MyceliumCraft
             imageObject.transform.SetParent(uiShownRoot.transform, false);
             uiShown = imageObject.AddComponent<RawImage>();
             uiShown.raycastTarget = false;
-            Shader premultiplied = Resources.Load<Shader>("MyceliumCraftOverlay"); // UI drawn on clear is premultiplied
+            Shader premultiplied = McShaders.Load("MyceliumCraftOverlay"); // UI drawn on clear is premultiplied
             if (premultiplied != null) uiShown.material = new Material(premultiplied);
             var rect = uiShown.rectTransform;
             rect.anchorMin = Vector2.zero;

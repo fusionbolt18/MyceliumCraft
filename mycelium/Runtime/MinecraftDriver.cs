@@ -164,8 +164,10 @@ namespace MyceliumCraft
 
         [Preserve]
         [RuntimeInitializeOnLoadMethod(RuntimeInitializeLoadType.BeforeSceneLoad)]
-        static void Boot()
+        internal static void Boot()
         {
+            // Unity calls this in our own build; the BepInEx plugin calls it (bepinex/Plugin.cs).
+            if (GameObject.Find("MyceliumCraft") != null) return;
             var go = new GameObject("MyceliumCraft");
             DontDestroyOnLoad(go);
             go.AddComponent<MinecraftDriver>();
@@ -439,7 +441,7 @@ namespace MyceliumCraft
             int fpsArg = Array.IndexOf(args, "-mcFps");
             int testFps = fpsArg >= 0 && fpsArg + 1 < args.Length && int.TryParse(args[fpsArg + 1], out int f) ? f : 0;
 
-            SceneManager.sceneLoaded += (scene, mode) =>
+            UnityEngine.Events.UnityAction<Scene, LoadSceneMode> onSceneLoaded = (scene, mode) =>
             {
                 StartCoroutine(skillIcons.Watch(scene.name)); // the skill bar's icons after loading
                 if (testFps > 0)
@@ -473,9 +475,41 @@ namespace MyceliumCraft
                 forge.SceneLoaded();
                 SetPhase(Phase.Idle, "new scene");
             };
+            SceneManager.sceneLoaded += onSceneLoaded;
+            // As a BepInEx plugin we start after the first scene (Main Menu) has loaded: run it for that one.
+            if (McPaths.AsPlugin && SceneManager.GetActiveScene().isLoaded) onSceneLoaded(SceneManager.GetActiveScene(), LoadSceneMode.Single);
         }
 
+        // Pause timing (your report, 2026-11-10: the pause screen lagged in the BepInEx plugin): our own
+        // Update and LateUpdate per frame, and the scene's object count, once a second while paused.
+        readonly System.Diagnostics.Stopwatch frameWatch = new System.Diagnostics.Stopwatch();
+        double ourMs;
+        int ourFrames;
+        float nextPauseTimeLog;
+
         void Update()
+        {
+            frameWatch.Restart();
+            try { UpdateInner(); }
+            finally { ourMs += frameWatch.Elapsed.TotalMilliseconds; }
+        }
+
+        void PauseTiming()
+        {
+            ourFrames++;
+            if (!frozenByMinecraft) { nextPauseTimeLog = 0f; ourMs = 0; ourFrames = 0; return; }
+            if (Time.realtimeSinceStartup < nextPauseTimeLog) return;
+            if (nextPauseTimeLog > 0f)
+            {
+                int objects = UnityEngine.Object.FindObjectsOfType<GameObject>().Length;
+                McLog.Info($"pause timing: our Update+LateUpdate {ourMs / Mathf.Max(1, ourFrames):F2} ms a frame over {ourFrames} frames, whole frame {Time.unscaledDeltaTime * 1000f:F1} ms, {objects} objects in the scene, time scale {Time.timeScale}");
+            }
+            nextPauseTimeLog = Time.realtimeSinceStartup + 1f;
+            ourMs = 0;
+            ourFrames = 0;
+        }
+
+        void UpdateInner()
         {
             BackgroundWindow.Update();
             cycloneLength.Update(); // always, linked or not (your request, 2026-11-10)
@@ -522,6 +556,8 @@ namespace MyceliumCraft
             if (furyWatch.On) flags |= Proto.MycFury;
             // Mycelium's rain (RainEvent -> WeatherSettingsScript.UpdateRain): Minecraft has a thunderstorm meanwhile (MycWeather.java).
             if (Raining()) flags |= Proto.MycRain;
+            // Full screen or in a window: Minecraft's window does the same (MycWindowSize.java; your request, 2026-11-10).
+            if (Screen.fullScreenMode != FullScreenMode.Windowed) flags |= Proto.MycFullscreen;
             combat.Frenzied = furyWatch.On;
             hurtTilt.IgnoreDrop += furyWatch.TakeDrained(); // the frenzy's drain isn't a hit
             // Mycelium's health, which Minecraft's follows (/ 5).
@@ -773,6 +809,13 @@ namespace MyceliumCraft
         }
 
         void LateUpdate()
+        {
+            frameWatch.Restart();
+            try { LateUpdateInner(); }
+            finally { ourMs += frameWatch.Elapsed.TotalMilliseconds; PauseTiming(); }
+        }
+
+        void LateUpdateInner()
         {
             cameraSync.RefreshHidden();
             // Again before drawing: the shop's button runs after our Update, and turns the HUD on.
@@ -1064,7 +1107,7 @@ namespace MyceliumCraft
         void DumpGrid()
         {
             var inv = System.Globalization.CultureInfo.InvariantCulture;
-            string path = System.IO.Path.GetFullPath(System.IO.Path.Combine(Application.dataPath, "..", $"grid_v{ground.Version}.csv"));
+            string path = McPaths.File($"grid_v{ground.Version}.csv");
             using (var w = new System.IO.StreamWriter(path, false))
             {
                 w.WriteLine($"# n={GroundScanner.N} originX={ground.OriginX.ToString(inv)} originZ={ground.OriginZ.ToString(inv)} cell={GroundScanner.CellBlocks.ToString(inv)} fillBelow={ground.FillBelowOneSided.ToString(inv)}");
@@ -2387,7 +2430,7 @@ namespace MyceliumCraft
             probePending = false;
             if (probeMaterial == null)
             {
-                Shader probe = Resources.Load<Shader>("MyceliumCraftDepthProbe");
+                Shader probe = McShaders.Load("MyceliumCraftDepthProbe");
                 if (probe == null) { McLog.Info("model check: depth probe shader missing"); return; }
                 probeMaterial = new Material(probe);
                 probeTarget = new RenderTexture(1, 1, 0, RenderTextureFormat.ARGBFloat);
@@ -3789,6 +3832,7 @@ namespace MyceliumCraft
 
         void OnDestroy()
         {
+            McLog.Info($"driver destroyed (scene '{SceneManager.GetActiveScene().name}'), the link closes; from: {Environment.StackTrace}");
             link?.Dispose();
         }
     }

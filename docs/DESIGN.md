@@ -74,6 +74,69 @@ The package changes none of Mycelium's code:
 - The build's product name is `MyceliumCraft`. Unity's save folder (`persistentDataPath`) follows
   that name, so this build never touches your normal Mycelium saves.
 
+## 2a. Two ways to run the Mycelium half (since 2026-11-10)
+
+- **Our own build** (`tools/build-mycelium.ps1` → `work/build/MyceliumCraft.exe`): Mycelium's
+  source plus our `mycelium/` package, built by Unity 2022.3.0f1. This is what you test with. It
+  has its own save folder ("MyceliumCraft") and a resizable window (build settings).
+- **A BepInEx plugin for someone's own Mycelium from Steam** (`tools/build-plugin.ps1` →
+  `dist/MyceliumCraft-for-Mycelium.zip`, install notes in `docs/INSTALL-FRIENDS.md`). The Steam
+  release is Mono and Unity 2022.3.0f1, like ours.
+  - **The plugin** (`bepinex/MyceliumCraft.Plugin.csproj`) is the same `mycelium/Runtime` source,
+    plus `bepinex/Plugin.cs`, compiled by the .NET SDK into one `MyceliumCraft.dll`. The game's
+    DLLs are only referenced from the install while compiling. Nothing is written to any install.
+  - **Start-up:** `Plugin` starts `MinecraftDriver.Boot` on the first scene load. A driver made
+    when BepInEx loads (before any scene) was destroyed at once. The driver then runs its
+    scene-loaded handler for the scene that's already loaded.
+  - **Our files** go in the plugin's folder, `BepInEx\plugins\MyceliumCraft` (`McPaths`): log,
+    `MyceliumCraft.cfg`, and the test aids' .csv files.
+  - **Shaders:** our 6 shaders come from `myceliumcraft.shaders` next to the DLL (`McShaders`). It's
+    an AssetBundle built by `build-mycelium.ps1 -BundleOnly`, because a plugin can't add shaders to
+    a build.
+  - **Full screen** (both builds, since 2026-11-10, protocol v62): MycState bit 13 `FULLSCREEN`.
+    `MycWindowSize.matchFullscreen` sets Minecraft's full screen option to match when it changes
+    (and on linking), and leaves it alone in between.
+  - **Resizable window:** done at runtime (`BackgroundWindow.MakeResizable`: border and maximize
+    button added once a second while in a window).
+  - **Saves:** it uses the player's real Mycelium save.
+  - **Which GitHub commit the release is** (your finding, 2026-11-10: commits came after release).
+    The two newest commits, d64bf8d9 and c5c14682 (2024-07-26 and 2024-08-09), add exactly the
+    names the release lacks. So the release is the state before d64bf8d9 (d0ef0a85 or a little
+    earlier). Our own build is made from the newest commit, so it has the enemy attack, lunge,
+    StinkCloud and Daybreak Arboretum changes the release doesn't. c5c14682's `TargetFPS` (a 60 fps
+    cap) isn't used by any scene or prefab, so it changes nothing: both run uncapped.
+    Swapping in the newer Assembly-CSharp at start-up (tried 2026-11-10) crashes the release:
+    its data is stored in the old code's field order, without field names, and those commits
+    add and remove saved fields.
+  - **The newer commits in the Steam mod** (since 2026-11-11, your request as one of Mycelium's
+    developers):
+    - `tools/transplant` (`merge`) starts from the release's Assembly-CSharp. For the 11 classes
+      those commits change, it copies in the newer code: method bodies replaced, newer methods,
+      fields and compiler-made nested classes added, every reference pointed at the release
+      module.
+    - The release's fields stay exactly as they are, in the same order. New instance fields of
+      those classes are marked NotSerialized (6 of them, e.g. `EnemyHealth.isInvincible`,
+      `StinkCloud.reentryCooldown`), so Unity's saved layout is unchanged. They start with the
+      newer constructor's values.
+    - It checks that all 203 methods of those classes then read exactly like the newer code.
+    - Not copied: Unity's generated script list, the input-actions class and the unused
+      `TargetFPS` (build differences, not the commits' changes), nor the commits' scene edit
+      (defaults written out).
+    - The repo holds only the tool. The merged DLL is made in `work/newer` from our own build
+      (newest commit) and the Steam install.
+    - `bepinex/patcher`, a BepInEx preloader patcher, gives the game that DLL instead of its own
+      as it starts, in memory only. It does so only for the exact release it was made from (module
+      id in `replaces.txt`), so a Steam update falls back to the game's own code. The game's files
+      stay untouched.
+    - The plugin logs which code runs ("Mycelium's code: the release with the newer commits" or
+      "the release's own").
+  - **Release vs GitHub source:** compared with `work/build`'s on 2026-11-10. The release lacks
+    only names our code doesn't use (the PlayerAttack lunge fields, StinkCloud's re-entry
+    cooldown, `EnemyHealth.isInvincible`, `TargetFPS`); everything our code looks up is there.
+  - **Tested:** a copy of the Steam install in `work/steam-copy`, with the zip unpacked into it,
+    run with the stand-in. BepInEx loaded the plugin, the shaders loaded from the bundle, the
+    window became resizable, The Carcass loaded and the spore was driven ("Driving").
+
 ## 3. The link
 
 Shared memory is a block of RAM both processes map, like SkyCraft's `Local\SkyCraft_v1`.

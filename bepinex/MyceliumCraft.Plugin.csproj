@@ -1,0 +1,41 @@
+<Project Sdk="Microsoft.NET.Sdk">
+  <!--
+    MyceliumCraft as a BepInEx 5 plugin for someone's own Mycelium install (since 2026-11-10).
+    The same source as our own build (../mycelium/Runtime/**/*.cs) plus Plugin.cs, compiled into one
+    MyceliumCraft.dll. The game's DLLs are only referenced from its install while compiling (never
+    copied: Private=false), and BepInEx's from the downloaded release in work/.
+    Build:  powershell -ExecutionPolicy Bypass -File tools/build-plugin.ps1
+  -->
+  <PropertyGroup>
+    <TargetFramework>netstandard2.1</TargetFramework>
+    <AssemblyName>MyceliumCraft</AssemblyName>
+    <RootNamespace>MyceliumCraft</RootNamespace>
+    <LangVersion>9.0</LangVersion>
+    <AllowUnsafeBlocks>true</AllowUnsafeBlocks>
+    <Nullable>disable</Nullable>
+    <ImplicitUsings>disable</ImplicitUsings>
+    <EnableDefaultCompileItems>false</EnableDefaultCompileItems>
+    <GenerateDocumentationFile>false</GenerateDocumentationFile>
+    <!-- No debug file and no build paths (your Windows user name) inside the DLL that goes to friends. -->
+    <DebugType>none</DebugType>
+    <Deterministic>true</Deterministic>
+    <PathMap>$(MSBuildProjectDirectory)\..=.</PathMap>
+    <CopyLocalLockFileAssemblies>false</CopyLocalLockFileAssemblies>
+    <NoWarn>CS0618;CS0649;CS0414;CS0169;CS0067;CS0168;CS0219</NoWarn>
+    <GameManaged Condition="'$(GameManaged)' == ''">C:\Program Files (x86)\Steam\steamapps\common\Mycelium\Mycelium_Data\Managed</GameManaged>
+    <BepInExCore Condition="'$(BepInExCore)' == ''">$(MSBuildThisFileDirectory)..\work\downloads\bepinex-5.4.23.6\extracted\BepInEx\core</BepInExCore>
+  </PropertyGroup>
+  <ItemGroup>
+    <Compile Include="Plugin.cs" />
+    <Compile Include="..\mycelium\Runtime\**\*.cs" />
+  </ItemGroup>
+  <ItemGroup>
+    <Reference Include="BepInEx"><HintPath>$(BepInExCore)\BepInEx.dll</HintPath><Private>false</Private></Reference>
+    <Reference Include="$(GameManaged)\UnityEngine*.dll"><Private>false</Private></Reference>
+    <Reference Include="$(GameManaged)\Unity.InputSystem.dll"><Private>false</Private></Reference>
+    <Reference Include="$(GameManaged)\Unity.RenderPipelines.Core.Runtime.dll"><Private>false</Private></Reference>
+    <Reference Include="$(GameManaged)\Unity.RenderPipelines.Universal.Runtime.dll"><Private>false</Private></Reference>
+    <Reference Include="$(GameManaged)\Unity.TextMeshPro.dll"><Private>false</Private></Reference>
+    <Reference Include="$(GameManaged)\Cinemachine.dll"><Private>false</Private></Reference>
+  </ItemGroup>
+</Project>

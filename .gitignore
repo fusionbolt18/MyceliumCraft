@@ -33,3 +33,7 @@
 /fabric/run/
 /tools/**/bin/
 /tools/**/obj/
+/bepinex/bin/
+/bepinex/obj/
+/bepinex/patcher/bin/
+/bepinex/patcher/obj/

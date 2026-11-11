@@ -26,6 +26,11 @@ namespace MyceliumCraft
         [DllImport("user32.dll")] static extern bool IsIconic(IntPtr hwnd);
         [DllImport("user32.dll")] static extern bool ShowWindow(IntPtr hwnd, int cmd);
         [DllImport("user32.dll")] static extern int GetWindowLong(IntPtr hwnd, int index);
+        [DllImport("user32.dll")] static extern int SetWindowLong(IntPtr hwnd, int index, int value);
+        [DllImport("user32.dll")] static extern bool SetWindowPos(IntPtr hwnd, IntPtr after, int x, int y, int cx, int cy, uint flags);
+        const uint SWP_NOMOVE = 0x2, SWP_NOSIZE = 0x1, SWP_NOZORDER = 0x4, SWP_FRAMECHANGED = 0x20, SWP_NOACTIVATE = 0x10;
+        static float nextResizableCheck;
+        static bool resizableLogged;
 
         const int GWL_STYLE = -16;
         const int WS_THICKFRAME = 0x00040000, WS_MAXIMIZEBOX = 0x00010000; // a border you can drag; the maximize button
@@ -51,6 +56,11 @@ namespace MyceliumCraft
         public static void Update()
         {
             if (!windowLogged && Time.realtimeSinceStartup > 1f) LogWindow();
+            if (McPaths.AsPlugin && Time.realtimeSinceStartup >= nextResizableCheck)
+            {
+                nextResizableCheck = Time.realtimeSinceStartup + 1f;
+                MakeResizable();
+            }
             if (!Enabled) return;
             if (Application.isFocused && !everFocused)
             {
@@ -80,6 +90,35 @@ namespace MyceliumCraft
                 return false;
             }, IntPtr.Zero);
             McLog.Info($"window: {found}; {Screen.width}x{Screen.height}, {Screen.fullScreenMode} (Alt+Enter switches between full screen and a window)");
+        }
+
+        /// <summary>
+        /// As a BepInEx plugin: a window you can resize, as our own build has (your request, 2026-10-24;
+        /// there it's a build setting, PlayerSettings.resizableWindow, which a plugin can't change). Once
+        /// a second, while Mycelium is in a window, the border and maximize button are added if missing
+        /// (Unity sets the style again when switching with Alt+Enter).
+        /// </summary>
+        static void MakeResizable()
+        {
+            if (Screen.fullScreenMode != FullScreenMode.Windowed) return;
+            uint me = (uint)Process.GetCurrentProcess().Id;
+            EnumWindows((hwnd, _) =>
+            {
+                GetWindowThreadProcessId(hwnd, out uint pid);
+                if (pid != me || !IsWindowVisible(hwnd)) return true;
+                int style = GetWindowLong(hwnd, GWL_STYLE);
+                if ((style & (WS_THICKFRAME | WS_MAXIMIZEBOX)) != (WS_THICKFRAME | WS_MAXIMIZEBOX))
+                {
+                    SetWindowLong(hwnd, GWL_STYLE, style | WS_THICKFRAME | WS_MAXIMIZEBOX);
+                    SetWindowPos(hwnd, IntPtr.Zero, 0, 0, 0, 0, SWP_NOMOVE | SWP_NOSIZE | SWP_NOZORDER | SWP_FRAMECHANGED | SWP_NOACTIVATE);
+                    if (!resizableLogged)
+                    {
+                        resizableLogged = true;
+                        McLog.Info("window: plugin: Mycelium's window can be resized now (border and maximize button added)");
+                    }
+                }
+                return false;
+            }, IntPtr.Zero);
         }
 
         static void Minimize()

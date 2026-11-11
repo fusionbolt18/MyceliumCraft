@@ -17,7 +17,7 @@ namespace MyceliumCraft
         {
             try
             {
-                FilePath = Path.GetFullPath(Path.Combine(Application.dataPath, "..", "MyceliumCraft.log"));
+                FilePath = McPaths.File("MyceliumCraft.log");
                 writer = new StreamWriter(FilePath, false) { AutoFlush = true };
             }
             catch (Exception e)

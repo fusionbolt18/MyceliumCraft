@@ -1,5 +1,175 @@
 # MODLOG
 
+## 2026-11-11 Mycelium's post-release commits in the Steam mod (merged, not swapped)
+
+**Your request:** patch the newer commits into the mod, since the plain DLL swap crashed.
+
+**Changed:**
+- New `tools/transplant`. `diff` lists what differs between two Assembly-CSharp versions; `merge`
+  builds the release's with the newer code of the 11 classes d64bf8d9 and c5c14682 change:
+  ForgeShroom, AcrobatTrait, CrabAttack, Adaptive, Parasitic, EnemyHealth,
+  RangedEnemyProjectile, PlayerAttack, Skill, StinkCloud and WeaponInteraction.
+  - 165 method bodies replaced; 36 methods, 32 fields and 5 compiler-made classes added.
+  - The release's saved fields are untouched. The 6 new instance fields are kept out of Unity's
+    saved data (NotSerialized).
+  - Its own check: all 203 methods of those classes read exactly like the newer code.
+- No game code is in the repo: the tool reads both DLLs, and the merged one goes to
+  `work/newer`.
+- `bepinex/patcher` is back: it gives the game the merged DLL in memory, only for the exact
+  release (module id in `replaces.txt`).
+- `tools/build-plugin.ps1` runs the merge and packs the patcher (zip 1,057 KB).
+- The plugin logs which code runs.
+- `INSTALL-FRIENDS.md` explains it.
+
+**Tested how:** a fresh copy of the Steam install with the zip unpacked into it, with the
+stand-in:
+- BepInEx: "Mycelium's newer code (commits d64bf8d9 and c5c14682) merged into the release's
+  Assembly-CSharp, in memory only".
+- The Carcass and Daybreak Arboretum loaded with no exceptions. In Daybreak a Stickbug and a
+  Beetle spawned (the merged EnemyHealth code ran), and the spore was driven.
+- With the patcher folder moved away, the plugin said "the release's own".
+
+**Not tested:** fighting (the stand-in doesn't attack), the boss, and real play with Minecraft.
+The commits' Daybreak Arboretum scene edit isn't included (it only wrote out defaults).
+
+## 2026-11-10 Tried: the newer Mycelium commits in the Steam mod (doesn't work as a DLL swap)
+
+**Your request:** add the commits made after release (d64bf8d9, c5c14682) to the mod. You're one
+of Mycelium's developers.
+
+**Tried:**
+- A BepInEx preloader patcher that, as the game starts, replaces the release's Assembly-CSharp
+  (in memory only; the game's file untouched) with the one our own build makes from the newest
+  commit.
+- It only did that for the exact release (by module id).
+- The DLL was rewritten without Unity's build path, so your user name wasn't in it.
+
+**Result:**
+- The swap happened ("replaced by 660ea038 (newest GitHub commit), in memory only").
+- The game then crashed loading its data: "sharedassets0.assets is corrupted! ... Position out of
+  bounds".
+- **Why:** a built Unity game stores each object's saved fields in the exact order its code had
+  when it was built, with no field names. The newer commits add and remove saved fields
+  (`EnemyHealth.isInvincible`, PlayerAttack's lunge fields, StinkCloud's re-entry cooldown), so
+  the release's data no longer matches the newer code. Our own build works because Unity
+  rebuilds the data along with the code.
+
+**Undone:** the patcher and the newer DLL are out of the package again (`bepinex/patcher`
+removed). The zip is back to 801 KB, and a fresh copy with it unpacked loads and drives with the
+stand-in.
+
+## 2026-11-10 The Steam release vs the GitHub source
+
+**Your finding:** commits were made to Mycelium's GitHub after release.
+
+**Checked** (read only, in your Mycelium clone): the names the Steam release lacks were added by
+the two newest commits, d64bf8d9 (2024-07-26, StinkCloud re-entry cooldown and
+`EnemyHealth.isInvincible`) and c5c14682 (2024-08-09: the PlayerAttack lunge rewrite, Parasitic,
+and `TargetFPS`). So the release is the state before d64bf8d9.
+
+**What it means:**
+- Our own build (`work/build`) is made from the newest commit, so it has those fixes and the
+  Steam game doesn't.
+- Correction (same day): I first wrote that `TargetFPS` caps our build at 60 fps. It doesn't. No
+  scene or prefab uses that script, and both ran at 250-600 fps in tests.
+- Nothing changed in code.
+
+## 2026-11-10 Minecraft goes full screen when Mycelium does (protocol v62)
+
+**Your request:** if Mycelium opens in or switches to full screen, Minecraft's window should go
+full screen too.
+
+**Changed:**
+- Mycelium sends the new MycState flag bit 13 `FULLSCREEN` (`Screen.fullScreenMode` isn't
+  Windowed). Protocol version 62.
+- `MycWindowSize.matchFullscreen`: when that flag changes, and once on linking, Minecraft's own
+  full screen option is set to match (back to a window when Mycelium goes back). Between changes
+  it's left alone, so F11 in Minecraft still works. It uses Minecraft's full screen setting:
+  borderless, unless you turned on its exclusive full screen.
+- The stand-in prints "window: Mycelium says full screen / in a window".
+
+**Found:** in your Steam test Minecraft was already full screen once (23:23:31, probably your
+F11), and the overlay worked at 2560x1440.
+
+**Tested how:** stand-in runs with `-screen-fullscreen 0` and `1`: it read "in a window" and "full
+screen". The friends' zip is rebuilt. **Not tested** in real Minecraft (that it switches, and that
+Mycelium keeps the focus).
+
+## 2026-11-10 Minecraft's pause screen: no more lag, and Esc closes it again
+
+**Your report** (testing the BepInEx plugin): Minecraft's pause screen was very laggy, and Esc
+didn't close it.
+
+**Found:**
+- Mycelium, not Minecraft, slowed down. While paused, each Mycelium frame took 130-340 ms
+  (5-7 fps). The input bridge reads keys once per Mycelium frame, so Esc taps fell between
+  frames: Minecraft's log shows "0 key changes" the whole time.
+- Reproduced with the stand-in (`LINKTEST_PAUSE=1`): the plugin dropped to 7 fps; our own build
+  stayed at about 360 fps. But our own build at the same 2560x1440 (the Steam game's window) was
+  just as slow. It's the window size, not the plugin.
+- Timing showed our code took 1-2 ms of the 150+ ms. Test aids `-mcPauseNoVolume` and
+  `-mcPauseNoUi` showed the cost was our UI blur (`McPauseBlur`), which redrew Mycelium's
+  interface with our own camera every frame. Each draw switches Mycelium's renderer effects (SSAO,
+  Fog) off and on.
+- On the way: 5 of the 9 moved canvases are on the Default layer, so the UI camera also drew the
+  whole world. Now it draws only the UI layer, with the canvases on it while blurred. That alone
+  wasn't enough.
+
+**Changed:** `McPauseBlur` draws and blurs the interface once per pause (and again if the window's
+size changes), then keeps showing that picture. Mycelium's time is stopped, so it doesn't change.
+- New log lines while paused, once a second: "pause timing: our Update+LateUpdate ... whole frame
+  ... ms" and "pause: blur took ...".
+- New test aids: `-mcPauseNoVolume`, `-mcPauseNoUi`.
+
+**Tested how:** stand-in fake pause at 2560x1440. Our own build went from 147-162 ms to about 4 ms
+a frame, and the plugin to about 4 ms. The blurred interface still shows (picture 1280x720). The
+friends' zip is rebuilt. **Not tested** with real Minecraft (that Esc closes the pause screen).
+
+## 2026-11-10 The Mycelium part as a mod for your friends' own copy (BepInEx plugin)
+
+**Your request:** something friends can add to their own Mycelium install. Make or download the
+files, don't write to the game folder, and give install instructions.
+
+**Checked** (the Steam install at `C:\Program Files (x86)\Steam\steamapps\common\Mycelium`,
+read only):
+- It's Mono (`Mycelium_Data\Managed\Assembly-CSharp.dll`) and Unity 2022.3.0f1, the same as
+  ours. BepInEx 5 can load plugins into it.
+- Compared with the GitHub source our code was written against, the release lacks only names our
+  code doesn't use.
+
+**Changed:**
+- New `bepinex/` project: `MyceliumCraft.Plugin.csproj` plus `Plugin.cs`, the same
+  `mycelium/Runtime` code compiled into `MyceliumCraft.dll`.
+- New `McPaths.cs`: our log, config and .csv files go in the plugin's folder (as before, next to
+  the exe in our own build).
+- New `McShaders.cs`: shaders come from the game, else from `myceliumcraft.shaders`.
+  `BuildMyceliumCraft.BuildShaderBundle`, run by `build-mycelium.ps1 -BundleOnly`, builds that
+  bundle.
+- `MinecraftDriver`: `Boot` can be called by the plugin. The scene-loaded handler also runs for an
+  already-loaded scene. The driver logs being destroyed.
+- `BackgroundWindow.MakeResizable` (plugin only).
+- New `tools/build-plugin.ps1`: builds everything and packs `dist/MyceliumCraft-for-Mycelium.zip`
+  (801 KB): BepInEx 5.4.23.6 unchanged (downloaded from its GitHub releases into
+  `work/downloads`), the plugin, the shader bundle, the install notes and BepInEx's license note.
+- New `docs/INSTALL-FRIENDS.md`.
+- `.gitignore`: the plugin's `bin/` and `obj/` stay out.
+
+**Failures on the way:**
+- Starting the driver as soon as BepInEx loaded got it destroyed at once, so the link closed.
+  Fixed by starting on the first scene load.
+- The handler for that first scene then never ran, so `-mcScene` did nothing. Fixed by running it
+  for the scene that's already loaded.
+
+**Tested how:** on a copy of the Steam install in `work/steam-copy` (git-ignored), with the zip
+unpacked into it by Windows' own Expand-Archive, run with the stand-in (`LINKTEST_STILL=1`):
+- BepInEx's log: "Loading [MyceliumCraft 0.1.0]", "starting with scene 'Main Menu'".
+- Our log: shaders loaded from the bundle; "Mycelium's window can be resized now"; The Carcass
+  loaded; teleport confirmed; "Driving".
+- Our own build still compiles and drives with the stand-in.
+
+**Not tested:** in play with real Minecraft, and on a friend's PC. Started outside Steam, the copy
+logged "SteamAPI_Init() failed" (expected) and played anyway.
+
 ## 2026-11-10 The second kind of blip: the colony read as empty for a frame
 
 **Your report:** another blip around 22:50.

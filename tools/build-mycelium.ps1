@@ -7,7 +7,9 @@
 # 3. Runs Unity 2022.3.0f1 in batch mode (no window) to build. Log: work\unity-build.log
 #
 # Usage:  powershell -ExecutionPolicy Bypass -File tools\build-mycelium.ps1
+#         ... -BundleOnly   builds only our shaders, as work\bundle\myceliumcraft.shaders (for the BepInEx plugin)
 param(
+    [switch]$BundleOnly,
     [string]$MyceliumSource = "C:\Users\Ryan\Documents\ClonedGithubRepos\Mycelium",
     [string]$Unity = "C:\Program Files\Unity\Hub\Editor\2022.3.0f1\Editor\Unity.exe"
 )
@@ -42,10 +44,12 @@ Write-Host "Package: $pkg"
 
 Write-Host "Building with Unity (this can take a while; log: $log)..."
 $started = Get-Date
+if ($BundleOnly) { $out = Join-Path $work "bundle" }
+$method = if ($BundleOnly) { "MyceliumCraft.Editor.BuildMyceliumCraft.BuildShaderBundle" } else { "MyceliumCraft.Editor.BuildMyceliumCraft.Build" }
 $p = Start-Process -FilePath $Unity -Wait -PassThru -ArgumentList @(
     "-batchmode", "-nographics",
     "-projectPath", "`"$project`"",
-    "-executeMethod", "MyceliumCraft.Editor.BuildMyceliumCraft.Build",
+    "-executeMethod", $method,
     "-mcOut", "`"$out`"",
     "-logFile", "`"$log`""
 )
@@ -55,4 +59,4 @@ if ($p.ExitCode -ne 0) {
     Get-Content $log -Tail 40
     exit 1
 }
-Write-Host "Built $out\MyceliumCraft.exe in $mins min"
+if ($BundleOnly) { Write-Host "Built $out\myceliumcraft.shaders in $mins min" } else { Write-Host "Built $out\MyceliumCraft.exe in $mins min" }

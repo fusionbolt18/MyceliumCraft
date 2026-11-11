@@ -27,7 +27,7 @@ namespace MyceliumCraft
         public static void Run(Vector3 spore, int layerMask, float cell)
         {
             var watch = Stopwatch.StartNew();
-            string path = Path.GetFullPath(Path.Combine(Application.dataPath, "..", "survey.csv"));
+            string path = McPaths.File("survey.csv");
             bool backfaces = Physics.queriesHitBackfaces;
             int columns = 0, rays = 0;
             var inv = CultureInfo.InvariantCulture;
