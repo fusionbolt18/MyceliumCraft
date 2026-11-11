@@ -56,7 +56,7 @@ final class MycEmotes {
 			stop = entity.getMethod("stopEmote");
 			getManager = animated.getMethod("playerAnimLib$getAnimManager");
 			handle = manager.getMethod("handleAnimations", float.class, boolean.class, boolean.class);
-			MycLink.LOG.info("MyceliumCraft: emotes: Emotecraft found; waving spores use its wave");
+			MycLink.LOG.info("MyceliumCraft: emotes: Emotecraft found; waving spores use its wave, or your emote back");
 		} catch (ReflectiveOperationException | LinkageError e) {
 			missing = true;
 			MycLink.LOG.info("MyceliumCraft: emotes: no Emotecraft ({}); waving spores aren't animated", e.toString());
@@ -156,29 +156,106 @@ final class MycEmotes {
 	}
 
 	private static Method getEmote, currentAnimation;
-	private static boolean lastWavingYou;
+	private static Object yourEmote;      // the Animation of the emote you're doing, or did last
+	private static String yourName = "";
+	private static long yourStart, yourEnd; // System ms; yourEnd 0 while it plays
+	private static boolean yourOn;
+	private static long offUntil; // a new emote straight after another: "no" until then, so Mycelium sees a new start
+	/** How long after your emote ends a spore that waves back still does it (Mycelium's wave back takes a moment). */
+	private static final long COPY_AFTER_MS = 3000;
 
-	/** Is Emotecraft's wave playing on you now (for Mycelium: its spores may wave back). */
-	static boolean wavingYou(net.minecraft.client.player.AbstractClientPlayer player) {
-		boolean now = false;
-		if (player != null && look() && playing(player)) {
+	/** The emote playing on a player now (its Animation), or null. */
+	private static Object current(net.minecraft.client.player.AbstractClientPlayer player) {
+		if (player == null || !look() || !playing(player)) {
+			return null;
+		}
+		try {
+			if (getEmote == null) {
+				getEmote = Class.forName("io.github.kosmx.emotes.main.mixinFunctions.IPlayerEntity", true, MycEmotes.class.getClassLoader()).getMethod("emotecraft$getEmote");
+				currentAnimation = getEmote.getReturnType().getMethod("getCurrentAnimationInstance");
+			}
+			return currentAnimation.invoke(getEmote.invoke(player));
+		} catch (ReflectiveOperationException | RuntimeException e) {
+			return null;
+		}
+	}
+
+	private static String nameOf(Object animation) {
+		try {
+			ClassLoader cl = MycEmotes.class.getClassLoader();
+			Class<?> holder = Class.forName("io.github.kosmx.emotes.main.EmoteHolder", true, cl);
+			Class<?> anim = Class.forName("com.zigythebird.playeranimcore.animation.Animation", true, cl);
+			Object h = holder.getMethod("findIfPresent", anim).invoke(null, animation);
+			Object name = h != null ? holder.getField("name").get(h) : null;
+			return name instanceof net.minecraft.network.chat.Component c ? c.getString() : "an emote";
+		} catch (ReflectiveOperationException | RuntimeException e) {
+			return "an emote";
+		}
+	}
+
+	/**
+	 * Are you doing one of Emotecraft's emotes now (McState EMOTE_WAVE, for Mycelium: its spores near
+	 * you and in front of you may answer, as after its own wave). Any emote since 2026-11-10 (your
+	 * request: a spore does the same emote back), not the dances the beetle drum starts on you. A new
+	 * emote straight after another reads "no" for 0.1 s, so Mycelium sees it start again.
+	 */
+	static boolean emotingYou(net.minecraft.client.player.AbstractClientPlayer player) {
+		Object now = yourDance >= 0 ? null : current(player);
+		boolean on = now != null;
+		if (on && now != yourEmote) {
+			yourEmote = now;
+			yourName = nameOf(now);
+			yourStart = System.currentTimeMillis();
+			yourEnd = 0;
+			MycLink.LOG.info("MyceliumCraft: emotes: you're doing Emotecraft's '{}': Mycelium's spores in front of you may do it back", yourName);
+			if (yourOn) {
+				offUntil = yourStart + 100; // 0.1 s off: Mycelium reads this once a frame
+			}
+		} else if (!on && yourOn) {
+			yourEnd = System.currentTimeMillis();
+			MycLink.LOG.info("MyceliumCraft: emotes: your '{}' is over after {} s", yourName, String.format("%.1f", (yourEnd - yourStart) / 1000.0));
+		}
+		yourOn = on;
+		return on && System.currentTimeMillis() >= offUntil;
+	}
+
+	/**
+	 * A spore waves back (MycSporeBodies): it does your emote if you're doing one or did within the last
+	 * 3 s, otherwise Emotecraft's wave. Returns your emote's Animation if it copied it, else null;
+	 * started[0] says whether anything plays.
+	 */
+	static Object answer(Avatar body, String who, boolean[] started) {
+		started[0] = false;
+		long nowMs = System.currentTimeMillis();
+		if (yourEmote != null && (yourOn || nowMs - yourEnd <= COPY_AFTER_MS) && look()) {
 			try {
-				if (getEmote == null) {
-					getEmote = Class.forName("io.github.kosmx.emotes.main.mixinFunctions.IPlayerEntity", true, MycEmotes.class.getClassLoader()).getMethod("emotecraft$getEmote");
-					currentAnimation = getEmote.getReturnType().getMethod("getCurrentAnimationInstance");
-				}
-				Object holder = fromUuid.invoke(null, WAVING);
-				Object current = currentAnimation.invoke(getEmote.invoke(player));
-				now = holder != null && current != null && current.equals(emoteField.get(holder));
+				play.invoke(body, yourEmote, 0f, false);
+				started[0] = true;
+				MycLink.LOG.info("MyceliumCraft: spore bodies: {} does your '{}' back", who, yourName);
+				return yourEmote;
 			} catch (ReflectiveOperationException | RuntimeException e) {
-				now = false;
+				MycLink.LOG.warn("MyceliumCraft: emotes: couldn't copy '{}' onto {}", yourName, who, e);
 			}
 		}
-		if (now != lastWavingYou) {
-			lastWavingYou = now;
-			MycLink.LOG.info("MyceliumCraft: emotes: {}", now ? "you're doing Emotecraft's wave: Mycelium's spores in front of you may wave back" : "your wave is over");
+		started[0] = wave(body);
+		if (started[0]) {
+			MycLink.LOG.info("MyceliumCraft: spore bodies: {} waves: Emotecraft's wave", who);
 		}
-		return now;
+		return null;
+	}
+
+	/**
+	 * A spore doing your emote back (since sinceMs) stops once you've stopped it and it has played as
+	 * long as yours did, so a looping emote doesn't go on for ever; 20 s at most.
+	 */
+	static boolean copyOver(Object animation, long sinceMs) {
+		long ran = System.currentTimeMillis() - sinceMs;
+		if (ran > 20_000) {
+			return true;
+		}
+		boolean yoursGoing = animation == yourEmote && yourOn;
+		long yours = animation == yourEmote && yourEnd > 0 ? yourEnd - yourStart : 0;
+		return !yoursGoing && ran >= yours;
 	}
 
 	private static boolean holding;

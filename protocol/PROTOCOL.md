@@ -79,7 +79,7 @@ Positions are in **Minecraft coordinates**: blocks, Y up, +Z is south.
 | Off | Type | Field |
 |---|---|---|
 | 0x00 | u32 | seq |
-| 0x04 | u32 | flags: bit0 `IN_WORLD`, bit1 `SCREEN_OPEN`, bit2 `ON_GROUND`, bit3 `SNEAKING`, bit4 `SPRINTING`, bit5 `PAUSED` (Minecraft's pause menu has paused the game; Mycelium freezes too; since version 13), bit6 `EMOTE_WAVE` (Emotecraft's wave is playing on you; Mycelium's spores near you and in front of you may wave back; since version 53) |
+| 0x04 | u32 | flags: bit0 `IN_WORLD`, bit1 `SCREEN_OPEN`, bit2 `ON_GROUND`, bit3 `SNEAKING`, bit4 `SPRINTING`, bit5 `PAUSED` (Minecraft's pause menu has paused the game; Mycelium freezes too; since version 13), bit6 `EMOTE_WAVE` (Emotecraft's wave is playing on you (since 2026-11-10: any Emotecraft emote you started, not a drum dance; Minecraft gives the spores that answer your emote); Mycelium's spores near you and in front of you may wave back; since version 53) |
 | 0x08 | f64 | feet X (interpolated to the rendered frame) |
 | 0x10 | f64 | feet Y |
 | 0x18 | f64 | feet Z |

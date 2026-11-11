@@ -7,5 +7,7 @@
   "key.myceliumcraft.curio": "Curio",
   "key.myceliumcraft.dodge": "Dodge Roll",
   "key.myceliumcraft.skill_1": "Skill 1",
-  "key.myceliumcraft.skill_2": "Skill 2"
+  "key.myceliumcraft.skill_2": "Skill 2",
+  "selectWorld.gameMode.mycelium": "Mycelium",
+  "selectWorld.gameMode.mycelium.info": "Play with Mycelium: Survival, Peaceful, Superflat, cheats on, immediate respawn, always just after noon"
 }

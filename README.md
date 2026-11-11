@@ -207,6 +207,15 @@ Single-player and offline only.
   yours. Mycelium's side tested with a fake Minecraft; **the poses are not tested in Minecraft.**
 - **The final boss's sand pull moves you towards it.** Tested with a fake Minecraft; **not tested
   in Minecraft.**
+- **"Mycelium" game mode in Create New World: not tested in Minecraft.** It makes a world like
+  yours, but in Survival: Peaceful, cheats on, Superflat, immediate respawn, no day-night cycle, just
+  after noon, clear weather.
+- **Your world's settings apply in any world while linked: not tested in Minecraft.** Immediate
+  respawn on, the day-night cycle off, and the time set to just after noon. A friend's own values
+  are put back when Mycelium closes.
+- **Spores answer any Emotecraft emote with the same emote: not tested in real Minecraft.** Do an
+  emote facing spores near you, and the ones that would wave back (Mycelium's own rule) do your
+  emote instead. The signal to Mycelium and its spores answering were tested with the stand-in.
 - **The level's goal is on Minecraft's locator bar: not tested in real Minecraft.** It's a red
   bow-tie marker, behind the level number, for what Mycelium's Navigate Camera pointed at (the boss in Impact Barrens, the
   way back in Daybreak Arboretum and Delta Crag, the run start in The Carcass). The stand-in

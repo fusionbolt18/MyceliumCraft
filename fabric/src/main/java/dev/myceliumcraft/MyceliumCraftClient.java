@@ -43,6 +43,8 @@ public final class MyceliumCraftClient implements ClientModInitializer {
 			.map(v -> v.getAsString()).orElse("unknown");
 		MycLink.LOG.info("MyceliumCraft: loaded (protocol v{}, mapping {}), jar built {}", Proto.VERSION, Proto.MAPPING_NAME, built);
 		MyceliumKeys.init();
+		// The "Mycelium" game mode: a new world gets its time of day and weather once it has started (MycWorldMode).
+		net.fabricmc.fabric.api.event.lifecycle.v1.ServerLifecycleEvents.SERVER_STARTED.register(MycWorldMode::started);
 		// Combat: invisible stand-ins for Mycelium's enemies, drawn by nothing.
 		dev.myceliumcraft.combat.EnemyProxies.init();
 		// The other spores: invisible creatures, so you collide with them by Minecraft's rules.
@@ -84,6 +86,7 @@ public final class MyceliumCraftClient implements ClientModInitializer {
 		MycSkillAnimation.tick(minecraft, on && (MYC.flags & Proto.MYC_CYCLONE) != 0, on && (MYC.flags & Proto.MYC_ROLL) != 0);
 		MycFury.tick(minecraft, on && (MYC.flags & Proto.MYC_FURY) != 0); // Relentless Fury: red potion particles
 		MycWeather.tick(minecraft, on, (MYC.flags & Proto.MYC_RAIN) != 0); // Mycelium's rain: a thunderstorm
+		MycWorldRules.tick(minecraft, MycLink.myceliumAlive()); // your world's game rules and time of day, in any world
 		blockAttackWhileCycloning(minecraft);
 	}
 
@@ -197,8 +200,8 @@ public final class MyceliumCraftClient implements ClientModInitializer {
 		if (minecraft.isPaused()) {
 			flags |= Proto.MC_PAUSED; // Escape's pause menu: Mycelium freezes too
 		}
-		if (MycEmotes.wavingYou(player)) {
-			flags |= Proto.MC_EMOTE_WAVE; // Emotecraft's wave on you: Mycelium's spores may wave back
+		if (MycEmotes.emotingYou(player)) {
+			flags |= Proto.MC_EMOTE_WAVE; // an Emotecraft emote on you: Mycelium's spores may answer, with your emote (MycEmotes.answer)
 		}
 		if (player.onGround()) {
 			flags |= Proto.MC_ON_GROUND;

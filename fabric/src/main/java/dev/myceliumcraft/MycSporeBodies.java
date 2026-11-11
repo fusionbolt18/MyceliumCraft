@@ -29,6 +29,11 @@ import net.minecraft.world.entity.player.PlayerSkin;
  * world would tick it, and posed every frame until the emote is over (2.5 s); then the spore goes
  * back to the shared body.
  *
+ * Your emote back (your request, 2026-11-10): if you're doing an Emotecraft emote, or did within
+ * the last 3 s, a spore that waves back does that emote instead (MycEmotes.answer). Which spores
+ * answer is Mycelium's own wave-back rule (near you, in front of you, happy enough). A copy stops
+ * once you've stopped and it has played as long as yours did.
+ *
  * The beetle drum (your request, 2026-11-09): while Mycelium says a spore is in its "Drum Hit"
  * (Colony drums: how far through, 0..1), its body is posed as DrumPose, on the shared body.
  *
@@ -55,6 +60,9 @@ public final class MycSporeBodies {
 	private static SporeBody body;
 	private static final SporeBody[] WAVER = new SporeBody[Proto.COL_MAX]; // a waving spore's own body, while the emote plays
 	private static final boolean[] WAVE_WAS = new boolean[Proto.COL_MAX];
+	private static final Object[] COPIED = new Object[Proto.COL_MAX]; // your emote a spore does back (MycEmotes.answer), null = its own wave
+	private static final long[] COPIED_SINCE = new long[Proto.COL_MAX];
+	private static final boolean[] STARTED = new boolean[1];
 	private static final int[] DANCE = new int[Proto.COL_MAX]; // the dance on WAVER (MycEmotes.DANCES), -1 = none
 	static {
 		Arrays.fill(DANCE, -1);
@@ -150,9 +158,11 @@ public final class MycSporeBodies {
 			boolean waving = (colony.waving & (1 << i)) != 0;
 			if (waving && !WAVE_WAS[i] && WAVER[i] == null) {
 				SporeBody own = new SporeBody(minecraft.level, "myceliumcraft-spore-wave-" + i, MADE_UP_ID - 1 - i);
-				if (MycEmotes.wave(own)) {
+				// Your emote back if you're doing one (or just did), else Emotecraft's wave (your request, 2026-11-10).
+				COPIED[i] = MycEmotes.answer(own, colony.names[i], STARTED);
+				COPIED_SINCE[i] = System.currentTimeMillis();
+				if (STARTED[0]) {
 					WAVER[i] = own;
-					MycLink.LOG.info("MyceliumCraft: spore bodies: {} waves: Emotecraft's wave", colony.names[i]);
 				}
 			}
 			WAVE_WAS[i] = waving;
@@ -161,7 +171,10 @@ public final class MycSporeBodies {
 				for (int t = 0; t < ticks; t++) {
 					MycEmotes.tick(WAVER[i]);
 				}
-				if (!MycEmotes.playing(WAVER[i])) {
+				if (COPIED[i] != null && MycEmotes.playing(WAVER[i]) && MycEmotes.copyOver(COPIED[i], COPIED_SINCE[i])) {
+					endWave(i, "stops doing your emote (you stopped, and it did it as long as you)");
+					MOVING[i] = true;
+				} else if (!MycEmotes.playing(WAVER[i])) {
 					if (DANCE[i] >= 0 && dancing) {
 						MycEmotes.dance(WAVER[i], DANCE[i]); // "Over here" doesn't loop: again while it dances
 					} else {
@@ -252,6 +265,7 @@ public final class MycSporeBodies {
 
 	private static void endWave(int slot, String why) {
 		DANCE[slot] = -1;
+		COPIED[slot] = null;
 		if (WAVER[slot] != null) {
 			MycEmotes.stop(WAVER[slot]);
 			WAVER[slot] = null;

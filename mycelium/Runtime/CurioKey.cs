@@ -80,7 +80,7 @@ namespace MyceliumCraft
             McLog.Info($"curio key: no decoration in range{(curio != null ? $" (nearest '{curio.gameObject.name}' is {Vector3.Distance(spore.transform.position, curio.transform.position):F1} units away)" : "")}: no wave (you have Emotecraft's emote wheel)");
         }
 
-        /// <summary>Every frame: Minecraft says Emotecraft's wave is playing on you.</summary>
+        /// <summary>Every frame: Minecraft says an Emotecraft emote is playing on you (any emote since 2026-11-10; the bit kept its name EMOTE_WAVE).</summary>
         public void EmoteWave(bool waving)
         {
             if (waving && !lastEmoteWave && Look() && goadWaveBack != null)
@@ -91,7 +91,7 @@ namespace MyceliumCraft
                     try
                     {
                         goadWaveBack.Invoke(controller, null);
-                        McLog.Info("curio key: you wave (Emotecraft): the spores near you and in front of you may wave back, as after Mycelium's own wave");
+                        McLog.Info("curio key: you do an Emotecraft emote: the spores near you and in front of you may answer, as after Mycelium's own wave (Minecraft gives them your emote)");
                     }
                     catch (Exception e)
                     {

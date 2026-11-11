@@ -1,5 +1,82 @@
 # MODLOG
 
+## 2026-11-10 The Mycelium game mode plays as Survival
+
+**Your request:** make the Mycelium game mode Survival, with cheats still on.
+
+**Changed:** `SelectedGameModeMixin` makes the entry with `GameType.SURVIVAL` instead of Creative.
+Cheats stay on, because `MycWorldMode` sets them on when you choose it. The menu description is
+updated.
+
+**Tested how:** the jar builds. **Not tested in Minecraft.**
+
+## 2026-11-10 A "Mycelium" game mode in Create New World
+
+**Your request:** a "Mycelium" game mode in the world creation menu that gives a world your
+world's game rules, difficulty, time of day and everything else.
+
+**Read from your "New World"** (not changed):
+- Creative, Peaceful, cheats on.
+- Superflat with Minecraft's default layers: bedrock, 2 dirt, grass; plains; villages and
+  strongholds; no lakes or decorations. Structures on, no bonus chest.
+- Game rules: `immediate_respawn` on and `advance_time` off; all others are the defaults.
+- Time of day 6182; clear weather. Default data packs, no experiments.
+
+**Changed:**
+- New `MycWorldMode.java`, plus mixins `SelectedGameModeAccessor`, `SelectedGameModeMixin`,
+  `CreateWorldGameTabMixin` and `CreateWorldScreenMixin`.
+- The Game Mode button now has "Mycelium" after Creative. Choosing it fills in all of the above.
+- Creating the world sets the time (6182) and clear weather once it has started.
+- The seed stays random.
+- Menu text is in `en_us.json`.
+
+**Tested how:** the jar builds. **Not tested in Minecraft.** Adding an entry to Minecraft's game
+mode list and the screen hooks are only checked when Minecraft starts, so if one doesn't fit,
+Minecraft shows an error at startup.
+
+## 2026-11-10 Your world's game rules and time of day in any world while linked
+
+**Your request:** apply the game rules and time of day of your single-player world when linked to
+Mycelium, in case friends try it.
+
+**Found** (read from `saves/New World`, not changed): only two rules differ from Minecraft's
+defaults.
+- `immediate_respawn` true (default false).
+- `advance_time` false (default true): the day-night cycle is off.
+- The overworld clock stands at 102182 ticks, so the time of day is 6182, just after noon.
+
+**Changed:** new `MycWorldRules.java`. When Mycelium links, it remembers the world's own values for
+those two rules, sets yours, and runs `/time set 6182`. When Mycelium goes away, the two rules go
+back to what the world had. The time isn't put back: it just runs on again if the cycle was on.
+
+**Tested how:** the jar builds. **Not tested in Minecraft** (the stand-in has no Minecraft world).
+Your own world already has these values, so in it you'll only see the log lines.
+
+## 2026-11-10 Spores answer any Emotecraft emote with the same emote
+
+**Your request:** like waving, if you do any Emotecraft emote towards a spore, it does the same
+emote back.
+
+**Changed:**
+- `MycEmotes.emotingYou` (was `wavingYou`): McState `EMOTE_WAVE` is now on while any Emotecraft
+  emote you started plays on you. It isn't on for the dances the beetle drum starts. A new emote
+  straight after another turns it off for 0.1 s, so Mycelium sees a new start. No protocol change.
+- Mycelium (`CurioKey.EmoteWave`) still calls its own `GoadWaveBack`, so the same spores answer as
+  for a wave: near you, in front of you, and happy enough. Only its log line changed.
+- `MycEmotes.answer` / `MycSporeBodies`: when a spore waves and you're doing an emote (or did in
+  the last 3 s), its body plays your emote instead of the wave. A copy stops once you've stopped
+  and it has played as long as yours did, so looping emotes end; 20 s at most.
+- Log lines: "you're doing Emotecraft's '<name>'", "<spore> does your '<name>' back", "your
+  '<name>' is over after N s".
+
+**Tested how:** stand-in run in The Carcass (`LINKTEST_EMOTEWAVE=1`). Mycelium logged "you do an
+Emotecraft emote: the spores near you ... may answer", and two spores started waving 1.2 and 1.6 s
+later. The jar builds.
+
+**Not tested:** in real Minecraft (that a spore's body plays your emote, and when copies stop).
+Known: spores also greet each other by themselves, and one doing that within 3 s of your emote
+copies it too.
+
 ## 2026-11-10 The level's goal on Minecraft's locator bar (protocol v61)
 
 **Your request:** use Minecraft's locator bar to show the level's goal.

@@ -1891,6 +1891,18 @@ While Mycelium shows a level (and `overlay=1`), Mycelium sets `OVERLAY` in its s
     to the shared body.
   - A wave that starts again while the emote still plays doesn't restart it.
 
+- **Your emote back** (since 2026-11-10): McState `EMOTE_WAVE` is now on while *any* Emotecraft
+  emote you started plays on you, not the dances the beetle drum starts. The bit kept its name. A
+  new emote straight after another turns it off for 0.1 s, so Mycelium sees a new start. Mycelium
+  still calls `GoadWaveBack`, so its own rule picks who answers: spores near you, in front of you,
+  and happy enough.
+  - When a spore then waves (its waving bit starts), `MycEmotes.answer` plays your emote's
+    Animation on its body instead of the wave, if yours is playing or ended within the last 3 s.
+    Otherwise it plays the wave as before.
+  - A copy stops once yours has stopped and it has played as long as yours did (a looping emote
+    doesn't go on for ever), 20 s at most.
+  - Spores also greet each other on their own. Within those 3 s such a greeting copies your emote
+    too.
 - **Your own emotes** (since 2026-11-08): while Emotecraft plays one on you, `MycEmotes.holdFacing`
   (end of each client tick) holds your body and head yaw where the body faced when it started. The
   spore faces your body, so it stays put, while Mycelium's camera, which follows your look, orbits.
@@ -1967,6 +1979,46 @@ answers `ClientMannequin.getSkin` with the spore's skin when the mannequin's pro
 - **Jumping during the pull:** a sideways-only `Entity.move` always leaves the player "not on the
   ground", which stopped the jump checked just after in the tick. `MycBossPull` keeps the on-ground
   state from before its move (since 2026-11-10).
+
+### 5.3.8h The "Mycelium" game mode in Create New World (since 2026-11-10)
+
+A fourth choice on the Game tab's Game Mode button (after Survival, Hardcore and Creative). It
+makes a world like your "New World" (`MycWorldMode.java`):
+- **Plays as Survival** (its GameType; your choice, though your own world is Creative), Peaceful,
+  with cheats allowed.
+- **World type Superflat**, Minecraft's default layers, which is exactly what yours has: bedrock,
+  2 dirt, grass; plains; villages and strongholds; no lakes or decorations. Structures are on, with
+  no bonus chest, and the seed stays random.
+- **Game rules:** `immediate_respawn` on, `advance_time` off.
+- **Once the world has started:** `/time set 6182` and `/weather clear`.
+- Choosing the mode fills these in on the screen, and you can still change them before Create.
+  Switching to another mode doesn't undo them.
+
+How it's added:
+- `SelectedGameModeMixin` appends a MYCELIUM entry to Minecraft's `SelectedGameMode` list. It's
+  made through the private constructor (`SelectedGameModeAccessor`) and added to `$VALUES`.
+  Nothing in Minecraft switches over that list; it only compares with SURVIVAL, HARDCORE and
+  CREATIVE.
+- `CreateWorldGameTabMixin` adds it to the button's values (the tab's first `withValues` call).
+- The name and description are `selectWorld.gameMode.mycelium` and `.info` in our lang file.
+- `CreateWorldScreenMixin` listens for the mode being chosen, and on Create marks the world. The
+  server-started event then sets the time and weather.
+- Log lines start "world mode:".
+
+### 5.3.8g Your world's rules in any world (since 2026-11-10)
+
+`MycWorldRules.java`, so friends trying this play with your settings. Read from your "New World"
+on 2026-11-10 (`data/minecraft/game_rules.dat`, `world_clocks.dat`). Only two rules there differ
+from Minecraft's defaults:
+- `immediate_respawn` on: no death screen. The mod still holds the death back until Mycelium's own
+  death is over.
+- `advance_time` off, with the time of day 6182 (just after noon).
+
+When Mycelium links, the world's own two rule values are remembered, and yours are set with
+`/time set 6182`. When Mycelium goes away, the two rules are put back; the time of day runs on
+from where it was. Quitting Minecraft while linked leaves your rules in that world. Integrated
+server only. Log: "world rules: linked to Mycelium: ... (was ...)" and "world rules: Mycelium
+gone: ... back to ...".
 
 ### 5.3.8f The level's goal on Minecraft's locator bar (since 2026-11-10, protocol v61)
 
