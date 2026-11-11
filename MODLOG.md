@@ -1,5 +1,28 @@
 # MODLOG
 
+## 2026-11-11 Third-person cameras after the tutorial: the orbit curve is measured again if it was flat
+
+**Your report:** the third-person views go weird only when you arrive in The Carcass straight
+after the tutorial; quitting to the menu and loading back in fixes it.
+
+**Found in your log:**
+- Arriving in The Carcass after the tutorial, the camera's orbit curve (how far the camera looks
+  down for each Y of Mycelium's FreeLook, used to turn Minecraft's pitch into the camera's height)
+  was measured as all zeros.
+- That same moment logged "a cutscene's camera is live" (The Carcass's spore-birth camera).
+  Normally the curve runs from -1.9 to 80 degrees, as it did in the tutorial.
+- `FreeLook.GetLocalPositionForCameraFromInput` only gives real positions once the FreeLook has set
+  up its rigs, which it hadn't while the other camera was live. A flat curve makes every pitch the
+  same camera height. It was never measured again until you reloaded.
+
+**Changed:** `CameraSync.MeasureCurve`: a flat curve (less than 5 degrees from end to end) isn't
+taken. Update measures again every frame until it's real. Log: "the orbit curve isn't ready ...;
+measuring it again every frame", then "orbit curve measured now: ...".
+
+**Tested how:** stand-in run from the tutorial's ending into The Carcass (`-mcTutorialEndTest`,
+about 3 min): The Carcass's curve was measured right at once (-1.9 .. 80 degrees). So this run
+didn't reproduce your case; the timing differs. **Not tested:** the flat case itself.
+
 ## 2026-11-11 The tutorial's sleepers no longer overlap
 
 **Your report:** SleepingSpore 2 (1) and SleepingSpore 2 (2) overlap.

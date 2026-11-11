@@ -148,6 +148,11 @@ namespace MyceliumCraft
             if (!McConfig.SyncCamera) driving = false;
             if (freeLook == null && driving) Find();
             if (freeLook == null) return;
+            if (controlling && !curveReady && MeasureCurve())
+            {
+                curveReady = true;
+                McLog.Info($"camera: orbit curve measured now: looks down {curveAngle[0]:F1}..{curveAngle[Samples / 2]:F1}..{curveAngle[Samples - 1]:F1} degrees at Y 0/0.5/1");
+            }
 
             if (!driving)
             {
@@ -475,12 +480,8 @@ namespace MyceliumCraft
             freeLook.m_Orbits[0].m_Height = distance * Mathf.Sin(HighOrbitDown * Mathf.Deg2Rad);
             freeLook.m_Orbits[0].m_Radius = distance * Mathf.Cos(HighOrbitDown * Mathf.Deg2Rad);
 
-            // Downward angle along the (new) orbit curve, for angle -> Y.
-            for (int i = 0; i < Samples; i++)
-            {
-                Vector3 p = freeLook.GetLocalPositionForCameraFromInput(i / (float)(Samples - 1));
-                curveAngle[i] = Mathf.Atan2(p.y, new Vector2(p.x, p.z).magnitude) * Mathf.Rad2Deg;
-            }
+            curveReady = MeasureCurve();
+            if (!curveReady) McLog.Info("camera: the orbit curve isn't ready (the FreeLook hasn't set up its rigs: another camera is live, e.g. a level's intro); measuring it again every frame");
             controlling = true;
             var curve = new System.Text.StringBuilder();
             int turnsBack = 0;
@@ -494,6 +495,25 @@ namespace MyceliumCraft
                        $"High orbit raised from {savedOrbits[0].m_Height:F2}/{savedOrbits[0].m_Radius:F2} to {freeLook.m_Orbits[0].m_Height:F2}/{freeLook.m_Orbits[0].m_Radius:F2} (height/radius); " +
                        $"orbit curve looks down {curveAngle[0]:F1}..{curveAngle[Samples / 2]:F1}..{curveAngle[Samples - 1]:F1} degrees at Y 0/0.5/1; " +
                        $"Minecraft pitch -90/0/90 -> camera {PitchToAngle(-90):F0}/{PitchToAngle(0):F0}/{PitchToAngle(90):F0} degrees");
+        }
+
+        bool curveReady;
+
+        /// <summary>
+        /// Downward angle along the (raised) orbit curve, for angle -> Y. The FreeLook gives positions
+        /// along it only once it has set up its rigs; before that every sample is zero. Arriving in The
+        /// Carcass straight from the tutorial its intro camera is live first, so the curve was measured
+        /// flat and the third-person views went wrong until you reloaded (your report, 2026-11-11).
+        /// False when it's flat: Update measures again every frame until it's real.
+        /// </summary>
+        bool MeasureCurve()
+        {
+            for (int i = 0; i < Samples; i++)
+            {
+                Vector3 p = freeLook.GetLocalPositionForCameraFromInput(i / (float)(Samples - 1));
+                curveAngle[i] = Mathf.Atan2(p.y, new Vector2(p.x, p.z).magnitude) * Mathf.Rad2Deg;
+            }
+            return curveAngle[Samples - 1] - curveAngle[0] > 5f;
         }
 
         /// <summary>Test aid: per-frame camera numbers to camera_trace.csv next to the exe.</summary>

@@ -1573,6 +1573,11 @@ Orbit Y now changes by about 0.0017 per frame instead of 0.01 hops. The camera's
 jump (~0.6 units) is Cinemachine's collision add-on moving it sideways when the spore walks into a
 wall, not the look.
 
+**The orbit curve must be real** (since 2026-11-11): the FreeLook gives positions along its orbits
+only once it has set up its rigs. Taken over while another camera is live (The Carcass's birth
+camera, arriving straight from the tutorial), every sample was zero. `MeasureCurve` rejects a curve
+flatter than 5 degrees, and `Update` measures again every frame until it's real.
+
 ## 5.3 Input bridge: play from Mycelium's window (SkyCraft's InputBridge)
 
 **Idea:** Mycelium's window has the focus, and its keyboard and mouse are passed on to Minecraft.
