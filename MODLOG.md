@@ -1,5 +1,119 @@
 # MODLOG
 
+## 2026-11-11 The tutorial's sleepers no longer overlap
+
+**Your report:** SleepingSpore 2 (1) and SleepingSpore 2 (2) overlap.
+
+**Why:** a Minecraft lying body starts at its feet and lies a body's length behind them, but
+Mycelium's sleeper mesh is centred on its position. So each body was half a body off where the
+original lies. Those two are 1.1 units apart and turned 135 degrees to each other, so theirs
+crossed.
+
+**Changed:** `McColonyBodies.Layout`, every frame, for lying scenery spores:
+- Each body's footprint on the ground (a rectangle from its mesh's bounds; before Minecraft has
+  sent it, a body of Minecraft's size) is centred on the original mesh's middle.
+- Any two that overlap (separating-axis test, 5 cm margin) are pushed apart along the line between
+  them until they don't.
+- The result goes in `ColonyWatch.Shift`: the body is drawn there, and `ColonyPush` sends it to
+  Minecraft as the feet, so the body is fitted to the ground where it now lies.
+- Log: "colony bodies: N lying spore(s) laid out ..., N push(es) apart, N pair(s) still
+  overlapping: ... moved (x, z)".
+
+**Tested how:** stand-in run in New Tutorial (with Minecraft-sized footprints, since the
+stand-in sends no bodies): "7 lying spore(s) laid out, 20 push(es) apart, 0 pair(s) still
+overlapping". The biggest move is 1.66 units, mostly the centring. The friends' zip is rebuilt.
+**Not tested** with Minecraft's real bodies.
+
+## 2026-11-11 The giga beetle's impaled spores as Minecraft spores
+
+**Your request:** the spores stuck on the giga beetle's mandibles should be Minecraft spores too.
+
+**Found** (new test aid `-mcBeetleSurvey`):
+- Two `ImpaledSpore` objects, under `RightMandible3` and `LeftMandible3` of the tutorial's
+  "Giga Beetle". Each is a full spore mesh with its own cap and body colours and no Animator,
+  scaled about x0.45 to x0.6 with the beetle.
+- Their skeletons are upright in their own frame (head straight up from the hips, legs apart);
+  the frame is what's tilted along the mandible.
+- The beetle is switched off until you reach it.
+
+**Changed:**
+- `ColonyWatch` also sends them after the sleepers, standing (pose 0), with their own colours
+  and sizes. They're marked `FullTurn` (the body follows the whole rotation, tilt too) and
+  `Floating` (no feet position, so Minecraft doesn't fit them to the ground or give them a
+  stand-in).
+- The sleepers' and impaled spores' search now includes switched-off objects; they're only sent
+  while active.
+- `McColonyBodies` turns full-turn bodies with the spore's whole rotation. `ColonyPush` sends no
+  position for floating ones.
+- New test aid `-mcGigaBeetleTest` switches the beetle on 3 s into driving.
+- The friends' zip is rebuilt.
+
+**Tested how:** stand-in run in New Tutorial with `-mcGigaBeetleTest`.
+- Before the beetle came out: "0 of the scene's 2 impaled spore(s) sent ... the beetle isn't out".
+- After: "2 of 2 sent". Each second their positions and tilt followed the mandibles, e.g. the left
+  one at rotation (313, 219, 43), size x0.57.
+- The stand-in read 10 entries (you, 7 sleepers, 2 impaled).
+
+**Not tested** in Minecraft: how they look, and whether standing is the right pose for them.
+
+## 2026-11-11 Minecraft's overlay hides for the tutorial's ending
+
+**Your request:** the overlay should disappear during the cutscene at the end of the tutorial.
+
+**Why it stayed:**
+- The tutorial ends when the giga beetle kills you. `PlayerHealth` then starts `CutscenePlayer`
+  (story text over its own black canvas, which `ScreenCover` didn't know about).
+- While dead, Mycelium also keeps `PlayerController.isInvincible` on every frame. Our overlay
+  rule took "controls taken + invincible" for a hit's knockback, which never hides it.
+
+**Changed** (`MinecraftDriver`):
+- `CutsceneOn` (`CutscenePlayer.cutsceneIsOn`) covers the overlay like the other cover screens.
+- `PlayerDead` (`PlayerHealth.dead`) means it's not a knockback.
+- New test aid `-mcTutorialEndTest` kills you 4 s into driving and logs each second.
+
+**Tested how:** stand-in run in New Tutorial, with overlay pictures (`LINKTEST_OVERLAY=1`). The
+overlay showed, hid right after the death ("canAct off"), and from +3 s logged "kept off while
+Mycelium's cutscene is playing" until the end of the run. **Not tested** in Minecraft.
+
+## 2026-11-11 The sleeping spores keep their own sizes
+
+**Your request:** change the tutorial sleepers' sizes to match too.
+
+**Changed:** `ColonyWatch.Sizes`: a sleeper's own scale (`lossyScale.y`); 1 for your colony.
+`McColonyBodies` scales each Minecraft body by it about its feet. Mycelium only; no protocol
+change.
+
+**Tested how:** stand-in run in New Tutorial: "size x1.00, x1.57, x0.86, x1.00, x1.10, x1.00,
+x1.17". **Not tested** in Minecraft (how they look).
+
+## 2026-11-11 The tutorial's sleeping spores as Minecraft spores (protocol v63)
+
+**Your request:** replace the sleeping Mycelium spores in the tutorial with Minecraft spores.
+
+**Found** (new test aid `-mcSleeperSurvey`): 7 sleepers under `--SleepingSpores--`. Each is a
+posed mesh with cap and body materials (their colours), a "Zzz" particle and an Animator, with its
+transform at its feet. They're scaled 0.86 to 1.57 and in no colony.
+
+**Changed:**
+- Mycelium (`ColonyWatch.AddSleepers`): the sleepers go after your colony in the Colony list,
+  with their colours, lying on their backs (pose 2), facing as in the scene.
+- New Colony field 0x7E0 `listed`: how many entries are your colony. New SporeMoves field 0x08:
+  how many get stand-ins. Protocol version 63.
+- `McColonyBodies` places the sleepers' bodies at their feet and keeps their "Zzz" drawn.
+  `ColonyPush` and `ColonyPassThrough` only touch your colony.
+- Minecraft: `MycColony` lists only your colony, but makes bodies for all, even with no colony.
+  `SporeProxies` makes no stand-ins for the sleepers.
+- The friends' zip is rebuilt for v63.
+
+**Tested how:** stand-in run in New Tutorial. Mycelium sent "1 spore(s) ... Pumpkin (you)" and
+"7 of the scene's 7 sleeping spore(s) sent after the colony (lying, not listed)", each with its own
+body colour. The stand-in read 8 entries, with SleepingSpore 2 (1) "at a decoration, pose 2,
+facing yaw 90".
+
+**Not tested:** in Minecraft (the stand-in draws no bodies), so not how they look, whether they
+lie the same way round as Mycelium's, or that they stay out of the player list. Their sizes aren't
+copied.
+
 ## 2026-11-11 Mycelium's post-release commits in the Steam mod (merged, not swapped)
 
 **Your request:** patch the newer commits into the mod, since the plain DLL swap crashed.

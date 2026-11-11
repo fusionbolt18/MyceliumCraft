@@ -220,6 +220,13 @@ Single-player and offline only.
 - **Your world's settings apply in any world while linked: not tested in Minecraft.** Immediate
   respawn on, the day-night cycle off, and the time set to just after noon. A friend's own values
   are put back when Mycelium closes.
+- **The giga beetle's two impaled spores are Minecraft spores**, standing, tilted with its
+  mandibles: not tested in Minecraft.
+- **Minecraft's overlay hides for the tutorial's ending** (death and cutscene): tested with the
+  stand-in, not in Minecraft.
+- **The tutorial's sleeping spores are Minecraft spores, lying down: not tested in Minecraft.**
+  Each has its own colours and keeps its "Zzz". They aren't in your player list, and each has
+  its own size.
 - **Spores answer any Emotecraft emote with the same emote: not tested in real Minecraft.** Do an
   emote facing spores near you, and the ones that would wave back (Mycelium's own rule) do your
   emote instead. The signal to Mycelium and its spores answering were tested with the stand-in.

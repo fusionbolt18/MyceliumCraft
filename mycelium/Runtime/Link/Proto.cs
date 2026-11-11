@@ -84,6 +84,7 @@ namespace MyceliumCraft.Link
         public const int ColMax = 24;
         public const int ColWaving = 0x734;        // u32, since v51: bit i = spore i is waving (its Animator in "Hello", Mycelium's Wave trigger)
         public const int ColPoses = 0x798;         // u8[ColMax], since v58: each spore at a decoration: 0 none, 1 sitting, 2 lying on its back (head behind), 4 dancing at the beetle drum, 5 lying with its head ahead
+        public const int ColListed = 0x7E0;        // u32, since v63: how many of the Count entries are your colony; the rest are scenery spores (the tutorial's sleepers): not listed, not counted
         public const int ColYaws = 0x7B0;          // i16[ColMax], since v58: each spore's facing as a Minecraft yaw, in tenths of a degree (0..3599)
         public const int ColDrums = 0x738;         // f32[ColMax], since v57: how far through Mycelium's "Drum Hit" each spore is (0..1); -1 = not hitting the beetle drum
         public const int ColNutrientBonus = 0x730; // i32, just after the list: Mycelium's nutrient bonus in percent; -1 = not in a run
@@ -102,6 +103,7 @@ namespace MyceliumCraft.Link
         // Minecraft's collision has pushed each (Minecraft -> Mycelium), since v46.
         public const int OffSporeMoves = OffBodies + BodiesBytes;
         public const int SporeMovesBytes = 0x400;
+        public const int SmStandIns = 0x08; // u32, since v63: how many of the positions get a stand-in in Minecraft (your colony's; not the scenery spores after them)
         public const int SmSeq = 0x00, SmCount = 0x04, SmPositions = 0x10, SmPushes = 0x200; // f32 x, y, z feet (y NaN = no stand-in); f32 total x, z in blocks
 
         // Boss (Mycelium -> Minecraft, seqlock): the final boss's bar, since v47.
@@ -124,7 +126,7 @@ namespace MyceliumCraft.Link
 
         public const int MappingBytes = OffForge + ForgeBytes;
         public const uint Magic = 0x4343594D; // "MYCC"
-        public const uint Version = 62;
+        public const uint Version = 63;
         public const ulong HeartbeatTimeoutMs = 3000;
 
         // Header @0x000

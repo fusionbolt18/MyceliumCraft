@@ -294,6 +294,13 @@ public final class MycLink {
 	}
 
 	/** Where the other spores stand: x, y, z per slot (y NaN = no stand-in). Returns how many slots, or -1 if unreadable. */
+	private static volatile int sporeStandIns;
+
+	/** How many of the last read positions get stand-ins (your colony's; since v63, the scenery spores after them don't). */
+	public static int sporeStandIns() {
+		return sporeStandIns;
+	}
+
 	public static int readSporePositions(float[] out) {
 		MemorySegment s = shm;
 		if (s == null) {
@@ -307,9 +314,11 @@ public final class MycLink {
 				continue;
 			}
 			int count = Math.max(0, Math.min(COL_MAX, s.get(JAVA_INT, b + SM_COUNT)));
+			int standIns = Math.max(0, Math.min(count, s.get(JAVA_INT, b + SM_STAND_INS)));
 			MemorySegment.copy(s, JAVA_FLOAT, b + SM_POSITIONS, out, 0, count * 3);
 			VarHandle.loadLoadFence();
 			if (seq1 == (int) INT.getVolatile(s, b + SM_SEQ)) {
+				sporeStandIns = standIns;
 				return count;
 			}
 		}
@@ -698,6 +707,8 @@ public final class MycLink {
 	/** Plain snapshot of the Colony block: every spore in your colony. */
 	public static final class Colony {
 		public int count;
+		/** How many of the count entries are your colony (since v63); the rest are scenery spores (the tutorial's sleepers): bodies only. */
+		public int listed;
 		/** Average happiness 0..1 (-1 = no colony). */
 		public float average = -1f;
 		/** The spore you control (-1 = none). */
@@ -741,6 +752,7 @@ public final class MycLink {
 				continue;
 			}
 			out.count = Math.max(0, Math.min(COL_MAX, s.get(JAVA_INT, b + COL_COUNT)));
+			out.listed = Math.max(0, Math.min(out.count, s.get(JAVA_INT, b + COL_LISTED)));
 			out.average = s.get(JAVA_FLOAT, b + COL_AVERAGE);
 			out.current = s.get(JAVA_INT, b + COL_CURRENT);
 			out.nutrientBonus = s.get(JAVA_INT, b + COL_NUTRIENT_BONUS);

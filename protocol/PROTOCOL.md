@@ -29,7 +29,7 @@ a block without locks.
 - **Reader:** read `seq`. If it's odd, try again. Read the fields, then read `seq` again. If it
   changed, try again.
 
-## Layout (version 62)
+## Layout (version 63)
 
 ### Header @ 0x000
 
@@ -300,6 +300,7 @@ frame while another spore is in its Sprout. The mapping grows by 0x800.
 | 0x738 + 4·i | f32 | since version 57: how far through a beetle drum hit spore i is (its Animator's "Drum Hit", normalised time 0..1, also while blending into it); −1 = not hitting the drum. Minecraft poses that spore's body so (DrumPose) |
 | 0x798 + i | u8 | since version 58: spore i at a decoration (as `MinecraftDriver.DecorationAnims`): 0 none or standing, 1 sitting, 2 lying on its back with the head behind ("Sleep"), 4 dancing at the beetle drum ("Bustin Moves": Minecraft plays a random Emotecraft dance on it), 5 lying with the head ahead ("Lay"). Minecraft poses that spore's body as yours |
 | 0x7B0 + 2·i | i16 | since version 58: spore i's facing as a Minecraft yaw, in tenths of a degree (0..3599); Minecraft reads the bed's shape along it |
+| 0x7E0 | u32 | since version 63: how many of the `count` entries are your colony. The rest, after it, are scenery spores (the tutorial's sleeping spores, `ColonyWatch.AddSleepers`): Minecraft makes their bodies (lying, pose 2) but doesn't list them in the player list or count them |
 
 ### Boss @ after SporeMoves (Mycelium → Minecraft, seqlock). Since version 47
 
@@ -358,6 +359,7 @@ mapping grows by 0x400. Slot = the spore's entry in Colony.
 |---|---|---|
 | 0x00 | u32 | seq, for count and positions (Mycelium writes) |
 | 0x04 | u32 | count |
+| 0x08 | u32 | since version 63: how many of them get a stand-in (your colony's). The scenery spores after them only place their bodies (a lying body fits the ground at its feet) |
 | 0x10 + 12·i | f32 ×3 | a spore's feet in Minecraft's blocks; y NaN = no stand-in (you, or gone) |
 | 0x200 + 8·i | f32 ×2 | Minecraft writes: how far its collision has pushed this spore in all, x and z in blocks. Mycelium moves the spore by what's new |
 

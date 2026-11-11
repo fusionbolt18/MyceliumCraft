@@ -57,8 +57,10 @@ public final class MycColony {
 		long now = System.nanoTime();
 		float dt = lastNanos == 0 ? 0f : Math.min(0.25f, (now - lastNanos) / 1e9f);
 		lastNanos = now;
-		boolean have = active && readColony() && COLONY.count > 0 && COLONY.average >= 0f;
-		present = have;
+		// Bodies for every entry (the tutorial's sleepers too, even with no colony); the player list only for your colony.
+		boolean read = active && readColony() && COLONY.count > 0;
+		present = read;
+		boolean have = read && COLONY.listed > 0 && COLONY.average >= 0f;
 		if (!have) {
 			if (footerSet) {
 				minecraft.gui.hud.getTabList().setFooter(null);
@@ -73,7 +75,7 @@ public final class MycColony {
 			}
 			return;
 		}
-		boolean haveCurrent = COLONY.current >= 0 && COLONY.current < COLONY.count && minecraft.player != null;
+		boolean haveCurrent = COLONY.current >= 0 && COLONY.current < COLONY.listed && minecraft.player != null;
 		MycSkins.setYours(haveCurrent ? minecraft.player.getUUID() : null,
 			haveCurrent ? MycSkins.skin(COLONY.caps[COLONY.current], COLONY.colors[COLONY.current]) : null);
 		float target = Math.max(0f, Math.min(1f, COLONY.average));
@@ -86,7 +88,7 @@ public final class MycColony {
 		int filled = Math.round(shown * SEGMENTS);
 		boolean inRun = COLONY.nutrientBonus >= 0;
 		StringBuilder key = new StringBuilder().append(COLONY.current).append('|').append(COLONY.nutrientBonus).append('|').append(inRun ? "" : word(target));
-		for (int i = 0; i < COLONY.count; i++) {
+		for (int i = 0; i < COLONY.listed; i++) {
 			key.append('|').append(COLONY.names[i]).append('#').append(COLONY.colors[i]).append('#').append(COLONY.caps[i]);
 		}
 		String list = key.toString();
@@ -103,7 +105,7 @@ public final class MycColony {
 		footerSet = true;
 		if (listChanged) {
 			MycLink.LOG.info("MyceliumCraft: colony: {} spore(s), {} other row(s) in the player list, average happiness {} ({}), footer {}",
-				COLONY.count, rows.size(), String.format("%.2f", target), word(target), inRun ? "Nutrient Multiplier: +" + COLONY.nutrientBonus + "%" : "bar " + filled + "/" + SEGMENTS);
+				COLONY.listed, rows.size(), String.format("%.2f", target), word(target), inRun ? "Nutrient Multiplier: +" + COLONY.nutrientBonus + "%" : "bar " + filled + "/" + SEGMENTS);
 		}
 	}
 
@@ -146,7 +148,7 @@ public final class MycColony {
 	/** Rows for the other spores, made again only when the colony changes (a row keeps its id and skin). */
 	private static void updateRows() {
 		StringBuilder key = new StringBuilder();
-		for (int i = 0; i < COLONY.count; i++) {
+		for (int i = 0; i < COLONY.listed; i++) {
 			if (i != COLONY.current) {
 				key.append(i).append(':').append(COLONY.names[i]).append('#').append(COLONY.colors[i]).append('#').append(COLONY.caps[i]).append('|');
 			}
@@ -156,7 +158,7 @@ public final class MycColony {
 		}
 		rowsKey = key.toString();
 		List<PlayerInfo> made = new ArrayList<>();
-		for (int i = 0; i < COLONY.count; i++) {
+		for (int i = 0; i < COLONY.listed; i++) {
 			if (i == COLONY.current) {
 				continue;
 			}

@@ -1856,7 +1856,10 @@ While Mycelium shows a level (and `overlay=1`), Mycelium sets `OVERLAY` in its s
     - other control takeovers only after 0.3 s (skills take the controls for a moment), except
       when Mycelium's HUD fades out with them (`HudFadingOut`: a menu calls
       `HUDController.FadeHUD(false)`): then at once (since 2026-11-10);
-    - a hit's knockback never does. Mycelium switches "can act" off until the "Hurt" animation is
+    - Mycelium's story cutscene (`CutscenePlayer.cutsceneIsOn`, the tutorial's ending) hides it at
+      once (since 2026-11-11);
+    - a hit's knockback never does (being dead isn't one: Mycelium keeps you invincible then too,
+      `PlayerHealth.dead`). Mycelium switches "can act" off until the "Hurt" animation is
       half done (from a few ms to about 0.4 s seen) and sets `isInvincible` for exactly that time;
       that's how it's recognised.
   - while Minecraft isn't driving;
@@ -2010,6 +2013,42 @@ While Mycelium shows a level (and `overlay=1`), Mycelium sets `OVERLAY` in its s
   capture now takes a PoseStack). Lying goes through `MycPlayerModel.lie`, shared with yours: the
   body is drawn facing south ('local' facing 0), and the ground is read along the spore's world
   facing. The pose, and for lying the spore's place and yaw, are part of what decides a re-send.
+
+### 5.3.8b2 The tutorial's sleeping and impaled spores as Minecraft spores (since 2026-11-11, protocol v63)
+
+- **Mycelium:** the tutorial ("New Tutorial") has 7 sleeping spores under `--SleepingSpores--`
+  (`SleepingSpore*`). Each is a posed SkinnedMeshRenderer with a cap and a body material, a "Zzz"
+  particle (`SleepingParticle`), and an Animator. Its transform is at its feet. They're in no
+  colony.
+- `ColonyWatch.AddSleepers` puts them after your colony in the same Colony list:
+  - colours from the materials (`m_sporeCap*` / `m_sporeBody*` `_Color`);
+  - pose 2, lying on its back as Mycelium's "Sleep";
+  - facing from the transform, and the scene name as the name (for logs only).
+- Colony 0x7E0 `listed` says how many entries are your colony. SporeMoves 0x08 says how many get
+  stand-ins.
+- `McColonyBodies` shows their bodies at their feet, with no middle-to-feet offset, and hides the
+  spore mesh but not the "Zzz".
+- `ColonyPush` and `ColonyPassThrough` only touch your colony.
+- **Minecraft:** `MycColony` lists, counts and skins only `listed` entries, but it hands every entry
+  to `MycSporeBodies`, even when there's no colony at all. `SporeProxies` makes stand-ins only for
+  `sporeStandIns()`.
+- **Layout** (`McColonyBodies.Layout`, every frame): each lying body's footprint is centred on the
+  original mesh's middle, since a Minecraft lying body lies behind its feet. Overlapping ones are
+  then pushed apart. The shift (`ColonyWatch.Shift`) is drawn and sent as the feet, so Minecraft
+  fits the ground there.
+- **Sizes:** each body is drawn at its sleeper's own scale (`ColonyWatch.Sizes`, 0.86 to 1.57),
+  scaled about its feet in `McColonyBodies`.
+- Test aid `-mcSleeperSurvey` logs what each sleeper is made of.
+- **The giga beetle's impaled spores** (since 2026-11-11): two `ImpaledSpore` objects on its
+  mandibles. They're upright bind-pose meshes with no Animator, in a tilted frame. They follow the
+  sleepers in the list:
+  - standing, with their own colours and sizes;
+  - `FullTurn`: the body takes the spore's whole rotation;
+  - `Floating`: no feet position, so no ground fitting and no stand-in;
+  - only while the beetle is active.
+
+  The scenery search includes switched-off objects. Test aids: `-mcBeetleSurvey`,
+  `-mcGigaBeetleTest`.
 
 ### 5.3.8c Dancing at the beetle drum (since 2026-11-09)
 

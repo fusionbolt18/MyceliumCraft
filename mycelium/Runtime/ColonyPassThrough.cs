@@ -44,7 +44,7 @@ namespace MyceliumCraft
 
             spore.GetComponentsInChildren(true, mine);
             int before = ignored.Count, others = 0;
-            for (int i = 0; i < colony.Count; i++)
+            for (int i = 0; i < colony.Listed; i++) // your colony only (not the scenery spores after it)
             {
                 GameObject other = colony.Spores[i];
                 if (other == null || other == spore.gameObject) continue;

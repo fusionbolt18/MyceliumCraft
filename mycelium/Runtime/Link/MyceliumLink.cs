@@ -359,13 +359,14 @@ namespace MyceliumCraft.Link
 
         /// <summary>Seqlock read of one colony spore's body into data (one batch: Texture[0]). False if Minecraft kept interrupting.</summary>
         /// <summary>Where the other spores stand: x, y, z per slot (y NaN = no stand-in).</summary>
-        public void WriteSporePositions(int count, float[] positions)
+        public void WriteSporePositions(int count, float[] positions, int standIns = -1)
         {
             int b = Proto.OffSporeMoves;
             uint seq = ReadU32(view, b + Proto.SmSeq);
             WriteU32(view, b + Proto.SmSeq, seq + 1);
             Thread.MemoryBarrier();
             WriteU32(view, b + Proto.SmCount, (uint)count);
+            WriteU32(view, b + Proto.SmStandIns, (uint)(standIns < 0 ? count : Math.Min(standIns, count)));
             for (int i = 0; i < count * 3; i++) WriteF32(view, b + Proto.SmPositions + i * 4, positions[i]);
             Thread.MemoryBarrier();
             WriteU32(view, b + Proto.SmSeq, seq + 2);
@@ -578,7 +579,7 @@ namespace MyceliumCraft.Link
 
         /// <summary>A string as UTF-8, cut to fit (whole characters) and zero-terminated.</summary>
         /// <summary>Seqlock write of the Colony block (average -1: no colony; current -1: none).</summary>
-        public void WriteColony(int count, uint[] colors, uint[] caps, float[] speeds, float[] emerges, float[] happiness, string[] names, float average, int current, int nutrientBonus, uint waving, float[] drums, byte[] poses, float[] yaws)
+        public void WriteColony(int count, uint[] colors, uint[] caps, float[] speeds, float[] emerges, float[] happiness, string[] names, float average, int current, int nutrientBonus, uint waving, float[] drums, byte[] poses, float[] yaws, int listed = -1)
         {
             int b = Proto.OffColony;
             count = Math.Max(0, Math.Min(count, Proto.ColMax));
@@ -590,6 +591,7 @@ namespace MyceliumCraft.Link
             Marshal.WriteInt32(view, b + Proto.ColCurrent, current);
             Marshal.WriteInt32(view, b + Proto.ColNutrientBonus, nutrientBonus);
             WriteU32(view, b + Proto.ColWaving, waving);
+            WriteU32(view, b + Proto.ColListed, (uint)(listed < 0 ? count : Math.Min(listed, count)));
             for (int i = 0; i < count; i++)
             {
                 int e = b + Proto.ColList + Proto.ColSize * i;

@@ -59,6 +59,7 @@ public final class SporeProxies {
 		if (n < 0) {
 			return; // unreadable this tick: leave them where they are
 		}
+		n = Math.min(n, MycLink.sporeStandIns()); // not the scenery spores (the tutorial's sleepers) after your colony
 		ServerPlayer player = level.players().get(0);
 		float width = player.getBbWidth(), height = player.getBbHeight();
 		int count = 0;

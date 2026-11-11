@@ -25,6 +25,17 @@ namespace MyceliumCraft
     /// During a run (any level but The Carcass) Mycelium's nutrient bonus goes too, worked out as its
     /// HUD does (HUDNutrients: 50% per loop after the first), and the list shows that in place of
     /// the happiness bar.
+    ///
+    /// Scenery spores (your request, 2026-11-11): the tutorial's sleeping spores (SleepingSpore*, posed
+    /// meshes with a "Zzz" particle, not in any colony) come after your colony in the same list, so
+    /// Minecraft makes each a body too, lying on its back as Mycelium's "Sleep". Listed says where your
+    /// colony ends: Minecraft doesn't put the others in the player list, count them, or give them
+    /// stand-ins. Their colours come from their cap and body materials.
+    ///
+    /// The giga beetle's impaled spores (ImpaledSpore on its mandibles, your request 2026-11-11) come
+    /// after them the same way: standing (their bind pose, upright in their own frame), turned and
+    /// tilted with the mandible (FullTurn), not fitted to the ground and without a stand-in (Floating).
+    /// They're sent only while the beetle is out.
     /// </summary>
     sealed class ColonyWatch
     {
@@ -40,6 +51,14 @@ namespace MyceliumCraft
         public readonly byte[] Poses = new byte[Proto.ColMax];
         /// <summary>Each spore's facing as a Minecraft yaw.</summary>
         public readonly float[] Yaws = new float[Proto.ColMax];
+        /// <summary>How big each one's Minecraft body is drawn, times the colony spores' size: 1 for your colony, a sleeper's own scale for it.</summary>
+        public readonly float[] Sizes = new float[Proto.ColMax];
+        /// <summary>The body follows the spore's whole rotation (tilt too), not just which way it faces: the impaled spores.</summary>
+        public readonly bool[] FullTurn = new bool[Proto.ColMax];
+        /// <summary>Not on the ground: no feet position for Minecraft (so no ground fitting and no stand-in).</summary>
+        public readonly bool[] Floating = new bool[Proto.ColMax];
+        /// <summary>Where a lying scenery spore's Minecraft body goes, from its own feet (McColonyBodies.Layout): centred on the original mesh, apart from the others.</summary>
+        public readonly Vector3[] Shift = new Vector3[Proto.ColMax];
         readonly Dictionary<GameObject, int> lastPose = new Dictionary<GameObject, int>();
         readonly Dictionary<RuntimeAnimatorController, bool> hasActionState = new Dictionary<RuntimeAnimatorController, bool>();
         /// <summary>Bit i: spore i is waving (Mycelium's Wave trigger plays its Animator's "Hello" state: WaveCurio, waving back, the dance and drum curios).</summary>
@@ -49,7 +68,14 @@ namespace MyceliumCraft
         public readonly float[] Happiness = new float[Proto.ColMax];
         public readonly string[] Names = new string[Proto.ColMax];
         public int Count;
+        /// <summary>How many of the Count entries are your colony; the rest are scenery spores (the tutorial's sleepers).</summary>
+        public int Listed;
         public int Current = -1;
+        readonly List<GameObject> sleepers = new List<GameObject>();
+        readonly List<GameObject> impaled = new List<GameObject>();
+        int impaledLogged = -1;
+        bool sleepersLooked;
+        int sleepersLogged = -1;
         public float Average = -1f;
         public int NutrientBonus = -1; // percent; -1 = not in a run
 
@@ -173,6 +199,100 @@ namespace MyceliumCraft
 
         void Look(float scale)
         {
+            Look2(scale);
+            Listed = Count;
+            AddSleepers();
+        }
+
+        /// <summary>The scene's sleeping spores after the colony: lying on their backs, never listed.</summary>
+        void AddSleepers()
+        {
+            if (!sleepersLooked)
+            {
+                sleepersLooked = true;
+                sleepers.Clear();
+                impaled.Clear();
+                // Switched-off ones too (the giga beetle is off until its intro).
+                foreach (Transform t in UnityEngine.Object.FindObjectsOfType<Transform>(true))
+                {
+                    if (t.GetComponentInChildren<SkinnedMeshRenderer>(true) == null) continue;
+                    if (t.name.StartsWith("SleepingSpore")) sleepers.Add(t.gameObject);
+                    else if (t.name.StartsWith("ImpaledSpore")) impaled.Add(t.gameObject);
+                }
+            }
+            int added = 0;
+            foreach (GameObject s in sleepers)
+            {
+                if (s == null || !s.activeInHierarchy || Count >= Proto.ColMax) continue;
+                SceneryColours(s, out Color body, out Color cap);
+                Names[Count] = s.name; // only for logs: not listed in Minecraft
+                Happiness[Count] = 1f;
+                Colors[Count] = Rgb(body);
+                Caps[Count] = Rgb(cap);
+                Speeds[Count] = 0f;
+                Emerges[Count] = -1f;
+                Drums[Count] = -1f;
+                Poses[Count] = 2; // lying on its back, Mycelium's "Sleep"
+                Yaws[Count] = WorldMapping.McYaw(s.transform.eulerAngles.y);
+                Sizes[Count] = s.transform.lossyScale.y; // 0.86 to 1.57 in the tutorial (your request, 2026-11-11)
+                FullTurn[Count] = false;
+                Floating[Count] = false;
+                Spores[Count] = s;
+                Count++;
+                added++;
+            }
+            int stuck = 0;
+            foreach (GameObject s in impaled)
+            {
+                if (s == null || !s.activeInHierarchy || Count >= Proto.ColMax) continue;
+                SceneryColours(s, out Color body, out Color cap);
+                Names[Count] = s.transform.parent != null ? s.transform.parent.name + "/" + s.name : s.name; // only for logs
+                Happiness[Count] = 1f;
+                Colors[Count] = Rgb(body);
+                Caps[Count] = Rgb(cap);
+                Speeds[Count] = 0f;
+                Emerges[Count] = -1f;
+                Drums[Count] = -1f;
+                Poses[Count] = 0; // standing: its bind pose, upright in its own (tilted) frame
+                Yaws[Count] = WorldMapping.McYaw(s.transform.eulerAngles.y);
+                Sizes[Count] = s.transform.lossyScale.y;
+                FullTurn[Count] = true;
+                Floating[Count] = true;
+                Spores[Count] = s;
+                Count++;
+                stuck++;
+            }
+            if (stuck != impaledLogged)
+            {
+                impaledLogged = stuck;
+                if (impaled.Count > 0)
+                    McLog.Info($"colony: {stuck} of the scene's {impaled.Count} impaled spore(s) sent (standing, turned with the giga beetle's mandibles, not listed){(stuck == 0 ? ": the beetle isn't out" : "")}");
+            }
+            if (added != sleepersLogged)
+            {
+                sleepersLogged = added;
+                if (added > 0 || sleepers.Count > 0)
+                    McLog.Info($"colony: {added} of the scene's {sleepers.Count} sleeping spore(s) sent after the colony (lying, not listed): " +
+                               string.Join(", ", sleepers.ConvertAll(x => x != null ? $"{x.name} body #{Colors[Mathf.Min(Proto.ColMax - 1, Listed + sleepers.IndexOf(x))]:X6} size x{x.transform.lossyScale.y:F2}" : "gone")));
+            }
+        }
+
+        /// <summary>A scenery spore's colours: its cap and body materials (m_sporeCap*, m_sporeBody*).</summary>
+        static void SceneryColours(GameObject s, out Color body, out Color cap)
+        {
+            body = Color.white;
+            cap = Color.white;
+            var r = s.GetComponentInChildren<SkinnedMeshRenderer>(true);
+            foreach (Material m in r.sharedMaterials)
+            {
+                if (m == null || !m.HasProperty("_Color")) continue;
+                if (m.name.Contains("sporeCap")) cap = m.GetColor("_Color");
+                else if (m.name.Contains("sporeBody")) body = m.GetColor("_Color");
+            }
+        }
+
+        void Look2(float scale)
+        {
             Count = 0;
             Current = -1;
             Waving = 0;
@@ -214,6 +334,9 @@ namespace MyceliumCraft
                 Drums[Count] = spore != current ? DrumOf(spore) : -1f;
                 Poses[Count] = spore != current ? (byte)PoseOf(spore, Names[Count]) : (byte)0;
                 Yaws[Count] = WorldMapping.McYaw(spore.transform.eulerAngles.y);
+                Sizes[Count] = 1f;
+                FullTurn[Count] = false;
+                Floating[Count] = false;
                 if (Drums[Count] >= 0f) drumming++;
                 if (spore != current && WavingNow(spore)) Waving |= 1u << Count;
                 if (Emerges[Count] >= 0f && spore != current) sprouting++;
@@ -295,6 +418,11 @@ namespace MyceliumCraft
             hiding = false;
             nextLook = 0f;
             lastSeen.Clear();
+            sleepers.Clear();
+            sleepersLooked = false;
+            sleepersLogged = -1;
+            impaled.Clear();
+            impaledLogged = -1;
         }
     }
 }

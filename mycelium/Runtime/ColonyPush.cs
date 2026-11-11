@@ -42,18 +42,19 @@ namespace MyceliumCraft
             for (int i = 0; i < colony.Count; i++)
             {
                 GameObject spore = colony.Spores[i];
-                if (spore == null || spore == you.gameObject || !spore.activeInHierarchy)
+                if (spore == null || spore == you.gameObject || !spore.activeInHierarchy || colony.Floating[i])
                 {
                     positions[i * 3 + 1] = float.NaN; // no stand-in: that's you, or it's gone
                     continue;
                 }
-                Vector3 p = spore.transform.position;
-                map.ToMc(p.x, p.y - feetOffset, p.z, out double x, out double y, out double z);
+                Vector3 p = spore.transform.position + (i >= colony.Listed ? colony.Shift[i] : Vector3.zero); // a sleeper's body where it's laid out
+                // A scenery spore's (a tutorial sleeper's) transform is already at its feet; a colony spore's is its middle.
+                map.ToMc(p.x, p.y - (i < colony.Listed ? feetOffset : 0f), p.z, out double x, out double y, out double z);
                 positions[i * 3] = (float)x;
                 positions[i * 3 + 1] = (float)y;
                 positions[i * 3 + 2] = (float)z;
             }
-            link.WriteSporePositions(colony.Count, positions);
+            link.WriteSporePositions(colony.Count, positions, colony.Listed); // stand-ins for your colony only
             sent = true;
 
             float ease = Mathf.Min(1f, Time.deltaTime * 20f);
@@ -63,7 +64,7 @@ namespace MyceliumCraft
                 float dx = totalX - lastX[i], dz = totalZ - lastZ[i];
                 lastX[i] = totalX;
                 lastZ[i] = totalZ;
-                if (!haveTotals || i >= colony.Count) continue; // the totals so far are from before
+                if (!haveTotals || i >= colony.Listed) continue; // your colony only (no stand-ins for scenery spores); // the totals so far are from before
                 waiting[i] += new Vector3(dx, 0f, -dz) * (float)map.Scale;
                 if (waiting[i] == Vector3.zero) continue;
                 GameObject spore = colony.Spores[i];

@@ -76,6 +76,7 @@ public final class Proto {
 	public static final int COL_MAX = 24;
 	public static final long COL_WAVING = 0x734; // u32, since v51: bit i = spore i is waving (Mycelium's "Hello" state)
 	public static final long COL_POSES = 0x798; // u8[COL_MAX], since v58: 0 none, 1 sitting, 2 lying on its back (head behind), 4 dancing at the beetle drum, 5 lying with its head ahead
+	public static final long COL_LISTED = 0x7E0; // u32, since v63: how many of the count entries are your colony; the rest are scenery spores (the tutorial's sleepers)
 	public static final long COL_YAWS = 0x7B0; // i16[COL_MAX], since v58: each spore's facing, Minecraft yaw in tenths of a degree
 	public static final long COL_DRUMS = 0x738; // f32[COL_MAX], since v57: how far through Mycelium's "Drum Hit" each spore is (0..1); -1 = not drumming
 	public static final long COL_NUTRIENT_BONUS = 0x730; // i32, just after the list: Mycelium's nutrient bonus in percent; -1 = not in a run
@@ -93,6 +94,7 @@ public final class Proto {
 	// SporeMoves: where the other spores stand (Mycelium -> Minecraft, seqlock), and how far Minecraft's collision has pushed each (Minecraft -> Mycelium), since v46.
 	public static final long OFF_SPORE_MOVES = OFF_BODIES + BODIES_BYTES;
 	public static final long SPORE_MOVES_BYTES = 0x400;
+	public static final long SM_STAND_INS = 0x08; // u32, since v63: how many of the positions get stand-ins (your colony's)
 	public static final long SM_SEQ = 0x00, SM_COUNT = 0x04, SM_POSITIONS = 0x10, SM_PUSHES = 0x200; // f32 x, y, z feet (y NaN = no stand-in); f32 total x, z in blocks
 
 	// Boss (Mycelium -> Minecraft, seqlock): the final boss's bar, since v47.
@@ -115,7 +117,7 @@ public final class Proto {
 
 	public static final long MAPPING_BYTES = OFF_FORGE + FORGE_BYTES;
 	public static final int MAGIC = 0x4343594D; // "MYCC"
-	public static final int VERSION = 62;
+	public static final int VERSION = 63;
 	/** A side is alive if its heartbeat is younger than this. */
 	public static final long HEARTBEAT_TIMEOUT_MS = 3000;
 

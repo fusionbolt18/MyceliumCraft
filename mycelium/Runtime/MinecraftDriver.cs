@@ -333,6 +333,14 @@ namespace MyceliumCraft
             // Test aid: "-mcBossPullNative" (run without Minecraft): the boss's attacks on with nobody driving,
             // then how far Mycelium's own pull moves a spore that stands still, every second.
             if (Array.IndexOf(args, "-mcBossPullNative") >= 0) StartCoroutine(BossPullNativeTest());
+            // Test aid: "-mcSleeperSurvey" logs the tutorial's sleeping spores (SleepingSpore*): their parts, renderers, colours, animation.
+            if (Array.IndexOf(args, "-mcSleeperSurvey") >= 0) StartCoroutine(SleeperSurvey());
+            // Test aid: "-mcBeetleSurvey" logs everything drawn under the tutorial's "Giga Beetle" (spores on its mandibles).
+            if (Array.IndexOf(args, "-mcBeetleSurvey") >= 0) StartCoroutine(BeetleSurvey());
+            // Test aid: "-mcGigaBeetleTest" switches the tutorial's giga beetle on 3 s into driving, as reaching it does.
+            if (Array.IndexOf(args, "-mcGigaBeetleTest") >= 0) StartCoroutine(GigaBeetleTest());
+            // Test aid: "-mcTutorialEndTest" kills you 4 s into driving (as the tutorial's giga beetle does), then logs the cutscene and the overlay.
+            if (Array.IndexOf(args, "-mcTutorialEndTest") >= 0) StartCoroutine(TutorialEndTest());
             // Test aid: "-mcLoop <n>" starts on that loop, to see its nutrient bonus.
             int loopArg = Array.IndexOf(args, "-mcLoop");
             if (loopArg >= 0 && loopArg + 1 < args.Length && int.TryParse(args[loopArg + 1], out int loop))
@@ -591,7 +599,7 @@ namespace MyceliumCraft
             // Your colony: in Minecraft's player list instead of Mycelium's colony meter (ColonyWatch, MycColony.java).
             if (colony.Update(rb != null && Steering && link.MinecraftAlive, (float)map.Scale))
             {
-                if (rb != null) link.WriteColony(colony.Count, colony.Colors, colony.Caps, colony.Speeds, colony.Emerges, colony.Happiness, colony.Names, colony.Average, colony.Current, colony.NutrientBonus, colony.Waving, colony.Drums, colony.Poses, colony.Yaws);
+                if (rb != null) link.WriteColony(colony.Count, colony.Colors, colony.Caps, colony.Speeds, colony.Emerges, colony.Happiness, colony.Names, colony.Average, colony.Current, colony.NutrientBonus, colony.Waving, colony.Drums, colony.Poses, colony.Yaws, colony.Listed);
                 else link.WriteColony(0, colony.Colors, colony.Caps, colony.Speeds, colony.Emerges, colony.Happiness, colony.Names, -1f, -1, -1, 0u, colony.Drums, colony.Poses, colony.Yaws);
             }
 
@@ -667,6 +675,8 @@ namespace MyceliumCraft
             // Minecraft's hand, HUD and screens on top, during play (not over Mycelium's own menus).
             // ...and not over Mycelium's loading, fade, startup or death screens (it's drawn above all its UI).
             bool covered = ScreenCover.Showing(out string coverWhy);
+            // Mycelium's story cutscene (CutscenePlayer: the tutorial's end, after the giga beetle) covers it too.
+            if (!covered && CutsceneOn()) { covered = true; coverWhy = "Mycelium's cutscene is playing"; }
             if (covered != wasCovered)
             {
                 wasCovered = covered;
@@ -1385,7 +1395,9 @@ namespace MyceliumCraft
                     if (Cycloning()) return false;
                     // A hit's knockback switches the controls off until the "Hurt" animation is half
                     // done, and marks the player invincible for exactly that time.
-                    bool knockback = invincibleField != null && (bool)invincibleField.GetValue(controller);
+                    // Dead, Mycelium keeps you invincible too (PlayerHealth.Update): that isn't a knockback, and
+                    // taking it for one kept the overlay up through the tutorial's ending (your report, 2026-11-11).
+                    bool knockback = invincibleField != null && (bool)invincibleField.GetValue(controller) && !PlayerDead();
                     why = knockback ? "canAct off, knockback" : "canAct off";
                     return true;
                 }
@@ -1652,6 +1664,40 @@ namespace MyceliumCraft
             ratioFrom = playerHealth;
             ratioLastHealth = health;
             ratioLastMax = max;
+        }
+
+        static readonly Type CutsceneType = Type.GetType("CutscenePlayer, Assembly-CSharp");
+        static readonly FieldInfo CutsceneOnField = CutsceneType?.GetField("cutsceneIsOn", BindingFlags.NonPublic | BindingFlags.Instance);
+        static readonly Type HealthType = Type.GetType("PlayerHealth, Assembly-CSharp");
+        static readonly FieldInfo DeadField = HealthType?.GetField("dead", BindingFlags.NonPublic | BindingFlags.Instance);
+        Component cutscene, health;
+        float nextCutsceneFind;
+        bool wasCutscene;
+
+        /// <summary>A CutscenePlayer cutscene is playing (its cutsceneIsOn; Mycelium's story text over black).</summary>
+        bool CutsceneOn()
+        {
+            if (CutsceneOnField == null) return false;
+            if (cutscene == null && Time.unscaledTime >= nextCutsceneFind)
+            {
+                nextCutsceneFind = Time.unscaledTime + 1f;
+                cutscene = UnityEngine.Object.FindObjectOfType(CutsceneType) as Component;
+            }
+            bool on = cutscene != null && (bool)CutsceneOnField.GetValue(cutscene);
+            if (on != wasCutscene)
+            {
+                wasCutscene = on;
+                McLog.Info(on ? "cutscene: Mycelium's cutscene started; Minecraft's overlay is hidden" : "cutscene: Mycelium's cutscene is over");
+            }
+            return on;
+        }
+
+        /// <summary>Mycelium's PlayerHealth says you're dead.</summary>
+        bool PlayerDead()
+        {
+            if (DeadField == null) return false;
+            if (health == null) { GameObject p = GameObject.Find("PlayerParent"); health = p != null ? p.GetComponent(HealthType) : null; }
+            return health != null && (bool)DeadField.GetValue(health);
         }
 
         const float OverlayControlsGrace = 0.3f; // Mycelium must keep the controls this long before the overlay hides (unless its HUD fades out: a menu)
@@ -2601,6 +2647,115 @@ namespace MyceliumCraft
                     $"phase {phase}, controls '{controlsWhy}', held by Mycelium {heldByMycelium}, spore at {rb.position:F1} velocity {rb.velocity:F1} kinematic {rb.isKinematic}, boss at {boss.transform.position:F1}");
             }
         }
+
+        /// <summary>Test aid (-mcTutorialEndTest): death in the tutorial, its cutscene, and whether the overlay is covered.</summary>
+        System.Collections.IEnumerator TutorialEndTest()
+        {
+            while (phase != Phase.Driving) yield return null;
+            yield return new WaitForSeconds(4f);
+            GameObject p = GameObject.Find("PlayerParent");
+            Component h = p != null && HealthType != null ? p.GetComponent(HealthType) : null;
+            if (h == null) { McLog.Info("tutorial end test: no PlayerHealth"); yield break; }
+            McLog.Info($"tutorial end test: killing you in '{SceneManager.GetActiveScene().name}'");
+            HealthType.GetMethod("PlayerTakeDamage").Invoke(h, new object[] { 1e7f });
+            for (int i = 1; i <= 12; i++)
+            {
+                yield return new WaitForSeconds(1f);
+                bool controls = MyceliumHasControls(out string why);
+                bool cover = ScreenCover.Showing(out string coverWhy);
+                McLog.Info($"tutorial end test: +{i} s: dead {PlayerDead()}, cutscene {CutsceneOn()}, Mycelium has the controls {controls} ({why}), screen cover {cover} ({coverWhy}), overlay shown {overlay.Visible}");
+            }
+        }
+
+        /// <summary>Test aid (-mcGigaBeetleTest): the giga beetle out, then where its impaled spores and their colony entries are.</summary>
+        System.Collections.IEnumerator GigaBeetleTest()
+        {
+            while (phase != Phase.Driving) yield return null;
+            yield return new WaitForSeconds(3f);
+            Transform beetle = null;
+            foreach (Transform t in UnityEngine.Object.FindObjectsOfType<Transform>(true)) if (t.name == "Giga Beetle") beetle = t;
+            if (beetle == null) { McLog.Info("giga beetle test: no Giga Beetle"); yield break; }
+            beetle.gameObject.SetActive(true);
+            McLog.Info($"giga beetle test: the giga beetle is out at {beetle.position:F2}");
+            for (int i = 1; i <= 6; i++)
+            {
+                yield return new WaitForSeconds(1f);
+                for (int k = colony.Listed; k < colony.Count; k++)
+                    if (colony.FullTurn[k])
+                        McLog.Info($"giga beetle test: +{i} s: entry {k} {colony.Names[k]} at {colony.Spores[k].transform.position:F2} rotation {colony.Spores[k].transform.rotation.eulerAngles:F0} size x{colony.Sizes[k]:F2}, pose {colony.Poses[k]}, body #{colony.Colors[k]:X6} cap #{colony.Caps[k]:X6}");
+            }
+        }
+
+        /// <summary>Test aid (-mcBeetleSurvey): the giga beetle's drawn parts, and anything with a spore material in the scene that isn't a colony spore or a sleeper.</summary>
+        System.Collections.IEnumerator BeetleSurvey()
+        {
+            yield return new WaitForSeconds(4f);
+            foreach (Transform t in UnityEngine.Object.FindObjectsOfType<Transform>(true))
+            {
+                if (!t.name.Contains("Giga")) continue;
+                McLog.Info($"beetle survey: '{t.name}' under '{t.parent?.name}' active {t.gameObject.activeInHierarchy} at {t.position:F2}: {string.Join(", ", Array.ConvertAll(t.GetComponents<Component>(), c => c.GetType().Name))}");
+            }
+            foreach (Renderer r in UnityEngine.Object.FindObjectsOfType<Renderer>(true))
+            {
+                bool spore = Array.Exists(r.sharedMaterials, m => m != null && (m.name.Contains("spore") || m.name.Contains("Spore")));
+                string path = r.transform.name;
+                for (Transform x = r.transform.parent; x != null; x = x.parent) path = x.name + "/" + path;
+                bool underBeetle = path.Contains("Giga");
+                if (!underBeetle && !spore) continue;
+                if (path.Contains("SleepingSpore") || path.Contains("PlayerParent")) continue;
+                var mats = string.Join("; ", Array.ConvertAll(r.sharedMaterials, m => m == null ? "null" : $"{m.name}{(m.HasProperty("_Color") ? " " + m.GetColor("_Color") : "")}"));
+                string mesh = r is SkinnedMeshRenderer smr ? $"skinned {smr.sharedMesh?.name} bones {smr.bones.Length} root {smr.rootBone?.name}" : r is MeshRenderer ? $"mesh {r.GetComponent<MeshFilter>()?.sharedMesh?.name}" : r.GetType().Name;
+                McLog.Info($"beetle survey: {path} active {r.gameObject.activeInHierarchy}: {mesh}, materials [{mats}], at {r.transform.position:F2} rotation {r.transform.rotation.eulerAngles:F0} scale {r.transform.lossyScale:F2}, bounds size {r.bounds.size:F2}, animator above {r.GetComponentInParent<Animator>()?.name}");
+                if (r is SkinnedMeshRenderer sk && path.Contains("Impaled"))
+                {
+                    // Which way the spore lies in its own frame: head and feet against the hips, in the ImpaledSpore's local axes.
+                    Transform root = r.transform.parent, hips = null, head = null, footL = null;
+                    foreach (Transform b in sk.bones)
+                    {
+                        if (b == null) continue;
+                        string bn = b.name.ToLowerInvariant();
+                        if (hips == null && (bn == "org-spine" || bn == "def-spine" || bn == "torso" || bn == "mch-torso.parent")) hips = b;
+                        if (head == null && (bn == "org-head" || bn == "def-spine.006" || bn == "head")) head = b;
+                        if (footL == null && (bn == "org-foot.l" || bn == "def-foot.l" || bn == "foot.l")) footL = b;
+                    }
+                    string Local(Transform b) => b == null ? "?" : root.InverseTransformDirection(b.position - (hips != null ? hips.position : root.position)).normalized.ToString("F2");
+                    McLog.Info($"beetle survey:   {root.name} under {root.parent?.name}: local position {root.localPosition:F2} rotation {root.localRotation.eulerAngles:F0}; head from hips {Local(head)} ({head?.name}), left foot from hips {Local(footL)} ({footL?.name}), hips {hips?.name}");
+                }
+            }
+        }
+
+        /// <summary>Test aid (-mcSleeperSurvey): what the tutorial's sleeping spores are made of.</summary>
+        System.Collections.IEnumerator SleeperSurvey()
+        {
+            yield return new WaitForSeconds(4f);
+            int n = 0;
+            foreach (Transform t in UnityEngine.Object.FindObjectsOfType<Transform>())
+            {
+                if (!t.name.StartsWith("SleepingSpore")) continue;
+                n++;
+                var comps = string.Join(", ", Array.ConvertAll(t.GetComponents<Component>(), c => c.GetType().Name));
+                McLog.Info($"sleeper survey: '{t.name}' under '{t.parent?.name}' at {t.position:F2} rotation {t.rotation.eulerAngles:F0} scale {t.lossyScale:F2}, active {t.gameObject.activeInHierarchy}, layer {LayerMask.LayerToName(t.gameObject.layer)}: {comps}; {t.childCount} children");
+                foreach (Transform c in t.GetComponentsInChildren<Transform>(true))
+                {
+                    if (c == t) continue;
+                    var r = c.GetComponent<Renderer>();
+                    string extra = "";
+                    if (r != null)
+                    {
+                        var mats = string.Join("; ", Array.ConvertAll(r.sharedMaterials, m => m == null ? "null" : $"{m.name} ({m.shader.name}){(m.HasProperty("_BaseColor") ? " base " + m.GetColor("_BaseColor") : "")}{(m.HasProperty("_Color") ? " color " + m.GetColor("_Color") : "")}"));
+                        extra = $" renderer {r.GetType().Name} bounds {r.bounds.center:F2} size {r.bounds.size:F2} materials [{mats}]";
+                        if (r is SkinnedMeshRenderer smr) extra += $" mesh {smr.sharedMesh?.name} bones {smr.bones.Length}";
+                        if (r is MeshRenderer) extra += $" mesh {c.GetComponent<MeshFilter>()?.sharedMesh?.name}";
+                    }
+                    var an = c.GetComponent<Animator>();
+                    if (an != null) extra += $" animator {an.runtimeAnimatorController?.name} state {(an.isActiveAndEnabled && an.layerCount > 0 ? an.GetCurrentAnimatorClipInfo(0).Length > 0 ? an.GetCurrentAnimatorClipInfo(0)[0].clip.name : "none" : "off")}";
+                    McLog.Info($"sleeper survey:   {c.name} (depth {Depth(c, t)}): {string.Join(", ", Array.ConvertAll(c.GetComponents<Component>(), x => x.GetType().Name))}{extra}");
+                }
+            }
+            McLog.Info($"sleeper survey: {n} sleeping spores in '{SceneManager.GetActiveScene().name}'");
+        }
+
+        static int Depth(Transform c, Transform root) { int d = 0; for (var x = c; x != null && x != root; x = x.parent) d++; return d; }
 
         /// <summary>Test aid (-mcBossPullNative): Mycelium's own pull on a spore that stands still, with nobody driving.</summary>
         System.Collections.IEnumerator BossPullNativeTest()
