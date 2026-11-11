@@ -80,6 +80,7 @@ public final class MyceliumCraftClient implements ClientModInitializer {
 		MycDash.tick(minecraft, on ? MYC.dashX : 0f, on ? MYC.dashZ : 0f);
 		MycDash.faceRoll(minecraft.player, on && (MYC.flags & Proto.MYC_ROLL) != 0, MYC.dashX, MYC.dashZ);
 		MycBossPull.tick(minecraft, on); // the final boss's sand pull
+		MycGoal.tick(minecraft, on); // the level's goal on the locator bar
 		MycSkillAnimation.tick(minecraft, on && (MYC.flags & Proto.MYC_CYCLONE) != 0, on && (MYC.flags & Proto.MYC_ROLL) != 0);
 		MycFury.tick(minecraft, on && (MYC.flags & Proto.MYC_FURY) != 0); // Relentless Fury: red potion particles
 		MycWeather.tick(minecraft, on, (MYC.flags & Proto.MYC_RAIN) != 0); // Mycelium's rain: a thunderstorm

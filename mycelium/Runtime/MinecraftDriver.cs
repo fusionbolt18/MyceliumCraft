@@ -61,6 +61,7 @@ namespace MyceliumCraft
         readonly WeaponBag weapons = new WeaponBag();
         readonly SkillAim skillAim = new SkillAim();
         readonly DashWatch dash = new DashWatch();
+        readonly GoalWatch goal = new GoalWatch(); // the level's goal, on Minecraft's locator bar
         readonly PullWatch pull = new PullWatch(); // the final boss's sand pull, for Minecraft's player
         readonly ColonyWatch colony = new ColonyWatch();
         readonly BirthCutscene birth = new BirthCutscene();
@@ -546,6 +547,8 @@ namespace MyceliumCraft
             // The boss's sand pull moves Minecraft's player (PullWatch, MycBossPull.java).
             pull.ForMinecraft(map, out float pullX, out float pullZ);
             if (link != null) link.WriteBossPull(pullX, pullZ);
+            // The level's goal (what Navigate Camera turns to): Minecraft's locator bar (GoalWatch, MycGoal.java).
+            goal.Update(link, map, rb != null && phase == Phase.Driving && link.MinecraftAlive);
 
             // Your colony: in Minecraft's player list instead of Mycelium's colony meter (ColonyWatch, MycColony.java).
             if (colony.Update(rb != null && Steering && link.MinecraftAlive, (float)map.Scale))

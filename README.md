@@ -207,6 +207,10 @@ Single-player and offline only.
   yours. Mycelium's side tested with a fake Minecraft; **the poses are not tested in Minecraft.**
 - **The final boss's sand pull moves you towards it.** Tested with a fake Minecraft; **not tested
   in Minecraft.**
+- **The level's goal is on Minecraft's locator bar: not tested in real Minecraft.** It's a red
+  bow-tie marker, behind the level number, for what Mycelium's Navigate Camera pointed at (the boss in Impact Barrens, the
+  way back in Daybreak Arboretum and Delta Crag, the run start in The Carcass). The stand-in
+  received the right position in Impact Barrens and The Carcass.
 - **Mycelium's rain makes a thunderstorm in Minecraft, and lightning can't hit you.** The rain
   signal was tested with a fake Minecraft; **the thunderstorm and the lightning are not tested in
   Minecraft.**

@@ -1,5 +1,47 @@
 # MODLOG
 
+## 2026-11-10 The level's goal on Minecraft's locator bar (protocol v61)
+
+**Your request:** use Minecraft's locator bar to show the level's goal.
+
+**Changed:**
+- New `GoalWatch.cs` (Mycelium):
+  - The goal is what Mycelium's own Navigate Camera turns to (`VCamRotator.levelGoal`): the boss
+    in Impact Barrens, `BackToHub` in Daybreak Arboretum and Delta Crag, `==StartRun==` in The
+    Carcass, and the light in New Tutorial.
+  - Its position goes to Minecraft every frame in the Boss block (new fields 0xA0..0xAF).
+    Protocol version 61.
+- New `MycGoal.java` (Minecraft):
+  - Puts the goal on the locator bar as a green bow-tie marker. It's added on your own screen
+    only, not through the server.
+  - Minecraft normally swaps the locator bar for the XP bar for 5 s whenever experience changes.
+    Your nutrients are the experience level and change all the time, so that swap is skipped
+    while there's a goal. The level number still shows.
+- The stand-in prints the goal it receives.
+
+**Tested how:** stand-in runs (`LINKTEST_STILL=1`).
+- Impact Barrens: Mycelium logged "goal: 'Rival Sporemother' ... (Navigate Camera's goal)", and
+  the stand-in got "goal: at (27, -6, -289)".
+- The Carcass: '==StartRun==', at (-13, 1, -2).
+
+**Your test:** the locator bar showed, but it was empty.
+
+**Why:** the bar draws the marker's colour as ARGB (alpha, red, green, blue). I gave it 0x7FFF00
+with no alpha, which is fully transparent. **Fixed:** 0xFF7FFF00. Minecraft's log line now also
+says how many degrees left or right of where you look the goal is. The bar only shows markers
+within 60 degrees of your view, so a goal behind you only appears once you turn.
+
+**Then your request:** make it red, and put it behind the experience level number.
+- `MycGoal.java`: the colour is now 0xFFFF0000.
+- New `HudLevelNumberMixin`: Minecraft draws the level number first and the bar's markers after,
+  so a marker in the middle covered your nutrients. While the goal is on the bar, the number is
+  drawn after the bar instead. Without a goal, Minecraft draws it as usual. Log line, once:
+  "the level number is drawn over the locator bar, so the marker goes behind it".
+
+**Not tested:** in real Minecraft (whether the marker shows now, where it sits on the bar, the XP
+bar swap, the number on top), and Daybreak Arboretum, Delta Crag and New Tutorial. The jar builds,
+but the new mixin's hook points are only checked when Minecraft starts.
+
 ## 2026-11-10 Attack (Mycelium), Navigate Camera and Reset Camera are gone from Key Binds
 
 **Your request:** remove those three from the Mycelium section of Minecraft's Key Binds.

@@ -29,7 +29,7 @@ a block without locks.
 - **Reader:** read `seq`. If it's odd, try again. Read the fields, then read `seq` again. If it
   changed, try again.
 
-## Layout (version 60)
+## Layout (version 61)
 
 ### Header @ 0x000
 
@@ -313,6 +313,10 @@ The final boss's bar (`BossBar.cs`, `MycBossBar.java`). The mapping grows by 0x1
 | 0x10 | utf8[128] | the boss's name, colour tags taken out |
 | 0x90 | f32 | since version 59: the boss's sand pull on you, Minecraft blocks per second along x (`PullWatch.cs`); Minecraft moves its player by it every tick (`MycBossPull.java`) |
 | 0x94 | f32 | the same along z; 0 and 0 = no pull |
+| 0xA0 | u32 | since version 61: 1 = the level has a goal (`GoalWatch.cs`: what Mycelium's Navigate Camera turns to); Minecraft puts it on its locator bar (`MycGoal.java`) |
+| 0xA4 | f32 | the goal's x, Minecraft coordinates |
+| 0xA8 | f32 | its y |
+| 0xAC | f32 | its z |
 
 ### Forge @ after Boss. Since version 48
 

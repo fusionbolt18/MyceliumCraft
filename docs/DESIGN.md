@@ -1968,6 +1968,31 @@ answers `ClientMannequin.getSkin` with the spore's skin when the mannequin's pro
   ground", which stopped the jump checked just after in the tick. `MycBossPull` keeps the on-ground
   state from before its move (since 2026-11-10).
 
+### 5.3.8f The level's goal on Minecraft's locator bar (since 2026-11-10, protocol v61)
+
+Minecraft's locator bar is the strip above the hotbar where other players' markers usually appear.
+It shows where the level's goal is.
+- **What the goal is:** the object Mycelium's own Navigate Camera turns to (`VCamRotator.levelGoal`,
+  chosen by the scene's name): the light in New Tutorial, `==StartRun==` in The Carcass,
+  `BackToHub` in Daybreak Arboretum and Delta Crag, and the Rival Sporemother in Impact Barrens.
+  Other levels have none.
+- **Mycelium (`GoalWatch.cs`):** while Minecraft drives the spore in a level, it reads that field.
+  If it's empty, it applies the same rule by name, once a second. It writes the goal's position
+  in Minecraft coordinates to the Boss block (0xA0..0xAF) every frame, because the boss moves.
+- **Minecraft (`MycGoal.java`):** adds it to the client's own waypoint list as a
+  bow-tie marker, red since your choice. The colour must include alpha (0xFFFF0000): the bar
+  draws it as ARGB, and the first version without alpha was invisible. Minecraft draws the level
+  number before the bar's markers, so a marker covered it. While the goal is on the bar,
+  `HudLevelNumberMixin` draws the number after the bar instead, so the marker goes behind it. The bar only shows markers within 60 degrees of where you look.
+  Nothing goes through the server. The bar turns with Minecraft's look, which
+  Mycelium's camera follows (section 5.2).
+- **XP bar:** Minecraft swaps the locator bar for the XP bar for 5 s after your experience
+  changes. Experience here is your nutrients, which change all the time, so while there's a goal
+  that swap is skipped. The level number is still drawn, and the XP bar is always empty anyway.
+- **Logs:** Mycelium writes "goal: '<name>' in '<scene>' (...)". Minecraft writes "goal: on the
+  locator bar at (x, y, z), N blocks away", at most every 10 s, and "goal: none, taken off the
+  locator bar". The stand-in prints "goal: at (...)".
+
 ### 5.3.8e Weather: Mycelium's rain is a thunderstorm in Minecraft (since 2026-11-10, protocol v60)
 - **Mycelium's rain** is one switch, `WeatherSettingsScript.isRaining`, turned on and off by
   `RainEvent` objects in a level (`UpdateRain`). `MinecraftDriver.Raining()` reads it every frame

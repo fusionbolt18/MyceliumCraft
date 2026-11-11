@@ -385,6 +385,21 @@ namespace MyceliumCraft.Link
             WriteU32(view, b + Proto.BsSeq, seq + 2);
         }
 
+        /// <summary>The level's goal (GoalWatch), Minecraft coordinates; shown false = none.</summary>
+        public void WriteGoal(bool shown, float x, float y, float z)
+        {
+            int b = Proto.OffBoss;
+            uint seq = ReadU32(view, b + Proto.BsSeq);
+            WriteU32(view, b + Proto.BsSeq, seq + 1);
+            Thread.MemoryBarrier();
+            WriteU32(view, b + Proto.BsGoalShown, shown ? 1u : 0u);
+            WriteF32(view, b + Proto.BsGoalX, x);
+            WriteF32(view, b + Proto.BsGoalY, y);
+            WriteF32(view, b + Proto.BsGoalZ, z);
+            Thread.MemoryBarrier();
+            WriteU32(view, b + Proto.BsSeq, seq + 2);
+        }
+
         /// <summary>The boss's pull on you (PullWatch), Minecraft blocks per second; 0 and 0 = none.</summary>
         public void WriteBossPull(float x, float z)
         {

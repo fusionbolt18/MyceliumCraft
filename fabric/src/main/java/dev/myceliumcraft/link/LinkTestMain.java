@@ -73,6 +73,8 @@ public final class LinkTestMain {
 	private static double nextSproutPrint;
 	private static final MycLink.Colony colony = new MycLink.Colony();
 	private static final float[] bossPull = new float[2];
+	private static final float[] goal = new float[3];
+	private static String goalWas = "";
 	private static boolean rainWas;
 	private static double nextPullPrint;
 	private static long pullTick = -1;
@@ -472,6 +474,11 @@ public final class LinkTestMain {
 							break;
 						}
 					}
+				}
+				String goalNow = MycLink.readGoal(goal) ? String.format("at (%.0f, %.0f, %.0f)", goal[0], goal[1], goal[2]) : "none";
+				if (!goalNow.equals(goalWas)) {
+					goalWas = goalNow;
+					System.out.printf("t=%.2f goal: %s%n", t, goalNow);
 				}
 				if (MycLink.readBossPull(bossPull) && (bossPull[0] != 0f || bossPull[1] != 0f) && t >= nextPullPrint) {
 					nextPullPrint = t + 0.5;

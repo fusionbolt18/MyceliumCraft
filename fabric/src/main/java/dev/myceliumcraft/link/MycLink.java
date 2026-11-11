@@ -347,6 +347,31 @@ public final class MycLink {
 	}
 
 	/** The boss's pull on you (Boss block), blocks per second: out[0] x, out[1] z. False if not linked or unreadable. */
+	/** The level's goal (Boss block, since v61): out = x, y, z in Minecraft coordinates. False = none (or unreadable). */
+	public static boolean readGoal(float[] out) {
+		MemorySegment s = shm;
+		if (s == null) {
+			return false;
+		}
+		long b = OFF_BOSS;
+		for (int attempt = 0; attempt < 16; attempt++) {
+			int seq1 = (int) INT.getAcquire(s, b + BS_SEQ);
+			if ((seq1 & 1) != 0) {
+				Thread.onSpinWait();
+				continue;
+			}
+			int shown = s.get(JAVA_INT, b + BS_GOAL_SHOWN);
+			out[0] = s.get(JAVA_FLOAT, b + BS_GOAL_X);
+			out[1] = s.get(JAVA_FLOAT, b + BS_GOAL_Y);
+			out[2] = s.get(JAVA_FLOAT, b + BS_GOAL_Z);
+			VarHandle.loadLoadFence();
+			if (seq1 == (int) INT.getVolatile(s, b + BS_SEQ)) {
+				return shown == 1;
+			}
+		}
+		return false;
+	}
+
 	public static boolean readBossPull(float[] out) {
 		MemorySegment s = shm;
 		if (s == null) {
