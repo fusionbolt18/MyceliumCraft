@@ -1,5 +1,87 @@
 # MODLOG
 
+## 2026-11-11 Freecam Insert: random colours for your spore
+
+**Your request:** with -freecam, Insert gives the spore you play random colours: one of the four
+species at random, then colours that species can have.
+
+**Changed:** `Freecam.RandomColors` (Insert, freecam on or off; Minecraft never gets the key).
+It picks Default, Poison, Coral or Cordyceps, then a cap colour and a body colour from Mycelium's
+own lists for that species (`SpawnCharacter`, the lists it uses when a spore is born), and sets
+them the way Mycelium does (`DesignTracker.SetCapColor`, `SetBodyColor`). Only the colours: the
+spore's species skill, eyes and mouth stay. The test aid `-mcFreecamTest` presses it twice.
+
+**Tested how:** stand-in run (`-freecam -mcFreecamTest`): "recoloured as Coral: cap #2668AD ->
+#2668AD (1 of 2), body #89B7C4 -> #89B7C4" (that pick happened to be the colours it already had),
+then "recoloured as Cordyceps: cap #2668AD -> #65245F, body #89B7C4 -> #C07FA3", and the colony
+scan afterwards read Shborb (you) with the new colours, which is what goes to Minecraft's skin.
+**Not tested:** the real Insert key, and seeing the new colours in Mycelium or on the Minecraft
+skin.
+
+## 2026-11-11 Freecam Del: the hidden spores can't cast skills at all
+
+**Your report:** with the other spores hidden, you could still see and hear them using skills.
+
+**Why:** switching a spore's `Skill` components off doesn't stop the skill being cast. The
+wandering spores in The Carcass cast skills through `SkillCurio`, which calls `ActivateSkill`
+whenever the skill's `canSkill` flag is true, whether the component is on or not. The sounds
+fix before this one only muted their animations, not the skill's own effects.
+
+**Changed:** `McColonyBodies.HideOthers` holds `canSkill` false on every hidden spore's skills.
+A cooldown that's running is stopped first, because its end would set the flag true again. When
+the spores are shown again, the flag goes back to true; a skill that was cooling down comes back
+ready at once. Every skill cast while the others are hidden is now logged with who cast it
+("skill cast while the others are hidden: ... by you / by a HIDDEN spore, name").
+
+**Tested how:** stand-in run (`-freecam -mcFreecamTest`): "66 held from being cast" when hidden,
+"66 ready to use again" when shown. The test only keeps them hidden for about two seconds, so it
+didn't catch a spore trying to cast meanwhile: **not tested** that a cast is really blocked.
+
+## 2026-11-11 Freecam Del: the hidden spores make no sound either
+
+**Your report:** with the other spores hidden, you could still hear them using their skills.
+
+**Why:** those sounds don't come from the `Skill` components. Mycelium plays spore sounds from
+animation events (`SporeAnimationEvents`: Slash, Stab, Smash, which is the beetle drum's hit,
+Explosion, footsteps, panting), and the hidden spores' animators kept firing them.
+
+**Changed:** `McColonyBodies.HideOthers` also switches off their animators' events
+(`Animator.fireEvents`) while they're hidden, and back on after. Your own spore's are never
+touched.
+
+**Tested how:** stand-in run with `-freecam -mcFreecamTest`; see "animator(s) silent" in the
+test's log. **Not tested** by ear.
+
+## 2026-11-11 Freecam: Del hides the other spores and their skills
+
+**Your request:** with "-freecam", Del toggles the visibility of all the other spores, and their
+ability to use skills. The spore you play stays visible and can still use its skills.
+
+**Changed:**
+- `Freecam`: Del (SDL 76, kept from Minecraft like the other freecam keys) toggles
+  `OthersHidden`, with the freecam on or off. It turns off when you leave the level.
+- `McColonyBodies.HideOthers`: every spore in the list but yours (your colony, the tutorial's
+  sleepers and impaled spores) has its Minecraft body off, its renderers not drawn (the sleepers'
+  "Zzz" too), its canvases off (pop-ups), and the `Skill` components under it switched off.
+- Yours is never touched: if you swap spores meanwhile, the one you take gets its skills and
+  canvases back at once. Everything is put back when you press Del again.
+- The test aid `-mcFreecamTest` also toggles it twice.
+
+**Tested how:** stand-in run in The Carcass (your colony is 23 spores now) with `-freecam
+-mcFreecamTest`: "the other spores hidden (22 of them, 66 skill(s) off)", then "shown again (66
+skill(s) back on)". **Not tested:** the Del key itself, and how it looks.
+
+## 2026-11-11 Emotes face where your head looks
+
+**Your request:** an Emotecraft emote should point the way your head looks, not your body.
+
+**Changed:** `MycEmotes.holdFacing`: when an emote starts, the facing it holds (body and head,
+which the spore follows) is your head's yaw (`yHeadRot`). It used to be the body's, which can be
+up to about 50 degrees behind. At a decoration it's still the body's, since the decoration turned
+you. The log line gives both.
+
+**Tested how:** the jar builds. **Not tested** in Minecraft.
+
 ## 2026-11-11 F1: pop-ups don't flash up any more
 
 **Your report:** with F1 hiding the UI, pop-ups still showed for a split second when they first

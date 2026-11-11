@@ -726,7 +726,7 @@ namespace MyceliumCraft
             freecam.Update(rb != null && phase != Phase.Idle, mcScreenOpen);
             playerModel.Cutscene = cameraSync.CutsceneLive || freecam.Active; // your whole body in a cutscene's view, or the freecam's
             // The other spores as Minecraft characters too, while yours is one.
-            colonyBodies.Update(link, playerModel.Shown, colony, playerModel, feetOffset, (float)map.Scale);
+            colonyBodies.Update(link, playerModel.Shown, colony, playerModel, feetOffset, (float)map.Scale, freecam.OthersHidden);
             // Which game owns which key, while Minecraft drives the spore.
             // (Re-sync teleports count as driving: giving Mycelium its keys back for those few frames
             // let a click become Mycelium's attack right after a hit, your report 2026-10-19.)
@@ -2705,6 +2705,8 @@ namespace MyceliumCraft
             {
                 freecam.TestFly(0.5f);
                 if (i == 1) freecam.TestTurn(90f); // as holding the right arrow for 1 s
+                if (i == 0 || i == 2) freecam.TestToggleOthers(); // as Del: hidden, then shown again
+                if (i == 1 || i == 3) freecam.TestRandomColors(); // as Insert
                 yield return new WaitForSeconds(0.5f);
                 McLog.Info($"freecam test: +{(i + 1) * 0.5f:F1} s: camera drawn from {freecam.LastDrawnAt:F2}, spore at {rb?.position:F2}, frames drawn by the freecam {freecam.Drawn}");
             }

@@ -36,14 +36,15 @@ namespace MyceliumCraft
         int updates;
 
         /// <summary>Every frame. want: your own Minecraft body is shown. feetOffset: a spore's middle to its feet.</summary>
-        public void Update(MyceliumLink link, bool want, ColonyWatch colony, McPlayerModel model, float feetOffset, float scale)
+        public void Update(MyceliumLink link, bool want, ColonyWatch colony, McPlayerModel model, float feetOffset, float scale, bool hideOthers = false)
         {
             Layout(colony, model, scale);
             hiddenNow.Clear();
+            HideOthers(colony, hideOthers);
             int shown = 0;
             for (int i = 0; i < Proto.ColMax; i++)
             {
-                GameObject spore = want && i < colony.Count && i != colony.Current ? colony.Spores[i] : null;
+                GameObject spore = want && !othersWere && i < colony.Count && i != colony.Current ? colony.Spores[i] : null;
                 bool on = spore != null && spore.activeInHierarchy && Refresh(link, i, model, scale);
                 if (bodies[i]?.Root != null && bodies[i].Root.activeSelf != on) bodies[i].Root.SetActive(on);
                 if (!on) continue;
@@ -90,6 +91,119 @@ namespace MyceliumCraft
                     }
                 McLog.Info($"colony bodies: {updates} new poses in the last 5 s");
                 updates = 0;
+            }
+        }
+
+        static readonly System.Type SkillType = System.Type.GetType("Skill, Assembly-CSharp");
+        readonly List<Behaviour> skillsOff = new List<Behaviour>();
+        readonly List<Canvas> canvasesOff = new List<Canvas>();
+        readonly List<Animator> eventsOff = new List<Animator>();
+        readonly List<Behaviour> skillsHere = new List<Behaviour>();
+        static readonly System.Reflection.FieldInfo CanSkill = SkillType?.GetField("canSkill");
+        static readonly System.Reflection.FieldInfo CooldownField = SkillType?.GetField("cooldownCoroutine");
+        /// <summary>Skills whose canSkill we set false (put back true when shown).</summary>
+        readonly List<Behaviour> cantSkill = new List<Behaviour>();
+        bool castHooked;
+        GameObject castYou;
+
+        /// <summary>Every skill cast (Mycelium's Actions.ActivatedSkill), logged while the others are hidden: who cast it, so a hidden one casting shows.</summary>
+        void HookCasts()
+        {
+            if (castHooked || SkillType == null) return;
+            castHooked = true;
+            var field = System.Type.GetType("Actions, Assembly-CSharp")?.GetField("ActivatedSkill");
+            var method = typeof(McColonyBodies).GetMethod(nameof(Cast), System.Reflection.BindingFlags.NonPublic | System.Reflection.BindingFlags.Instance);
+            if (field == null || method == null) { McLog.Info("colony bodies: can't watch skill casts (Actions.ActivatedSkill not found)"); return; }
+            var d = Delegate.CreateDelegate(typeof(Action<>).MakeGenericType(SkillType), this, method);
+            field.SetValue(null, Delegate.Combine((Delegate)field.GetValue(null), d));
+        }
+
+        void Cast(Component skill)
+        {
+            if (!othersWere || skill == null) return;
+            bool yours = castYou != null && skill.transform.IsChildOf(castYou.transform);
+            McLog.Info($"colony bodies: skill cast while the others are hidden: {skill.GetType().Name} by {(yours ? "you" : "a HIDDEN spore, " + (skill.transform.parent?.parent != null ? skill.transform.parent.parent.name : skill.name))}");
+        }
+        bool othersWere;
+
+        /// <summary>
+        /// The freecam's Del (your request, 2026-11-11): every spore but the one you play hidden, their
+        /// Minecraft bodies, everything drawn under them (their pop-ups, the sleepers' "Zzz") and their
+        /// skills (the Skill components under their skill loadouts) switched off, and their animations'
+        /// events too (Animator.fireEvents): those play their sounds (SporeAnimationEvents: Slash, Stab,
+        /// Smash at the drum, Explosion, footsteps), which were still heard (your report, 2026-11-11).
+        /// Switching a Skill off doesn't stop it being cast, though: the wandering spores' SkillCurio
+        /// casts one whenever its canSkill is true, so they were still seen and heard using skills (your
+        /// report, 2026-11-11). canSkill is held false meanwhile (a running cooldown stopped, as its end
+        /// would set it true), and set true again when they're shown. Yours is never touched:
+        /// swapping spores meanwhile, the one you take is back at once. All put back when it's off.
+        /// </summary>
+        void HideOthers(ColonyWatch colony, bool hide)
+        {
+            if (!hide)
+            {
+                if (!othersWere) return;
+                othersWere = false;
+                foreach (Behaviour b in skillsOff) if (b != null) b.enabled = true;
+                foreach (Canvas c in canvasesOff) if (c != null) c.enabled = true;
+                foreach (Animator a in eventsOff) if (a != null) a.fireEvents = true;
+                foreach (Behaviour b in cantSkill) if (b != null) CanSkill.SetValue(b, true);
+                McLog.Info($"colony bodies: the other spores shown again ({skillsOff.Count} skill(s) back on, {cantSkill.Count} ready to use again, {eventsOff.Count} animator(s) making sounds again)");
+                cantSkill.Clear();
+                skillsOff.Clear();
+                canvasesOff.Clear();
+                eventsOff.Clear();
+                return;
+            }
+            GameObject you = colony.Current >= 0 && colony.Current < colony.Count ? colony.Spores[colony.Current] : null;
+            // Yours back at once if you swapped to a spore that was hidden.
+            for (int k = skillsOff.Count - 1; k >= 0; k--)
+                if (skillsOff[k] == null) skillsOff.RemoveAt(k);
+                else if (you != null && skillsOff[k].transform.IsChildOf(you.transform)) { skillsOff[k].enabled = true; skillsOff.RemoveAt(k); }
+            for (int k = canvasesOff.Count - 1; k >= 0; k--)
+                if (canvasesOff[k] == null) canvasesOff.RemoveAt(k);
+                else if (you != null && canvasesOff[k].transform.IsChildOf(you.transform)) { canvasesOff[k].enabled = true; canvasesOff.RemoveAt(k); }
+            for (int k = eventsOff.Count - 1; k >= 0; k--)
+                if (eventsOff[k] == null) eventsOff.RemoveAt(k);
+                else if (you != null && eventsOff[k].transform.IsChildOf(you.transform)) { eventsOff[k].fireEvents = true; eventsOff.RemoveAt(k); }
+            for (int k = cantSkill.Count - 1; k >= 0; k--)
+                if (cantSkill[k] == null) cantSkill.RemoveAt(k);
+                else if (you != null && cantSkill[k].transform.IsChildOf(you.transform)) { CanSkill.SetValue(cantSkill[k], true); cantSkill.RemoveAt(k); }
+            castYou = you;
+            HookCasts();
+            int skills = 0, quiet = 0, held = 0;
+            for (int i = 0; i < colony.Count; i++)
+            {
+                GameObject s = colony.Spores[i];
+                if (s == null || s == you) continue;
+                s.GetComponentsInChildren(true, under);
+                foreach (Renderer r in under) { r.forceRenderingOff = true; hiddenNow.Add(r); }
+                foreach (Canvas c in s.GetComponentsInChildren<Canvas>(true))
+                    if (c.enabled) { c.enabled = false; canvasesOff.Add(c); }
+                foreach (Animator a in s.GetComponentsInChildren<Animator>(true))
+                    if (a.fireEvents) { a.fireEvents = false; eventsOff.Add(a); quiet++; }
+                if (SkillType != null)
+                {
+                    skillsHere.Clear();
+                    foreach (Component c in s.GetComponentsInChildren(SkillType, true)) if (c is Behaviour b) skillsHere.Add(b);
+                    foreach (Behaviour b in skillsHere)
+                    {
+                        if (b.enabled) { b.enabled = false; skillsOff.Add(b); skills++; }
+                        // A switched-off Skill can still be cast: the wandering spores' SkillCurio
+                        // calls ActivateSkill whenever canSkill is true. So canSkill is held false, and
+                        // a cooldown running is stopped (its end would set it true again).
+                        if (CanSkill == null || cantSkill.Contains(b)) continue;
+                        if (CooldownField?.GetValue(b) is Coroutine running) { ((MonoBehaviour)b).StopCoroutine(running); CooldownField.SetValue(b, null); }
+                        CanSkill.SetValue(b, false);
+                        cantSkill.Add(b);
+                        held++;
+                    }
+                }
+            }
+            if (!othersWere)
+            {
+                othersWere = true;
+                McLog.Info($"colony bodies: the other spores hidden ({colony.Count - (you != null ? 1 : 0)} of them, {skills} skill(s) off, {held} held from being cast, {quiet} animator(s) silent)");
             }
         }
 

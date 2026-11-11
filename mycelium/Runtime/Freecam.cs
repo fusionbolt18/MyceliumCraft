@@ -26,7 +26,9 @@ namespace MyceliumCraft
     sealed class Freecam
     {
         /// <summary>SDL scancodes of the freecam's keys: \ I J K L U O PageUp PageDown, and the arrows (right, left, down, up).</summary>
-        public static readonly int[] Scancodes = { 49, 12, 13, 14, 15, 24, 18, 75, 78, 79, 80, 81, 82 };
+        public static readonly int[] Scancodes = { 49, 12, 13, 14, 15, 24, 18, 75, 78, 79, 80, 81, 82, 76, 73 }; // 76: Delete, 73: Insert
+        /// <summary>Del (with -freecam, freecam on or off): every spore but yours hidden, skills and all (McColonyBodies).</summary>
+        public bool OthersHidden { get; private set; }
         const float TurnSpeed = 90f; // degrees per second
         const float MouseTurn = 0.15f; // degrees per pixel, with the right button held
         static readonly System.Type ControllerType = System.Type.GetType("PlayerController, Assembly-CSharp");
@@ -57,7 +59,7 @@ namespace MyceliumCraft
             if (!loggedAllowed)
             {
                 loggedAllowed = true;
-                McLog.Info("freecam: allowed (-freecam): '\\' switches it, I J K L move, O up and U down, the arrows turn, PageUp PageDown speed; those keys never go to Minecraft");
+                McLog.Info("freecam: allowed (-freecam): '\\' switches it, I J K L move, O up and U down, the arrows turn, PageUp PageDown speed, Del hides the other spores, Insert gives yours new colours; those keys never go to Minecraft");
             }
             if (!hooked)
             {
@@ -69,11 +71,18 @@ namespace MyceliumCraft
             if (!inLevel)
             {
                 if (Active) SetActive(false, "left the level");
+                if (OthersHidden) { OthersHidden = false; McLog.Info("freecam: left the level: the other spores shown again"); }
                 return;
             }
             // A Minecraft screen open (chat): those keys are typing, not the freecam's.
             if (mcScreenOpen) return;
+            if (kb.deleteKey.wasPressedThisFrame)
+            {
+                OthersHidden = !OthersHidden;
+                McLog.Info($"freecam: Del: the other spores {(OthersHidden ? "hidden, their skills off" : "shown again, their skills back")}");
+            }
             if (kb.backslashKey.wasPressedThisFrame) SetActive(!Active, "'\\'");
+            if (kb.insertKey.wasPressedThisFrame) RandomColors("Insert");
             if (!Active) return;
 
             if (kb.pageUpKey.wasPressedThisFrame) SetSpeed(speed * 1.5f);
@@ -169,6 +178,43 @@ namespace MyceliumCraft
         public Vector3 LastDrawnAt { get; private set; }
         public int Drawn { get; private set; }
         public void TestToggle() => SetActive(!Active, "test aid");
+        public void TestRandomColors() => RandomColors("test aid");
+
+        static readonly string[] Species = { "Default", "Poison", "Coral", "Cordyceps" };
+        static readonly string[] SpeciesFields = { "default", "poison", "coral", "cordyceps" };
+
+        /// <summary>
+        /// Insert (with -freecam, freecam on or off; your request, 2026-11-11): the spore you play gets
+        /// new colours. One of the four species at random, then a cap colour and a body colour at random
+        /// from that species' lists, the ones Mycelium itself picks from when a spore is born
+        /// (SpawnCharacter's defaultCapColors / defaultBodyColors, poison..., coral..., cordyceps...;
+        /// CreateSpeciesPalette). Set through its DesignTracker (SetCapColor, SetBodyColor), as Mycelium
+        /// does. Only the colours: its species skill, eyes and mouth stay. Minecraft's skin follows by
+        /// itself (ColonyWatch reads the colours every scan).
+        /// </summary>
+        void RandomColors(string why)
+        {
+            GameObject you = GameObject.FindWithTag("currentPlayer");
+            System.Type spawnType = System.Type.GetType("SpawnCharacter, Assembly-CSharp");
+            System.Type designType = System.Type.GetType("DesignTracker, Assembly-CSharp");
+            var spawn = spawnType != null ? UnityEngine.Object.FindObjectOfType(spawnType, true) : null;
+            Component design = you != null && designType != null ? you.GetComponent(designType) : null;
+            if (spawn == null || design == null) { McLog.Info($"freecam: {why}: can't recolour (spore {(you != null ? you.name : "none")}, SpawnCharacter {(spawn != null ? "found" : "not found")}, DesignTracker {(design != null ? "found" : "not found")})"); return; }
+            const System.Reflection.BindingFlags F = System.Reflection.BindingFlags.Instance | System.Reflection.BindingFlags.NonPublic | System.Reflection.BindingFlags.Public;
+            int k = UnityEngine.Random.Range(0, Species.Length);
+            var caps = spawnType.GetField(SpeciesFields[k] + "CapColors", F)?.GetValue(spawn) as List<Color>;
+            var bodies = spawnType.GetField(SpeciesFields[k] + "BodyColors", F)?.GetValue(spawn) as List<Color>;
+            if (caps == null || bodies == null || caps.Count == 0 || bodies.Count == 0) { McLog.Info($"freecam: {why}: {Species[k]} has no colour lists ({caps?.Count ?? -1} cap, {bodies?.Count ?? -1} body)"); return; }
+            int c = UnityEngine.Random.Range(0, caps.Count), b = UnityEngine.Random.Range(0, bodies.Count);
+            Color capWas = designType.GetField("capColor")?.GetValue(design) is Color cw ? cw : Color.clear;
+            Color bodyWas = designType.GetField("bodyColor")?.GetValue(design) is Color bw ? bw : Color.clear;
+            designType.GetMethod("SetCapColor")?.Invoke(design, new object[] { caps[c] });
+            designType.GetMethod("SetBodyColor")?.Invoke(design, new object[] { bodies[b] });
+            Color capNow = designType.GetField("capColor")?.GetValue(design) is Color cn ? cn : Color.clear;
+            Color bodyNow = designType.GetField("bodyColor")?.GetValue(design) is Color bn ? bn : Color.clear;
+            McLog.Info($"freecam: {why}: {you.name} recoloured as {Species[k]}: cap #{ColorUtility.ToHtmlStringRGB(capWas)} -> #{ColorUtility.ToHtmlStringRGB(capNow)} ({c + 1} of {caps.Count}), body #{ColorUtility.ToHtmlStringRGB(bodyWas)} -> #{ColorUtility.ToHtmlStringRGB(bodyNow)} ({b + 1} of {bodies.Count})");
+        }
+        public void TestToggleOthers() { OthersHidden = !OthersHidden; McLog.Info($"freecam: test aid: the other spores {(OthersHidden ? "hidden" : "shown")}"); }
         public void TestTurn(float degrees)
         {
             yaw = Mathf.Repeat(yaw + degrees, 360f);

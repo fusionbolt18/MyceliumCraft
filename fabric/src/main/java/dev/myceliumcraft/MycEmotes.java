@@ -275,8 +275,12 @@ final class MycEmotes {
 		boolean emoting = player != null && (playing(player) || decoration);
 		if (emoting && !holding) {
 			holding = true;
-			heldYaw = player.yBodyRot;
-			MycLink.LOG.info("MyceliumCraft: emotes: you're {}; you keep facing {} while the camera turns freely", decoration ? "at a decoration" : "doing an emote", String.format("%.0f", heldYaw));
+			// An emote faces where your head looks (your request, 2026-11-11): the body can be up to about
+			// 50 degrees behind it. A decoration keeps the body's facing (it turned you to the decoration).
+			heldYaw = decoration ? player.yBodyRot : player.yHeadRot;
+			MycLink.LOG.info("MyceliumCraft: emotes: you're {}; you keep facing {} ({}; the body was at {}) while the camera turns freely",
+				decoration ? "at a decoration" : "doing an emote", String.format("%.0f", heldYaw), decoration ? "the body's facing" : "where your head looks",
+				String.format("%.0f", player.yBodyRot));
 		} else if (!emoting && holding) {
 			holding = false;
 			MycLink.LOG.info("MyceliumCraft: emotes: your emote or decoration is over; you turn with the camera again");

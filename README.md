@@ -220,7 +220,7 @@ Single-player and offline only.
 - **Your world's settings apply in any world while linked: not tested in Minecraft.** Immediate
   respawn on, the day-night cycle off, and the time set to just after noon. A friend's own values
   are put back when Mycelium closes.
-- **Freecam with `-freecam`**: `\` on/off, I J K L to fly, O up and U down, arrows (or the mouse with right click held) to turn, PageUp/PageDown speed. Tested
+- **Freecam with `-freecam`**: `\` on/off, I J K L to fly, O up and U down, arrows (or the mouse with right click held) to turn, PageUp/PageDown speed, Del hides the other spores, Insert gives your spore random colours from a random species. Tested
   with the stand-in (the camera flies, the spore stays), keys not tested.
 - **F1 hides Mycelium's interface along with Minecraft's**: tested with the stand-in, not in
   Minecraft.

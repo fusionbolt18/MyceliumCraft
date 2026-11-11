@@ -1983,7 +1983,8 @@ While Mycelium shows a level (and `overlay=1`), Mycelium sets `OVERLAY` in its s
   - Spores also greet each other on their own. Within those 3 s such a greeting copies your emote
     too.
 - **Your own emotes** (since 2026-11-08): while Emotecraft plays one on you, `MycEmotes.holdFacing`
-  (end of each client tick) holds your body and head yaw where the body faced when it started. The
+  (end of each client tick) holds your body and head yaw where your head looked when it started
+  (since 2026-11-11; it was the body's; a decoration keeps the body's). The
   spore faces your body, so it stays put, while Mycelium's camera, which follows your look, orbits.
 
 ### 5.3.8a Spores hitting the beetle drum (since 2026-11-09, protocol v57)
@@ -2301,9 +2302,23 @@ under a cover screen.
   Mycelium's own actions bound to the right button (Interact) are off until it goes off.
 - **Drawing:** the pose is applied in `RenderPipelineManager.beginCameraRendering` for
   `Camera.main`, after Cinemachine and CameraSync.
-- **Keys:** with -freecam, its 13 SDL scancodes (49 12 13 14 15 24 18 75 78, arrows 79 to 82) join the input
+- **Keys:** with -freecam, its 15 SDL scancodes (49 12 13 14 15 24 18 75 78, arrows 79 to 82, Delete 76, Insert 73) join the input
   bridge's owned keys, so Minecraft never gets them. It ignores them while a Minecraft screen is
   open (typing).
+- **Del** (with -freecam, freecam on or off): `OthersHidden`. `McColonyBodies.HideOthers` hides
+  every other spore in the list (colony and scenery): no Minecraft body, renderers not drawn,
+  canvases off, the `Skill` components under it off, and its animators' events off
+  (`fireEvents`: their sounds come from animation events).
+  Its skills' `canSkill` is held false too (a running cooldown stopped): a switched-off `Skill` can
+  still be cast, by `SkillCurio`, which only checks that flag. Yours (`Current`) is never touched, and it
+  all comes back on the next Del or on leaving the level.
+- **Insert** (with -freecam, freecam on or off): `Freecam.RandomColors`. One of the four species
+  (Default, Poison, Coral, Cordyceps) at random, then a cap and a body colour at random from that
+  species' lists in Mycelium's `SpawnCharacter` (`defaultCapColors`, `defaultBodyColors`, and so on:
+  the lists `CreateSpeciesPalette` picks from when a spore is born), set through the spore's
+  `DesignTracker.SetCapColor` / `SetBodyColor`. Only the colours change, not its species skill.
+  Minecraft's skin follows by itself: `ColonyWatch` reads the colours every scan, and `MycSkins`
+  makes a skin for each new pair of colours.
 - **Your body:** `McPlayerModel.Cutscene` is on while it's active, so your Minecraft body is drawn
   whole in first person too.
 
