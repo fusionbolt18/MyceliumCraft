@@ -1,5 +1,23 @@
 # MODLOG
 
+## 2026-11-10 New default keys for Mycelium's actions
+
+**Your request:** defaults Dodge Roll Left Alt, Interact right click, Skill 1 X, Skill 2 C,
+Subspecies Skill Z.
+
+**Changed:** `MyceliumKeys.java`, with the same list in Mycelium's `KeyOwnership.Defaults`. That
+list was also out of date for Curio, which is now middle click there too. Show Stats (Tab),
+Salvage and Curio (middle click) are unchanged.
+
+**Good to know:**
+- Minecraft only uses a default for a bind that isn't already saved in your `options.txt`. Your
+  current keys stay until you press "Reset Keys" (or reset each one) in Key Binds. A friend
+  starting fresh gets these.
+- A key bound to a Mycelium action belongs to Mycelium only. With Interact on right click,
+  Minecraft's own right-click (Use Item / Place Block) gets nothing while playing.
+
+**Tested how:** the jar builds. **Not tested in Minecraft.**
+
 ## 2026-11-10 The Mycelium game mode plays as Survival
 
 **Your request:** make the Mycelium game mode Survival, with cheats still on.

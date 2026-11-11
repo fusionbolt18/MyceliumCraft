@@ -48,12 +48,14 @@ namespace MyceliumCraft
             ("reset_camera", new[] { "ResetCamera" }),
         };
 
-        // Same as the defaults in MyceliumKeys.java: R, Tab, V, middle mouse, the rest unbound.
+        // Same as the defaults in MyceliumKeys.java (2026-11-10): right click interact, Tab show stats,
+        // Z subspecies skill, middle click salvage, attack none, middle click curio, Left Alt dodge roll,
+        // X skill 1, C skill 2, navigate and reset camera none. SDL scancodes / SDL mouse buttons.
         static readonly (uint kind, uint code)[] Defaults =
         {
-            (Proto.BindKey, 21), (Proto.BindKey, 43), (Proto.BindKey, 25), (Proto.BindMouse, 2),
-            (Proto.BindNone, 0), (Proto.BindNone, 0), (Proto.BindNone, 0), (Proto.BindNone, 0),
-            (Proto.BindNone, 0), (Proto.BindNone, 0), (Proto.BindNone, 0),
+            (Proto.BindMouse, 3), (Proto.BindKey, 43), (Proto.BindKey, 29), (Proto.BindMouse, 2),
+            (Proto.BindNone, 0), (Proto.BindMouse, 2), (Proto.BindKey, 226), (Proto.BindKey, 27),
+            (Proto.BindKey, 6), (Proto.BindNone, 0), (Proto.BindNone, 0),
         };
 
         static readonly string[] MouseNames = { null, "leftButton", "middleButton", "rightButton", "backButton", "forwardButton" };

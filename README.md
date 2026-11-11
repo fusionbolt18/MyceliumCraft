@@ -155,7 +155,8 @@ Single-player and offline only.
   Controls → Key Binds has a "Mycelium" section (Interact, Show Stats, Subspecies Skill, Salvage,
   Curio, Dodge Roll, Skill 1, Skill 2). A key bound there
   belongs to Mycelium and isn't sent to Minecraft; every other key goes to Minecraft. Defaults:
-  R interact, Tab show stats, V subspecies skill, middle click salvage, the rest unbound. A key
+  right click interact, Tab show stats, Z subspecies skill, middle click salvage and curio,
+  Left Alt dodge roll, X skill 1, C skill 2. A key
   that is also Minecraft's List Players (Tab, by default) goes to both games, and the player list
   shows in single player too (normally only with more than one player): built, **not tested**.
   Tested

@@ -22,18 +22,19 @@ public final class MyceliumKeys {
 	private static final KeyMapping.Category CATEGORY = KeyMapping.Category.register(Identifier.fromNamespaceAndPath("myceliumcraft", "mycelium"));
 	private static final int NONE = InputConstants.UNKNOWN.getValue();
 
-	// Defaults are what you chose on 2026-10-17: R interact, Tab show stats, the rest left as
-	// Mycelium had them or unbound.
+	// Defaults: your list of 2026-11-10 (right click interact, Z subspecies skill, Left Alt dodge roll,
+	// X skill 1, C skill 2); Tab show stats (2026-10-17), middle click salvage and curio (2026-11-08).
+	// Minecraft only uses a default for a bind not already saved in options.txt (or after "Reset").
 	private static final KeyMapping[] KEYS = {
-		key("interact", InputConstants.Type.KEYBOARD, InputConstants.KEY_R),
+		key("interact", InputConstants.Type.MOUSE, InputConstants.MOUSE_BUTTON_RIGHT),
 		key("show_stats", InputConstants.Type.KEYBOARD, InputConstants.KEY_TAB),
-		key("subspecies_skill", InputConstants.Type.KEYBOARD, InputConstants.KEY_V),
+		key("subspecies_skill", InputConstants.Type.KEYBOARD, InputConstants.KEY_Z),
 		key("salvage", InputConstants.Type.MOUSE, InputConstants.MOUSE_BUTTON_MIDDLE),
 		null, // attack: not listed (your request, 2026-11-10); always unbound for Mycelium
 		key("curio", InputConstants.Type.MOUSE, InputConstants.MOUSE_BUTTON_MIDDLE), // your choice, 2026-11-08 (shared with Salvage)
-		key("dodge", InputConstants.Type.KEYBOARD, NONE),
-		key("skill_1", InputConstants.Type.KEYBOARD, NONE),
-		key("skill_2", InputConstants.Type.KEYBOARD, NONE),
+		key("dodge", InputConstants.Type.KEYBOARD, InputConstants.KEY_LALT),
+		key("skill_1", InputConstants.Type.KEYBOARD, InputConstants.KEY_X),
+		key("skill_2", InputConstants.Type.KEYBOARD, InputConstants.KEY_C),
 		null, // navigate_camera: not listed (your request, 2026-11-10); always unbound
 		null, // reset_camera: not listed (your request, 2026-11-10); always unbound
 	};
