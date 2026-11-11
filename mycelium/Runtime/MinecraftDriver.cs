@@ -61,6 +61,7 @@ namespace MyceliumCraft
         readonly WeaponBag weapons = new WeaponBag();
         readonly SkillAim skillAim = new SkillAim();
         readonly DashWatch dash = new DashWatch();
+        readonly Freecam freecam = new Freecam(); // "-freecam": a free camera on the backslash key
         readonly UiHider uiHider = new UiHider(); // Minecraft's F1 hides Mycelium's interface too
         readonly CycloneLength cycloneLength = new CycloneLength(); // Living Cyclone as long at any Speed
         readonly GoalWatch goal = new GoalWatch(); // the level's goal, on Minecraft's locator bar
@@ -338,6 +339,8 @@ namespace MyceliumCraft
             if (Array.IndexOf(args, "-mcSleeperSurvey") >= 0) StartCoroutine(SleeperSurvey());
             // Test aid: "-mcBeetleSurvey" logs everything drawn under the tutorial's "Giga Beetle" (spores on its mandibles).
             if (Array.IndexOf(args, "-mcBeetleSurvey") >= 0) StartCoroutine(BeetleSurvey());
+            // Test aid: "-mcFreecamTest" (with -freecam) switches the freecam on 3 s into driving and flies it forward 2 s, logging the camera.
+            if (Array.IndexOf(args, "-mcFreecamTest") >= 0) StartCoroutine(FreecamTest());
             // Test aid: "-mcGigaBeetleTest" switches the tutorial's giga beetle on 3 s into driving, as reaching it does.
             if (Array.IndexOf(args, "-mcGigaBeetleTest") >= 0) StartCoroutine(GigaBeetleTest());
             // Test aid: "-mcTutorialEndTest" kills you 4 s into driving (as the tutorial's giga beetle does), then logs the cutscene and the overlay.
@@ -669,7 +672,7 @@ namespace MyceliumCraft
                 hintCount = bindCount;
             }
             else if (!keys.HasBindings) keys.SetBindings(0, null, null); // defaults until Minecraft sends some
-            input.Update(link, reason == Proto.ReasonActive, reason, keys.OwnedScancodes, keys.OwnedButtons, mcScreenOpen);
+            input.Update(link, reason == Proto.ReasonActive, reason, freecam.Keys(keys.OwnedScancodes), keys.OwnedButtons, mcScreenOpen, freecam.Active && !mcScreenOpen, freecam.MouseLooking && !mcScreenOpen);
             // Mycelium's hints ("Press [R] to Open", the skill bar) show those keys while Minecraft drives.
             // Test aid: "-mcKeyHintTest" puts the hints on in a background run (no focus, so keys aren't Minecraft's).
             if (keyHintTest < 0) keyHintTest = Array.IndexOf(Environment.GetCommandLineArgs(), "-mcKeyHintTest") >= 0 ? 1 : 0;
@@ -720,7 +723,8 @@ namespace MyceliumCraft
             if (McConfig.Overlay && alive && phase != Phase.Idle) menuBody.Update(playerModel, feetOffset); // the skill menu's spore: your Minecraft body
             playerModel.SetVanished(vanished);
             cameraSync.ReplaceSpore = playerModel.Shown;
-            playerModel.Cutscene = cameraSync.CutsceneLive; // your whole body in a cutscene's view
+            freecam.Update(rb != null && phase != Phase.Idle, mcScreenOpen);
+            playerModel.Cutscene = cameraSync.CutsceneLive || freecam.Active; // your whole body in a cutscene's view, or the freecam's
             // The other spores as Minecraft characters too, while yours is one.
             colonyBodies.Update(link, playerModel.Shown, colony, playerModel, feetOffset, (float)map.Scale);
             // Which game owns which key, while Minecraft drives the spore.
@@ -2688,6 +2692,25 @@ namespace MyceliumCraft
                     if (colony.FullTurn[k])
                         McLog.Info($"giga beetle test: +{i} s: entry {k} {colony.Names[k]} at {colony.Spores[k].transform.position:F2} rotation {colony.Spores[k].transform.rotation.eulerAngles:F0} size x{colony.Sizes[k]:F2}, pose {colony.Poses[k]}, body #{colony.Colors[k]:X6} cap #{colony.Caps[k]:X6}");
             }
+        }
+
+        /// <summary>Test aid (-mcFreecamTest): the freecam on, flown forward, then where Mycelium's camera drew from.</summary>
+        System.Collections.IEnumerator FreecamTest()
+        {
+            while (phase != Phase.Driving) yield return null;
+            yield return new WaitForSeconds(3f);
+            McLog.Info($"freecam test: camera at {Camera.main?.transform.position:F2} before; allowed {freecam.Allowed}");
+            freecam.TestToggle();
+            for (int i = 0; i < 4; i++)
+            {
+                freecam.TestFly(0.5f);
+                if (i == 1) freecam.TestTurn(90f); // as holding the right arrow for 1 s
+                yield return new WaitForSeconds(0.5f);
+                McLog.Info($"freecam test: +{(i + 1) * 0.5f:F1} s: camera drawn from {freecam.LastDrawnAt:F2}, spore at {rb?.position:F2}, frames drawn by the freecam {freecam.Drawn}");
+            }
+            freecam.TestToggle();
+            yield return new WaitForSeconds(0.5f);
+            McLog.Info($"freecam test: off: camera at {Camera.main?.transform.position:F2}");
         }
 
         /// <summary>Test aid (-mcBeetleSurvey): the giga beetle's drawn parts, and anything with a spore material in the scene that isn't a colony spore or a sleeper.</summary>

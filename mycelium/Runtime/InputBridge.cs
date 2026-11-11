@@ -80,7 +80,7 @@ namespace MyceliumCraft
         /// <summary>Call every frame: read the devices and publish. active: Minecraft should play from it.</summary>
         /// owned: keys and buttons that belong to Mycelium actions (not sent).
         /// mcScreenOpen: a Minecraft screen is open (the mouse moves a cursor, not the view).
-        public void Update(MyceliumLink link, bool active, uint reason, HashSet<int> ownedScancodes, uint ownedButtons, bool mcScreenOpen)
+        public void Update(MyceliumLink link, bool active, uint reason, HashSet<int> ownedScancodes, uint ownedButtons, bool mcScreenOpen, bool freecamRight = false, bool freecamMouse = false)
         {
             Keyboard kb = Keyboard.current;
             Mouse mouse = Mouse.current;
@@ -116,7 +116,9 @@ namespace MyceliumCraft
                 if (mouse.backButton.isPressed) buttons |= 1u << 4;
                 if (mouse.forwardButton.isPressed) buttons |= 1u << 5;
                 if (!mcScreenOpen) buttons &= ~ownedButtons;
-                Vector2 d = mouse.delta.ReadValue();
+                // The freecam's: its right button is never Minecraft's while it's on; held, the mouse turns it, not Minecraft's look.
+                if (freecamRight) buttons &= ~(1u << 3);
+                Vector2 d = freecamMouse ? Vector2.zero : mouse.delta.ReadValue();
                 totalDX += d.x;
                 totalDY -= d.y; // Unity: up is +; Minecraft (screen): down is +
                 totalScroll += mouse.scroll.ReadValue().y / 120.0; // Windows: 120 per wheel notch

@@ -8,7 +8,9 @@ namespace MyceliumCraft
     /// McState says Minecraft's HUD is hidden and it's normal play, every root canvas of Mycelium's
     /// (its HUD, notifications, crosshair, the pop-ups over curios and spores) is switched off, except
     /// the screens that aren't HUD: its menus and the loading, black, start-up, death and title cards,
-    /// and our own. Canvases that appear meanwhile (a pop-up) are caught every 0.25 s. When F1 is
+    /// and our own. Canvases that appear meanwhile (a pop-up) are caught every frame, and again just
+    /// before Unity draws the canvases (Canvas.willRenderCanvases), so one made later in the frame
+    /// isn't seen either (your report, 2026-11-11: pop-ups showed for a split second). When F1 is
     /// pressed again, or Mycelium takes the controls (a menu, the shop: Minecraft still shows its
     /// screens with F1 on), the ones switched off here are switched back on.
     ///
@@ -23,8 +25,7 @@ namespace MyceliumCraft
         readonly List<Canvas> off = new List<Canvas>();
         readonly List<Renderer> notDrawn = new List<Renderer>();
         readonly List<Renderer> under = new List<Renderer>();
-        bool hiding;
-        float nextScan;
+        bool hiding, hooked;
 
         public void Update(bool hide)
         {
@@ -40,8 +41,22 @@ namespace MyceliumCraft
                 McLog.Info($"ui: Minecraft's HUD is back (or a menu is open): {back} of Mycelium's canvases shown again");
                 return;
             }
-            if (hiding && Time.unscaledTime < nextScan) return;
-            nextScan = Time.unscaledTime + 0.25f;
+            if (!hooked)
+            {
+                hooked = true;
+                Canvas.willRenderCanvases += BeforeCanvasesDrawn;
+            }
+            Scan();
+        }
+
+        /// <summary>Just before Unity draws the canvases: catch a pop-up made since this frame's Update.</summary>
+        void BeforeCanvasesDrawn()
+        {
+            if (hiding) Scan();
+        }
+
+        void Scan()
+        {
             int added = 0;
             foreach (Canvas c in Object.FindObjectsOfType<Canvas>())
             {

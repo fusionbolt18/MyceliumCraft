@@ -1,5 +1,90 @@
 # MODLOG
 
+## 2026-11-11 F1: pop-ups don't flash up any more
+
+**Your report:** with F1 hiding the UI, pop-ups still showed for a split second when they first
+appeared.
+
+**Why:** `UiHider` looked for new canvases every 0.25 s, so a new pop-up could be drawn for up to
+a quarter of a second first.
+
+**Changed:** it looks every frame, and again just before Unity draws the canvases
+(`Canvas.willRenderCanvases`), so a pop-up made later in the frame is hidden before it's drawn.
+
+**Tested how:** stand-in run with `LINKTEST_HIDEHUD=1`. A pop-up that appeared had its canvas and
+its 5 face sprites hidden in the same check, and the frame rate while hidden (about 240-260) was
+as before. **Not tested** by eye (whether any frame still shows it).
+
+## 2026-11-11 Freecam: O goes up, U goes down
+
+**Your request:** swap "Q and E" so E goes up and Q goes down. The freecam uses U and O, which you
+compared to Q and E, so they're swapped: O up, U down.
+
+**Changed:** `Freecam` (keys and texts). **Tested how:** Mycelium builds. **Not tested** (the
+keys need a real keyboard).
+
+## 2026-11-11 The freecam turns with the mouse while right click is held
+
+**Your request:** holding right click, the mouse turns the freecam.
+
+**Changed:**
+- `Freecam`: while the right mouse button is held, mouse movement turns it (0.15 degrees a pixel;
+  mouse up looks up). Log: "right button held: the mouse turns the freecam" / "let go".
+- `InputBridge`: while the freecam is on, the right button isn't sent to Minecraft. While it's
+  held, the mouse's movement isn't either, so your character's look stays put. Without it held,
+  the mouse is Minecraft's as before.
+- While the freecam is on, Mycelium's own actions bound to the right button are off (Interact, with
+  the new defaults), so turning doesn't also interact. They're back when it goes off.
+
+**Tested how:** stand-in run with `-freecam -mcFreecamTest`: "Mycelium's 'Interact' (on the right
+button) off while the freecam is on" ... "1 of Mycelium's right-button action(s) back on". **Not
+tested:** the mouse turning (the stand-in has no mouse).
+
+## 2026-11-11 The freecam turns with the arrow keys
+
+**Your request:** the arrow keys rotate the camera in freecam mode.
+
+**Changed:** `Freecam`:
+- Left and right turn it; up and down tilt it, to 89 degrees either way. 90 degrees a second.
+- I/K and J/L fly along the new heading.
+- With -freecam the arrows (SDL 79 to 82) are also kept from Minecraft (13 keys in all).
+- The log line shows its facing and tilt.
+
+**Tested how:** stand-in run with `-freecam -mcFreecamTest`. The test turned it 90 degrees (as a
+second on the right arrow): "facing 180 degrees". The next forward moves went along -z instead of
++x. **Not tested:** the arrow keys themselves.
+
+## 2026-11-11 A freecam, with -freecam
+
+**Your request:** a freecam only when Mycelium starts with "-freecam". '' switches it on and
+off; I J K L move like WASD, U and O go up and down, PageUp and PageDown change its speed; you keep
+controlling your character meanwhile.
+
+**Changed:** new `Freecam.cs`.
+- On: Mycelium's camera stays where it was, then flies with I/K (forward/back), J/L (left/right),
+  U/O (up/down), relative to where it faced when switched on. Forward and back stay level.
+- PageUp/PageDown: x1.5 faster or slower, 0.25 to 200 units/s (starts at 5).
+- Its direction doesn't change.
+- It's set just before the main camera draws (`beginCameraRendering`), after Cinemachine and
+  CameraSync. It switches off when you leave the level.
+- Your Minecraft body is drawn whole while it's on, even in first person (as for a cutscene
+  camera).
+- With -freecam, the 9 keys are never sent to Minecraft (the input bridge's owned keys), so for
+  example Minecraft's L (advancements) doesn't open. Every other key and the mouse still go to
+  Minecraft.
+- With a Minecraft screen open (chat), those keys go to Minecraft for typing, and the freecam
+  ignores them.
+- New test aid `-mcFreecamTest`.
+
+**Tested how:** stand-in run in The Carcass with `-freecam -mcFreecamTest`:
+- "freecam: on ... at (21.75, 2.55, -2.28) facing 90 degrees".
+- Each half second Mycelium drew from 2.5 units further on (178 to 733 frames drawn by the
+  freecam) while the spore stayed at (21.75, 1.04, -2.28).
+- "off ...; the camera follows you again".
+
+**Not tested:** the keys themselves (the stand-in can't press them) and play with Minecraft. Not
+in the friends' zip (not rebuilt).
+
 ## 2026-11-11 F1: the spore pop-up's happiness faces hide too
 
 **Your report** (with a screenshot): with F1 on, the happiness faces in the spore pop-up stayed.

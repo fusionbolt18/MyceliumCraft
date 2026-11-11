@@ -2283,10 +2283,29 @@ finished screen with the overlay on and off:
 Minecraft sends McState bit 7 `HUD_HIDDEN` (`Hud.isHidden()`, F1). `UiHider` switches off
 Mycelium's root canvases while it's on and it's play: the HUD, notifications, crosshair, and
 pop-ups and tooltips. Renderers under them aren't drawn either (`forceRenderingOff`): a spore pop-up's
-happiness faces are SpriteRenderers. New ones are caught every 0.25 s. Kept: `PauseMenuCanvas`, the loading,
+happiness faces are SpriteRenderers. New ones are caught every frame and again in `Canvas.willRenderCanvases` (just before
+Unity draws the canvases), so a new pop-up is never drawn first. Kept: `PauseMenuCanvas`, the loading,
 black, start-up, death and title canvases, and ours. They come back when F1 is off again, when
 Mycelium really has the controls (the overlay's rule: menus at once, not a skill's moment), or
 under a cover screen.
+
+## 5.8b Freecam (since 2026-11-11, only with -freecam)
+
+`Freecam.cs`:
+- **Switch:** `\` turns it on and off. On, it holds the camera where it was, then I/K, J/L and
+  O/U (up/down) move it (level forward and sideways from its facing then, world up and down). PageUp and
+  PageDown change its speed by x1.5 (0.25 to 200 units/s). The arrow keys turn it (left/right) and tilt it (up/down, to
+  89 degrees), 90 degrees a second.
+- **Mouse:** holding the right mouse button, the mouse turns it (0.15 degrees a pixel). While the
+  freecam is on, the right button isn't sent to Minecraft, nor the mouse movement while it's held.
+  Mycelium's own actions bound to the right button (Interact) are off until it goes off.
+- **Drawing:** the pose is applied in `RenderPipelineManager.beginCameraRendering` for
+  `Camera.main`, after Cinemachine and CameraSync.
+- **Keys:** with -freecam, its 13 SDL scancodes (49 12 13 14 15 24 18 75 78, arrows 79 to 82) join the input
+  bridge's owned keys, so Minecraft never gets them. It ignores them while a Minecraft screen is
+  open (typing).
+- **Your body:** `McPlayerModel.Cutscene` is on while it's active, so your Minecraft body is drawn
+  whole in first person too.
 
 ## 5.9 Server stalls (found and fixed, 2026-10-21)
 
