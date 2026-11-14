@@ -331,6 +331,18 @@ player to fix that.
   the stand-in, 2026-11-03; not fixed).
 - Holes go all the way down to the superflat world's own ground.
 
+**Jumping into things only Mycelium has** (since 2026-11-13): Mycelium has no jump, so a level can
+have solid things just over the spore's head that its own game never meets, and that the grid
+doesn't have either (it scans from above, and a downward-facing plane isn't hit). Delta Crag's start
+has `ExitWindow`, an invisible flat collider 3.4 units up over the whole start area: at the top of a
+jump the spore's head stopped on it while Minecraft's player went on up and back down, so you hung
+in the air. `MinecraftDriver.LetThroughOverhead`: whenever the spore is more than 0.15 units below
+Minecraft's height, every solid thing overlapping the spore at Minecraft's position that's wholly
+above its feet + 0.5 (not the terrain) stops colliding with the spore (`Physics.IgnoreCollision`)
+until the level ends or you swap spores, logged as "height: 'X' ... the spore goes through it now".
+A "height:" line also logs the spore more than 0.3 units off Minecraft's height for two physics
+steps in a row. Stand-in: `LINKTEST_JUMP=1` jumps at 4 s and 7 s with Minecraft's jump physics.
+
 ### 5.0.1 Minecraft rules changed by the mod (for combat)
 
 Always, while the mod is installed (your choice, 2026-10-19; `MycRules`, read on the integrated

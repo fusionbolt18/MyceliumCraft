@@ -225,6 +225,8 @@ Single-player and offline only.
   are put back when Mycelium closes.
 - **Freecam with `-freecam`**: `\` on/off, I J K L to fly, O up and U down, arrows (or the mouse with right click held) to turn, PageUp/PageDown speed, Del hides the other spores, Insert gives your spore random colours from a random species, F1 on Mycelium's main menu hides its buttons, and Minecraft's `/changename <name>` renames your spore (protocol v65). Tested
   with the stand-in (the camera flies, the spore stays), keys not tested.
+- **Jumping under Delta Crag's invisible start ceiling no longer hangs you in the air**: the spore
+  goes through overhead things only Mycelium has. Tested with the stand-in's jump, not in Minecraft.
 - **F1 hides Mycelium's interface along with Minecraft's**, and keeps it hidden through the
   final boss's intro (stand-in) and death cutscenes (not tested): tested with the stand-in, not in
   Minecraft.

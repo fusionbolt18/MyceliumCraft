@@ -47,6 +47,32 @@ public final class LinkTestMain {
 	/** LINKTEST_RENAME=name: as /changename name at 5 s (Mycelium renames your spore only with -freecam). */
 	private static final String RENAME = System.getenv("LINKTEST_RENAME");
 	private static boolean renamed;
+	/** LINKTEST_JUMP=1: jump at 4 s and at 7 s, as Minecraft's physics does (0.42 up, then -0.08 and x0.98 a tick). */
+	private static final boolean JUMP = "1".equals(System.getenv("LINKTEST_JUMP"));
+
+	/** Height above the take-off of a Minecraft jump, n ticks after it (0 once landed). */
+	static double jumpHeight(long n) {
+		if (n <= 0) {
+			return 0;
+		}
+		double h = 0, vy = 0.42;
+		for (long i = 0; i < n; i++) {
+			h += vy;
+			vy = (vy - 0.08) * 0.98;
+			if (h <= 0) {
+				return 0;
+			}
+		}
+		return h;
+	}
+
+	static double jumpAt(long tickIndex) {
+		if (!JUMP) {
+			return 0;
+		}
+		long j4 = tickIndex - 80, j7 = tickIndex - 140;
+		return j7 > 0 ? jumpHeight(j7) : jumpHeight(j4);
+	}
 	/** "1": sprint FOV and crouch eye height from 4 to 7 s. */
 	private static final boolean FOVEYE = "1".equals(System.getenv("LINKTEST_FOVEYE"));
 	/** "1": log Mycelium's enemy table once a second, and hit the nearest enemy for 2 points (10 Mycelium damage) every 2 s. */
@@ -350,8 +376,12 @@ public final class LinkTestMain {
 			tick.prevZ = z - 2 * Math.max(0, Math.min(tp - 5, 5));
 			tick.curX = x + 2 * Math.min(tc, 5);
 			tick.curZ = z - 2 * Math.max(0, Math.min(tc - 5, 5));
-			tick.prevY = y;
-			tick.curY = y;
+			tick.prevY = y + jumpAt(k - 1);
+			tick.curY = y + jumpAt(k);
+			double py = tick.prevY + (tick.curY - tick.prevY) * partial;
+			if (JUMP && k % 2 == 0 && jumpAt(k) > 0 && frames % 3 == 0) {
+				System.out.printf("t=%.2f jump: Minecraft's feet %.2f above the take-off%n", t, jumpAt(k));
+			}
 			double px = tick.prevX + (tick.curX - tick.prevX) * partial;
 			double pz = tick.prevZ + (tick.curZ - tick.prevZ) * partial;
 			float yaw = t < 5 ? -90f : 180f;
@@ -405,7 +435,7 @@ public final class LinkTestMain {
 				MycLink.renameSeq++;
 				System.out.printf("t=%.2f as /changename %s (request %d)%n", t, RENAME, MycLink.renameSeq);
 			}
-			MycLink.writeMcState(flags, px, y, pz, yaw, pitch, frames++, 1, ack, cameraMode, bodyYaw, tick, feel ? 1.15f : 1f, feel ? 0.78f : 1f, 1f, hand, swings, move[0], move[1]);
+			MycLink.writeMcState(flags, px, py, pz, yaw, pitch, frames++, 1, ack, cameraMode, bodyYaw, tick, feel ? 1.15f : 1f, feel ? 0.78f : 1f, 1f, hand, swings, move[0], move[1]);
 			if (FUNGAL && t >= 7.1 && t < 8) {
 				hitNearest(px, y, pz); // once: the next would be 2 s later
 			}

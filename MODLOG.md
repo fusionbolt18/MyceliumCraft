@@ -1,5 +1,31 @@
 # MODLOG
 
+## 2026-11-13 Jumping at Delta Crag's start no longer hangs you in the air
+
+**Your report:** jumping in the very first area of Delta Crag floats you in the air for a bit.
+
+**Why:** Delta Crag's start has 'ExitWindow', an invisible flat collider 3.4 units up over the whole
+start area. Mycelium has no jump, so its spore never reaches it. Minecraft's jump lifted the spore's
+head into it: the spore stopped at feet 1.67 while Minecraft's player went on to 2.00 and back, so
+the view stayed at the top of the jump. Minecraft's ground grid doesn't have the plane (it faces
+down, so the scan from above doesn't hit it), so only Mycelium held you. Your log had no resyncs
+there, which fits: the spore was only 0.33 units off.
+
+**Changed:**
+- `MinecraftDriver.LetThroughOverhead`: when the spore is below Minecraft's height, solid things
+  overlapping it at Minecraft's position that are wholly above its feet + 0.5 (not the terrain) stop
+  colliding with the spore until the level ends or you swap spores.
+- "height:" log lines: the spore more than 0.3 units off Minecraft's height for two steps in a row,
+  and each thing let through.
+- Stand-in: `LINKTEST_JUMP=1`, jumps at 4 s and 7 s with Minecraft's jump physics.
+
+**Tested how:** stand-in in Delta Crag, standing at the start, `LINKTEST_JUMP=1`:
+- before: "height: spore feet 1.67, Minecraft's 2.00 (spore below by 0.33)" at the top of each jump;
+- after: "'ExitWindow' MeshCollider (layer Default, from y 3.37 to 3.37) ... the spore goes through it
+  now", then no more height lines through both jumps.
+- The Carcass, walking: nothing let through.
+**Not tested:** in Minecraft; other levels' overhead things.
+
 ## 2026-11-13 -freecam: F1 on Mycelium's main menu hides its buttons
 
 **Your request:** with -freecam, F1 on Mycelium's main menu makes all the buttons disappear.

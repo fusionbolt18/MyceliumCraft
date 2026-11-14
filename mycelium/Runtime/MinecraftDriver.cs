@@ -1038,6 +1038,17 @@ namespace MyceliumCraft
                 SendTeleport($"spore {lastError:F1} units from Minecraft's player (Mycelium collision?)");
                 return;
             }
+            // Something overhead that only Mycelium has stops the spore rising to Minecraft's height (a jump).
+            if (error.y > 0.15f) LetThroughOverhead(target - pos);
+            // Height watch: the spore more than 0.3 units off Minecraft's height (a jump into something
+            // only Mycelium has, your report 2026-11-13), at most 4 lines a second.
+            // (Two steps in a row: the step at a jump's take-off is always one behind.)
+            heightOffSteps = Mathf.Abs(error.y) > 0.3f ? heightOffSteps + 1 : 0;
+            if (heightOffSteps >= 2 && Time.realtimeSinceStartup >= nextHeightLog)
+            {
+                nextHeightLog = Time.realtimeSinceStartup + 0.25f;
+                McLog.Info($"height: spore feet {pos.y - feetOffset:F2}, Minecraft's {target.y - feetOffset:F2} ({(error.y > 0 ? "spore below" : "spore above")} by {Mathf.Abs(error.y):F2}); {BlockedBy(new Vector3(0f, error.y, 0f))}");
+            }
             if (lastError <= StuckDistance) stuckSince = -1f;
             else if (stuckSince < 0) stuckSince = Time.time;
             else if (Time.time - stuckSince >= StuckSeconds)
@@ -1431,6 +1442,44 @@ namespace MyceliumCraft
             return false;
         }
 
+        float nextHeightLog;
+        int heightOffSteps;
+        readonly System.Collections.Generic.HashSet<Collider> letThrough = new System.Collections.Generic.HashSet<Collider>();
+        Rigidbody letThroughRb;
+        readonly Collider[] overheadHits = new Collider[32];
+
+        /// <summary>
+        /// Minecraft jumps; Mycelium has no jump, so its levels can have solid things just over the
+        /// spore's head that its own game never meets. Delta Crag's start has 'ExitWindow', an invisible
+        /// flat collider 3.4 units up over the whole start area: the spore's head stopped on it while
+        /// Minecraft's player went on up and came back down, so you hung in the air at the top of each
+        /// jump (your report, 2026-11-13). When the spore is below Minecraft's height, every solid thing
+        /// overlapping the spore where Minecraft's player is that is wholly above the spore's feet + 0.5
+        /// (overhead, not a floor or a wall it stands by; not the terrain) stops colliding with the
+        /// spore (Physics.IgnoreCollision) until the level ends or you swap spores. Minecraft's own
+        /// ground (the grid) already does the collision for you.
+        /// </summary>
+        void LetThroughOverhead(Vector3 move)
+        {
+            if (letThroughRb != rb) { letThroughRb = rb; letThrough.Clear(); }
+            float feetThere = FeetY(rb.position.y) + move.y;
+            foreach (Collider mine in rb.GetComponentsInChildren<Collider>())
+            {
+                if (mine.isTrigger || !mine.enabled || mine.attachedRigidbody != rb) continue;
+                Bounds b = mine.bounds;
+                int n = Physics.OverlapBoxNonAlloc(b.center + move, b.extents, overheadHits, Quaternion.identity, ground.LayerMask, QueryTriggerInteraction.Ignore);
+                for (int i = 0; i < n; i++)
+                {
+                    Collider c = overheadHits[i];
+                    if (c == null || c.attachedRigidbody == rb || c is TerrainCollider || letThrough.Contains(c)) continue;
+                    if (c.bounds.min.y < feetThere + 0.5f) continue;
+                    letThrough.Add(c);
+                    foreach (Collider m in rb.GetComponentsInChildren<Collider>()) Physics.IgnoreCollision(m, c, true);
+                    Bounds cb = c.bounds;
+                    McLog.Info($"height: '{c.name}' {c.GetType().Name} (layer {LayerMask.LayerToName(c.gameObject.layer)}, from y {cb.min.y:F2} to {cb.max.y:F2}) is over the spore's head where Minecraft's player jumped (feet {feetThere:F2}); the spore goes through it now ({letThrough.Count} in this level)");
+                }
+            }
+        }
         static FieldInfo endBlackField, endMenuField;
         static PropertyInfo endInstanceProp;
         static FieldInfo endInstanceField;
