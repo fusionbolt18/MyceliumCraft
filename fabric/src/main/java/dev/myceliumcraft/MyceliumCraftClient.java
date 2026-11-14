@@ -46,6 +46,9 @@ public final class MyceliumCraftClient implements ClientModInitializer {
 			.map(v -> v.getAsString()).orElse("unknown");
 		MycLink.LOG.info("MyceliumCraft: loaded (protocol v{}, mapping {}), jar built {}", Proto.VERSION, Proto.MAPPING_NAME, built);
 		MyceliumKeys.init();
+		MycChangeName.init(); // /changename <name> (with Mycelium's -freecam)
+		// Options this mod sets at every start (Pause on Lost Focus off).
+		net.fabricmc.fabric.api.client.event.lifecycle.v1.ClientTickEvents.END_CLIENT_TICK.register(MycDefaults::tick);
 		// The "Mycelium" game mode: a new world gets its time of day and weather once it has started (MycWorldMode).
 		net.fabricmc.fabric.api.event.lifecycle.v1.ServerLifecycleEvents.SERVER_STARTED.register(MycWorldMode::started);
 		// Combat: invisible stand-ins for Mycelium's enemies, drawn by nothing.
@@ -212,6 +215,7 @@ public final class MyceliumCraftClient implements ClientModInitializer {
 		LocalPlayer player = minecraft.player;
 		// Your player goes by the spore's name while Mycelium has one (MycName).
 		MycName.update(haveMyc && MycLink.myceliumAlive() && MYC.inLevel() ? MYC.sporeName : "", player != null ? player.getUUID() : null);
+		MycChangeName.update(minecraft, haveMyc && MycLink.myceliumAlive(), haveMyc ? MYC.flags : 0, haveMyc && MYC.inLevel(), haveMyc ? MYC.sporeName : ""); // /changename
 		MycColony.update(minecraft, haveMyc && MycLink.myceliumAlive() && MYC.inLevel()); // your colony in the player list
 		MycOverlay.setActive(haveMyc && MycLink.myceliumAlive() && MYC.inLevel() && (MYC.flags & Proto.MYC_OVERLAY) != 0
 			&& player != null && minecraft.level != null);

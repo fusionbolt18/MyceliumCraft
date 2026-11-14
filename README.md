@@ -14,6 +14,9 @@ Single-player and offline only.
 
 ## What works
 
+- **Pause on Lost Focus off at every start** (2026-11-12): switched off each time Minecraft starts
+  with the mod. Tested in a test copy of Minecraft (`gradlew runClient`): switched on before each
+  of two starts, off after both. Not tested in your Prism instance.
 - **Walking moves the spore (Phase 0): tested in both games** (2026-10-17). Walking in Minecraft
   moved the spore in "New Tutorial" for 2.5 minutes. The spore moved at 3.96 units/s while
   Minecraft walked at 3.98 blocks/s.
@@ -220,9 +223,10 @@ Single-player and offline only.
 - **Your world's settings apply in any world while linked: not tested in Minecraft.** Immediate
   respawn on, the day-night cycle off, and the time set to just after noon. A friend's own values
   are put back when Mycelium closes.
-- **Freecam with `-freecam`**: `\` on/off, I J K L to fly, O up and U down, arrows (or the mouse with right click held) to turn, PageUp/PageDown speed, Del hides the other spores, Insert gives your spore random colours from a random species. Tested
+- **Freecam with `-freecam`**: `\` on/off, I J K L to fly, O up and U down, arrows (or the mouse with right click held) to turn, PageUp/PageDown speed, Del hides the other spores, Insert gives your spore random colours from a random species, F1 on Mycelium's main menu hides its buttons, and Minecraft's `/changename <name>` renames your spore (protocol v65). Tested
   with the stand-in (the camera flies, the spore stays), keys not tested.
-- **F1 hides Mycelium's interface along with Minecraft's**: tested with the stand-in, not in
+- **F1 hides Mycelium's interface along with Minecraft's**, and keeps it hidden through the
+  final boss's intro (stand-in) and death cutscenes (not tested): tested with the stand-in, not in
   Minecraft.
 - **The giga beetle's two impaled spores are Minecraft spores**, standing, tilted with its
   mandibles: not tested in Minecraft.

@@ -44,6 +44,9 @@ public final class LinkTestMain {
 	private static final boolean PAUSE = "1".equals(System.getenv("LINKTEST_PAUSE"));
 	/** LINKTEST_HIDEHUD=1: Minecraft's HUD hidden (F1) from 4 to 8 s. */
 	private static final boolean HIDEHUD = "1".equals(System.getenv("LINKTEST_HIDEHUD"));
+	/** LINKTEST_RENAME=name: as /changename name at 5 s (Mycelium renames your spore only with -freecam). */
+	private static final String RENAME = System.getenv("LINKTEST_RENAME");
+	private static boolean renamed;
 	/** "1": sprint FOV and crouch eye height from 4 to 7 s. */
 	private static final boolean FOVEYE = "1".equals(System.getenv("LINKTEST_FOVEYE"));
 	/** "1": log Mycelium's enemy table once a second, and hit the nearest enemy for 2 points (10 Mycelium damage) every 2 s. */
@@ -396,6 +399,12 @@ public final class LinkTestMain {
 			int swings = FUNGAL ? (t >= 5 ? 1 : 0) + (t >= 7 ? 1 : 0) : 0;
 			String keys = KEYS == null ? "" : KEYS;
 			float[] move = MycLink.moveDirection(keys.contains("forward"), keys.contains("back"), keys.contains("left"), keys.contains("right"), yaw);
+			if (RENAME != null && !renamed && t >= 5) {
+				renamed = true;
+				MycLink.renameName = RENAME;
+				MycLink.renameSeq++;
+				System.out.printf("t=%.2f as /changename %s (request %d)%n", t, RENAME, MycLink.renameSeq);
+			}
 			MycLink.writeMcState(flags, px, y, pz, yaw, pitch, frames++, 1, ack, cameraMode, bodyYaw, tick, feel ? 1.15f : 1f, feel ? 0.78f : 1f, 1f, hand, swings, move[0], move[1]);
 			if (FUNGAL && t >= 7.1 && t < 8) {
 				hitNearest(px, y, pz); // once: the next would be 2 s later
@@ -522,7 +531,7 @@ public final class LinkTestMain {
 				}
 				if (!myc.sporeName.equals(sporeNameSeen)) {
 					sporeNameSeen = myc.sporeName;
-					System.out.printf("t=%.2f the spore you control is called '%s'%n", t, sporeNameSeen);
+					System.out.printf("t=%.2f the spore you control is called '%s' (freecam flag %s)%n", t, sporeNameSeen, (myc.flags & Proto.MYC_FREECAM) != 0 ? "on" : "off");
 				}
 				if (!list.toString().equals(resourceSeen)) {
 					resourceSeen = list.toString();

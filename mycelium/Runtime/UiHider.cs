@@ -20,7 +20,7 @@ namespace MyceliumCraft
     /// </summary>
     sealed class UiHider
     {
-        static readonly string[] Keep = { "PauseMenuCanvas", "LoadingCanvas", "BlackCanvas", "StartupCanvas", "DeathCanavs", "DeathCanvas", "TitleCanvas" };
+        static readonly string[] Keep = { "PauseMenuCanvas", "LoadingCanvas", "BlackCanvas", "StartupCanvas", "DeathCanavs", "DeathCanvas", "TitleCanvas", "EndOfRunCanvas", "CreditsCanvas" };
 
         readonly List<Canvas> off = new List<Canvas>();
         readonly List<Renderer> notDrawn = new List<Renderer>();

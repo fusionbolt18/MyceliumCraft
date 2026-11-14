@@ -350,6 +350,15 @@ Also always (your request, 2026-11-02): **no toasts**, Minecraft's pop-ups in th
 `ToastManagerMixin` cancels `ToastManager.addToast` and `showNowPlayingToast`. Each kind is logged
 the first time one is held back. Advancements and recipes are still earned; only the pop-up is gone.
 
+**Pause on Lost Focus off at every start** (your request, 2026-11-12; `MycDefaults`): on the
+first client tick of each run, Minecraft's Pause on Lost Focus is switched off (and options.txt
+saved if it was on). You play with Mycelium's window in front, so Minecraft's window isn't the
+focused one. The input bridge already held the option off while it drives Minecraft, but not
+otherwise (menus, before Mycelium is up). You can still turn it on while playing; the next start
+turns it off again. (A first version set it only once, remembered in
+`config/myceliumcraft-defaults.txt`; replaced the same day at your request. That file is no
+longer read and can be deleted.)
+
 ### 5.0.2 Health: Mycelium's is in charge (your choice, 2026-10-19)
 
 - **Mycelium** reads its `PlayerHealth.currentHealth` and `maxHealth` (by reflection) and sends
@@ -2286,9 +2295,12 @@ Mycelium's root canvases while it's on and it's play: the HUD, notifications, cr
 pop-ups and tooltips. Renderers under them aren't drawn either (`forceRenderingOff`): a spore pop-up's
 happiness faces are SpriteRenderers. New ones are caught every frame and again in `Canvas.willRenderCanvases` (just before
 Unity draws the canvases), so a new pop-up is never drawn first. Kept: `PauseMenuCanvas`, the loading,
-black, start-up, death and title canvases, and ours. They come back when F1 is off again, when
-Mycelium really has the controls (the overlay's rule: menus at once, not a skill's moment), or
-under a cover screen.
+black, start-up, death and title canvases, the run's end screen (`EndOfRunCanvas`), the credits,
+and ours. They come back when F1 is off again, when Mycelium really has the controls (the
+overlay's rule: menus at once, not a skill's moment), or under a cover screen. Except in the final
+boss's cutscenes (since 2026-11-13, `BossCutsceneOn`: BossCam's intro or death camera is on, or the
+boss is beaten): they take the controls too, but F1 keeps everything hidden through them (not
+over the run's end screen or the pause menu).
 
 ## 5.8b Freecam (since 2026-11-11, only with -freecam)
 
@@ -2319,6 +2331,22 @@ under a cover screen.
   `DesignTracker.SetCapColor` / `SetBodyColor`. Only the colours change, not its species skill.
   Minecraft's skin follows by itself: `ColonyWatch` reads the colours every scan, and `MycSkins`
   makes a skin for each new pair of colours.
+- **F1 on Mycelium's main menu** (since 2026-11-13): `Freecam.MainMenuF1`, called every frame from
+  the top of `UpdateInner` (linked to Minecraft or not). With Mycelium's window focused, F1 hides the
+  buttons and keeps the logo: the menu's "Canvas" holds `Logo`, `MainMenuBackground` and the panels
+  (MainMenu, AboutMenu, ProfileMenu, ModeSelectMenu, DeleteProfileMenu). Every child but the logo and
+  background gets a CanvasGroup at alpha 0, not interactable, not blocking clicks, so a panel opened
+  later stays hidden too. Other canvases aren't touched. F1 again (the groups put back as they were,
+  or removed if we added them), or leaving the menu, brings them back. Test aid `-mcMenuF1Test`.
+- **/changename <name>** (Minecraft, since 2026-11-12, protocol v65): `MycChangeName.java`, a
+  Fabric client command (runs in your game, no cheats needed). It works only while MycState's
+  `FREECAM` flag is on (Mycelium started with -freecam); otherwise it says so. It puts the name and
+  a new request number in McState (0xA0, 0xA4). `Freecam.Rename` sets the current spore's
+  `CharacterStats.sporeName` and calls Mycelium's own `UpdateSporeName` (the HUD's name, the
+  nametag). The first number Mycelium sees is only remembered, so a request made before it
+  started isn't redone. Minecraft's chat says "Your spore is now called ..." once MycState's
+  spore name changes, or after 3 s that it didn't. Mycelium saves the name with the colony, as any
+  spore's.
 - **Your body:** `McPlayerModel.Cutscene` is on while it's active, so your Minecraft body is drawn
   whole in first person too.
 

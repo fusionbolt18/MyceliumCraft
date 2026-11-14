@@ -218,7 +218,21 @@ public final class MycLink {
 		s.set(JAVA_INT, b + MC_SWINGS, swings);
 		s.set(JAVA_FLOAT, b + MC_MOVE_X, moveX);
 		s.set(JAVA_FLOAT, b + MC_MOVE_Z, moveZ);
+		putUtf8(s, b + MC_RENAME_NAME, MC_RENAME_BYTES, renameName);
+		s.set(JAVA_INT, b + MC_RENAME_SEQ, renameSeq);
 		INT.setRelease(s, b + MC_SEQ, seq + 2); // even: done
+	}
+
+	/** /changename (MycChangeName): the latest request's number and name, sent with every McState. Since v65. */
+	public static volatile int renameSeq;
+	public static volatile String renameName = "";
+
+	private static void putUtf8(MemorySegment s, long off, int max, String text) {
+		byte[] data = (text == null ? "" : text).getBytes(java.nio.charset.StandardCharsets.UTF_8);
+		int n = Math.min(data.length, max - 1);
+		while (n > 0 && n < data.length && (data[n] & 0xC0) == 0x80) n--; // don't cut a character in half
+		for (int i = 0; i < n; i++) s.set(java.lang.foreign.ValueLayout.JAVA_BYTE, off + i, data[i]);
+		s.set(java.lang.foreign.ValueLayout.JAVA_BYTE, off + n, (byte) 0);
 	}
 
 	/** Seqlock write of the Bindings block: kind and code per Mycelium action. */

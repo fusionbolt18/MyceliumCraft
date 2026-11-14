@@ -1,5 +1,88 @@
 # MODLOG
 
+## 2026-11-13 -freecam: F1 on Mycelium's main menu hides its buttons
+
+**Your request:** with -freecam, F1 on Mycelium's main menu makes all the buttons disappear.
+
+**Changed:**
+- `Freecam.MainMenuF1`: on the "Main Menu" scene, with -freecam and Mycelium's window focused, F1
+  hides the menu's panels (the buttons) with a CanvasGroup at alpha 0 and keeps `Logo` and
+  `MainMenuBackground`; F1 again or leaving the menu brings them back.
+- **First try, corrected the same day (your report: it took the logo too):** it switched off whole
+  canvases, and the logo is on the same canvas as the buttons.
+- Called at the top of `MinecraftDriver.UpdateInner`, so it works without Minecraft too.
+- Test aid `-mcMenuF1Test`: hides 4 s after start, shows again 3 s later.
+
+**Tested how:** `MyceliumCraft.exe -freecam -mcMenuF1Test -mcBackground`, no Minecraft: "hidden
+MainMenu, AboutMenu, ProfileMenu, ModeSelectMenu, DeleteProfileMenu; kept MainMenuBackground, Logo",
+then "5 part(s) shown again".
+**Not tested:** pressing the real F1 key, and how it looks.
+
+## 2026-11-13 F1 keeps Mycelium's interface hidden through the boss's cutscenes
+
+**Your report:** with F1 on, Mycelium's interface came back during the boss cutscenes.
+
+**Why:** the F1 hiding stopped whenever Mycelium took the controls, so that its menus show. The
+boss's intro (StartBoss) switches the controls off too, so it counted as a menu.
+
+**Changed:**
+- `MinecraftDriver.BossCutsceneOn`: the final boss's intro or death camera (BossCam) is on, or the
+  boss is beaten. Then F1 keeps hiding, unless the run's end screen or the pause menu is up.
+- `UiHider`: the run's end screen (`EndOfRunCanvas`) and the credits (`CreditsCanvas`) are never
+  hidden by F1, so the ending after the boss can't go missing.
+- Test aid `-mcBossIntroTest` now also walks into StartBoss's trigger, which is what really starts
+  the intro (before, the intro camera never came on). It goes on when the boss isn't active yet.
+
+**Tested how:** stand-in in Impact Barrens with `-mcBossIntroTest` and `LINKTEST_HIDEHUD=1` (F1 from
+4 to 8 s): "the boss's intro cutscene started; F1 keeps Mycelium's interface hidden through it",
+34 canvases hidden (the end screen and credits not among them), shown again only when the stand-in's
+F1 went off, with the intro camera still on.
+**Not tested:** in Minecraft; the boss's death cutscene (its camera never came on in a background
+run before either).
+
+## 2026-11-12 /changename <name> in Minecraft (with -freecam), protocol v65
+
+**Your request:** a Minecraft command, `/changename <name>`, that renames the spore you're playing,
+for the -freecam version.
+
+**Changed:**
+- Minecraft mod: new `MycChangeName`, a client command (it runs in your game, so it needs no
+  cheats). If Mycelium wasn't started with -freecam, it says so and sends nothing; the same if
+  Mycelium isn't running or you have no spore. Otherwise it sends the name to Mycelium and says
+  "Renaming X to Y...", then "Your spore is now called Y." when Mycelium has done it (or after
+  3 s that it didn't).
+- Mycelium: `Freecam.Rename` sets your spore's name and calls Mycelium's own `UpdateSporeName`
+  (the HUD's name and the nametag). Only with -freecam.
+- Protocol v65: MycState flag bit14 `FREECAM`; McState 0xA0 rename request number, 0xA4 the name.
+  Both halves have to be the new ones (the friends' zip is out of date until rebuilt).
+- Stand-in: `LINKTEST_RENAME=name` acts as /changename at 5 s.
+
+**Tested how:** stand-in run with `LINKTEST_RENAME="Mossy Boi"`:
+- Mycelium with -freecam: "freecam flag on", then at 5.21 s "the spore you control is called
+  'Mossy Boi'"; Mycelium's log "rename: your spore 'Shborb' is now 'Mossy Boi'".
+- Mycelium without -freecam: "freecam flag off", the name stayed Shborb; Mycelium's log "...but
+  Mycelium wasn't started with -freecam".
+**Not tested:** the real command in Minecraft (its chat messages), the HUD name, and that the new
+name is still there after Mycelium saves and loads.
+
+## 2026-11-12 Pause on Lost Focus off at every start
+
+**Your request:** Minecraft's Pause on Lost Focus off by default; then: switched off once at the
+start of every run with the mod.
+
+**Changed:** new `MycDefaults` (Minecraft mod). On the first client tick of each run it switches
+Pause on Lost Focus off, and saves Minecraft's options if it was on. You can turn it on while
+playing; the next start turns it off again.
+
+**First version (replaced):** set it off only once, ever, remembered in
+`config/myceliumcraft-defaults.txt`, so turning it back on stayed. It worked (three test starts),
+but you wanted it off at every start instead. That file is no longer used.
+
+**Tested how:** a test copy of Minecraft from the project (`gradlew runClient`, its own folder
+`fabric/run`, not your Prism instance), started twice, each time with `pauseOnLostFocus:true` in
+its options.txt first: both logged "Pause on Lost Focus set off at this start (it was on)", and
+options.txt read `pauseOnLostFocus:false` after. **Not tested** in your Prism instance.
+
 ## 2026-11-11 Freecam Insert: random colours for your spore
 
 **Your request:** with -freecam, Insert gives the spore you play random colours: one of the four

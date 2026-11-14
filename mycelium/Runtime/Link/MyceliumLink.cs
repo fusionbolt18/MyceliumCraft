@@ -24,6 +24,8 @@ namespace MyceliumCraft.Link
         public uint HandWeapon;          // the weapon whose carrot is in Minecraft's main hand (0 = none)
         public uint Swings;              // melee attacks Minecraft has started (counts up)
         public float MoveX, MoveZ;       // the held movement keys' direction (Minecraft world, unit; 0, 0 = none)
+        public uint RenameSeq;           // /changename requests (counts up); since v65
+        public string RenameName;        // the name the latest one asks for
 
         public bool HasTicks => TickMs > 0f && TickQpc != 0;
 
@@ -265,6 +267,8 @@ namespace MyceliumCraft.Link
                 s.Swings = ReadU32(view, b + Proto.McSwings);
                 s.MoveX = ReadF32(view, b + Proto.McMoveX);
                 s.MoveZ = ReadF32(view, b + Proto.McMoveZ);
+                s.RenameSeq = ReadU32(view, b + Proto.McRenameSeq);
+                s.RenameName = ReadUtf8(view, b + Proto.McRenameName, Proto.McRenameBytes);
                 Thread.MemoryBarrier();
                 if (ReadU32(view, b + Proto.McSeq) == seq1) return true;
             }
@@ -607,6 +611,16 @@ namespace MyceliumCraft.Link
             }
             Thread.MemoryBarrier();
             WriteU32(view, b + Proto.ColSeq, seq + 2);
+        }
+
+        static string ReadUtf8(IntPtr p, int off, int bytes)
+        {
+            int n = 0;
+            while (n < bytes && Marshal.ReadByte(p, off + n) != 0) n++;
+            if (n == 0) return "";
+            byte[] data = new byte[n];
+            Marshal.Copy(p + off, data, 0, n);
+            return System.Text.Encoding.UTF8.GetString(data);
         }
 
         static void WriteUtf8(IntPtr p, int off, int bytes, string s)

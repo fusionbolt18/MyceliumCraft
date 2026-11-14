@@ -3,6 +3,7 @@ using System.Collections.Generic;
 using UnityEngine;
 using UnityEngine.InputSystem;
 using UnityEngine.Rendering;
+using UnityEngine.SceneManagement;
 
 namespace MyceliumCraft
 {
@@ -51,6 +52,75 @@ namespace MyceliumCraft
         float nextLog;
         Vector3 loggedFrom;
         float loggedYaw, loggedPitch;
+
+        struct MenuHidden { public CanvasGroup group; public bool added; public float alpha; public bool interactable, raycasts; }
+        readonly List<MenuHidden> menuOff = new List<MenuHidden>();
+        bool menuHidden, menuTested;
+        int menuTest = -1;
+
+        /// <summary>
+        /// F1 on Mycelium's main menu, with -freecam (your request, 2026-11-13): the menu's buttons go,
+        /// the logo stays (your correction, the same day). The menu's canvas ("Canvas") holds the logo,
+        /// its background and the panels (MainMenu's buttons, About, Profile, Mode Select); every child
+        /// but "Logo" and "...Background" is made invisible and unclickable with a CanvasGroup (alpha 0),
+        /// so a panel opened later stays hidden too. F1 again, or leaving the menu, puts it all back.
+        /// Called every frame, linked to Minecraft or not.
+        /// Test aid: "-mcMenuF1Test" hides them 4 s after start and shows them again 3 s later.
+        /// </summary>
+        public void MainMenuF1()
+        {
+            if (!Allowed) return;
+            bool onMenu = SceneManager.GetActiveScene().name == "Main Menu";
+            if (!onMenu)
+            {
+                if (menuHidden) { menuHidden = false; menuOff.Clear(); McLog.Info("freecam: left the main menu; its buttons are back"); }
+                return;
+            }
+            Keyboard kb = Keyboard.current;
+            bool toggle = kb != null && kb.f1Key.wasPressedThisFrame && Application.isFocused;
+            string why = "F1";
+            if (menuTest < 0) menuTest = Array.IndexOf(Environment.GetCommandLineArgs(), "-mcMenuF1Test") >= 0 ? 1 : 0;
+            if (menuTest == 1 && !menuTested && Time.realtimeSinceStartup > 4f && !menuHidden) { toggle = true; why = "test aid"; }
+            if (menuTest == 1 && !menuTested && menuHidden && Time.realtimeSinceStartup > 7f) { toggle = true; why = "test aid"; menuTested = true; }
+            if (!toggle) return;
+            if (menuHidden)
+            {
+                int back = 0;
+                foreach (MenuHidden h in menuOff)
+                {
+                    if (h.group == null) continue;
+                    if (h.added) UnityEngine.Object.Destroy(h.group);
+                    else { h.group.alpha = h.alpha; h.group.interactable = h.interactable; h.group.blocksRaycasts = h.raycasts; }
+                    back++;
+                }
+                menuOff.Clear();
+                menuHidden = false;
+                McLog.Info($"freecam: {why} on the main menu: {back} part(s) shown again");
+                return;
+            }
+            GameObject canvas = null;
+            foreach (GameObject root in SceneManager.GetActiveScene().GetRootGameObjects())
+                if (root.name == "Canvas" && root.GetComponent<Canvas>() != null) { canvas = root; break; }
+            if (canvas == null) { McLog.Info($"freecam: {why} on the main menu: its canvas wasn't found"); return; }
+            var hidden = new List<string>();
+            var kept = new List<string>();
+            foreach (Transform child in canvas.transform)
+            {
+                string name = child.gameObject.name;
+                if (name.Contains("Logo") || name.EndsWith("Background")) { kept.Add(name); continue; }
+                CanvasGroup g = child.GetComponent<CanvasGroup>();
+                var h = new MenuHidden { group = g, added = g == null };
+                if (g == null) h.group = g = child.gameObject.AddComponent<CanvasGroup>();
+                else { h.alpha = g.alpha; h.interactable = g.interactable; h.raycasts = g.blocksRaycasts; }
+                g.alpha = 0f;
+                g.interactable = false;
+                g.blocksRaycasts = false;
+                menuOff.Add(h);
+                hidden.Add(name);
+            }
+            menuHidden = true;
+            McLog.Info($"freecam: {why} on the main menu: hidden {string.Join(", ", hidden)}; kept {string.Join(", ", kept)}");
+        }
 
         /// <summary>Every frame. inLevel: Mycelium is in a level with a spore (the freecam turns off otherwise).</summary>
         public void Update(bool inLevel, bool mcScreenOpen)
@@ -179,6 +249,36 @@ namespace MyceliumCraft
         public int Drawn { get; private set; }
         public void TestToggle() => SetActive(!Active, "test aid");
         public void TestRandomColors() => RandomColors("test aid");
+
+        uint renameSeen;
+        bool renameStarted;
+
+        /// <summary>
+        /// Minecraft's /changename (your request, 2026-11-12): McState's rename request, its number and
+        /// the name. A new number renames the spore you play (CharacterStats.sporeName, then
+        /// UpdateSporeName, which Mycelium calls itself: the HUD's name and the nametag). Only with
+        /// -freecam. The first number seen is only remembered, so a request made before Mycelium
+        /// started isn't done again. Minecraft sees it worked when MycState's spore name changes.
+        /// Saved with the colony when Mycelium saves, as any spore's name.
+        /// </summary>
+        public void Rename(uint seq, string name)
+        {
+            if (!renameStarted) { renameStarted = true; renameSeen = seq; return; }
+            if (seq == renameSeen) return;
+            renameSeen = seq;
+            name = (name ?? "").Trim();
+            if (!Allowed) { McLog.Info($"rename: Minecraft asked to rename your spore to '{name}', but Mycelium wasn't started with -freecam"); return; }
+            GameObject you = GameObject.FindWithTag("currentPlayer");
+            System.Type statsType = System.Type.GetType("CharacterStats, Assembly-CSharp");
+            Component stats = you != null && statsType != null ? you.GetComponent(statsType) : null;
+            var field = statsType?.GetField("sporeName");
+            if (stats == null || field == null || name.Length == 0) { McLog.Info($"rename: can't rename to '{name}' ({(name.Length == 0 ? "no name" : "no spore of yours")})"); return; }
+            string was = field.GetValue(stats) as string;
+            field.SetValue(stats, name);
+            try { statsType.GetMethod("UpdateSporeName")?.Invoke(stats, null); }
+            catch (Exception e) { McLog.Info($"rename: Mycelium's UpdateSporeName failed ({(e.InnerException ?? e).Message}); the name is set anyway"); }
+            McLog.Info($"rename: your spore '{was}' is now '{field.GetValue(stats)}' (Minecraft's /changename, request {seq})");
+        }
 
         static readonly string[] Species = { "Default", "Poison", "Coral", "Cordyceps" };
         static readonly string[] SpeciesFields = { "default", "poison", "coral", "cordyceps" };

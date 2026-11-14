@@ -117,7 +117,7 @@ public final class Proto {
 
 	public static final long MAPPING_BYTES = OFF_FORGE + FORGE_BYTES;
 	public static final int MAGIC = 0x4343594D; // "MYCC"
-	public static final int VERSION = 64;
+	public static final int VERSION = 65;
 	/** A side is alive if its heartbeat is younger than this. */
 	public static final long HEARTBEAT_TIMEOUT_MS = 3000;
 
@@ -168,6 +168,7 @@ public final class Proto {
 	public static final int MYC_AT_DECORATION = 1 << 10; // at a decoration standing (the dance pad): third person, facing held; since v55
 	public static final int MYC_WAVE = 1 << 9; // not sent since v53 (the Curio key with nothing near does nothing now)
 	public static final int MYC_FURY = 1 << 6; // Relentless Fury's frenzy: red potion particles; since v50
+	public static final int MYC_FREECAM = 1 << 14; // Mycelium was started with -freecam: /changename works (MycChangeName); since v65
 	public static final int MYC_FULLSCREEN = 1 << 13; // Mycelium is full screen: Minecraft goes full screen too (MycWindowSize); since v62
 	public static final int MYC_RAIN = 1 << 12; // it's raining in Mycelium: Minecraft has a thunderstorm (MycWeather); since v60
 	public static final int MYC_ROLL = 1 << 5; // the dodge roll is on (Mycelium's Animator "Roll"); since v37
@@ -196,6 +197,9 @@ public final class Proto {
 	public static final long MC_DAMAGE_TILT = 0x8C; // Minecraft's "Damage Tilt" setting, 0 (off) .. 1; since v20
 	public static final long MC_HAND_WEAPON = 0x90; // u32: the weapon whose carrot is in the main hand (Weapons id); 0 = none; since v24
 	public static final long MC_SWINGS = 0x94; // u32: melee attacks Minecraft has started (counts up); since v25
+	public static final long MC_RENAME_SEQ = 0xA0; // u32: /changename requests (counts up); since v65
+	public static final long MC_RENAME_NAME = 0xA4; // utf8[64]: the name the latest request asks for
+	public static final int MC_RENAME_BYTES = 64;
 	public static final long MC_MOVE_X = 0x98, MC_MOVE_Z = 0x9C; // f32 x2: the held movement keys' direction (world, unit; 0, 0 = none); since v36
 	public static final int MC_IN_WORLD = 1 << 0;
 	public static final int MC_SCREEN_OPEN = 1 << 1;

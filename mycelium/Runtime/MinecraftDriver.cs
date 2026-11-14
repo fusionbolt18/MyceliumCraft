@@ -526,6 +526,7 @@ namespace MyceliumCraft
         {
             BackgroundWindow.Update();
             cycloneLength.Update(); // always, linked or not (your request, 2026-11-10)
+            freecam.MainMenuF1(); // -freecam: F1 on the main menu hides its buttons (linked or not)
             frameQpc = MyceliumLink.Qpc();
             frameUnscaled = Time.unscaledTimeAsDouble;
             if (link == null) return;
@@ -571,6 +572,8 @@ namespace MyceliumCraft
             if (Raining()) flags |= Proto.MycRain;
             // Full screen or in a window: Minecraft's window does the same (MycWindowSize.java; your request, 2026-11-10).
             if (Screen.fullScreenMode != FullScreenMode.Windowed) flags |= Proto.MycFullscreen;
+            // -freecam: Minecraft's /changename works (Freecam.Rename).
+            if (freecam.Allowed) flags |= Proto.MycFreecam;
             combat.Frenzied = furyWatch.On;
             hurtTilt.IgnoreDrop += furyWatch.TakeDrained(); // the frenzy's drain isn't a hit
             // Mycelium's health, which Minecraft's follows (/ 5).
@@ -709,7 +712,11 @@ namespace MyceliumCraft
             bool overlayBlocked = controls && !controlsWhy.EndsWith("knockback") && DecorationPose(out _) == 0
                                   && (controlsWhy == "paused" || menu || Time.realtimeSinceStartup - controlsSince >= OverlayControlsGrace);
             // Minecraft's F1: Mycelium's interface goes too, during play; back for its menus and cover screens.
-            uiHider.Update(alive && phase == Phase.Driving && (lastCamMc.Flags & Proto.McHudHidden) != 0 && !overlayBlocked && !covered);
+            // A boss cutscene takes the controls too, but it isn't a menu: F1 keeps the interface hidden
+            // through it (your report, 2026-11-13: it came back for the boss's intro).
+            // (Not over the run's end screen, which comes after the boss's death.)
+            bool bossCut = BossCutsceneOn() && !EndOfLevelMenu() && !IsPaused();
+            uiHider.Update(alive && phase == Phase.Driving && (lastCamMc.Flags & Proto.McHudHidden) != 0 && (bossCut || (!overlayBlocked && !covered)));
             birth.Update(alive && phase != Phase.Idle); // a spore grown in the shop: no HUD, no overlay
             overlay.Update(link, McConfig.Overlay && alive && phase != Phase.Idle && !overlayBlocked && !covered && !birth.On);
             // Minecraft's pause menu (Escape) pauses Mycelium too.
@@ -724,6 +731,7 @@ namespace MyceliumCraft
             playerModel.SetVanished(vanished);
             cameraSync.ReplaceSpore = playerModel.Shown;
             freecam.Update(rb != null && phase != Phase.Idle, mcScreenOpen);
+            if (alive && camFresh2) freecam.Rename(lastCamMc.RenameSeq, lastCamMc.RenameName); // Minecraft's /changename
             playerModel.Cutscene = cameraSync.CutsceneLive || freecam.Active; // your whole body in a cutscene's view, or the freecam's
             // The other spores as Minecraft characters too, while yours is one.
             colonyBodies.Update(link, playerModel.Shown, colony, playerModel, feetOffset, (float)map.Scale, freecam.OthersHidden);
@@ -1715,6 +1723,40 @@ namespace MyceliumCraft
         bool wasMenuFade;
 
         /// <summary>Mycelium's own HUD ("HUD" CanvasGroup) is fading out or faded: HUDController.FadeHUD(false), which its menus call.</summary>
+        static Type bossCamType;
+        static FieldInfo bossCamInstance, bossIntroCam, bossDeathCam;
+        bool wasBossCut;
+
+        /// <summary>
+        /// The final boss's intro or death cutscene is playing: BossCam's intro or death camera is on,
+        /// or the boss is beaten (its death cutscene runs until the level ends).
+        /// </summary>
+        bool BossCutsceneOn()
+        {
+            if (bossCamType == null)
+            {
+                bossCamType = Type.GetType("BossCam, Assembly-CSharp");
+                bossCamInstance = bossCamType?.GetField("Instance", BindingFlags.Public | BindingFlags.Static);
+                bossIntroCam = bossCamType?.GetField("introVCam", BindingFlags.NonPublic | BindingFlags.Instance);
+                bossDeathCam = bossCamType?.GetField("deathVCam", BindingFlags.NonPublic | BindingFlags.Instance);
+            }
+            bool on = false;
+            string which = "";
+            var cam = bossCamInstance?.GetValue(null) as Component;
+            if (cam != null)
+            {
+                if (bossIntroCam?.GetValue(cam) is Behaviour i && i.enabled) { on = true; which = "intro"; }
+                else if (bossDeathCam?.GetValue(cam) is Behaviour d && d.enabled) { on = true; which = "death"; }
+            }
+            if (!on && FinalBossBeaten()) { on = true; which = "death (boss beaten)"; }
+            if (on != wasBossCut)
+            {
+                wasBossCut = on;
+                McLog.Info(on ? $"ui: the boss's {which} cutscene started; F1 keeps Mycelium's interface hidden through it" : "ui: the boss's cutscene is over");
+            }
+            return on;
+        }
+
         bool HudFadingOut()
         {
             string scene = SceneManager.GetActiveScene().name;
@@ -2874,9 +2916,19 @@ namespace MyceliumCraft
             Type t = Type.GetType("BossHealth, Assembly-CSharp");
             Component health = boss != null && t != null ? boss.GetComponent(t) : null;
             Collider mine = rb != null ? rb.GetComponent<Collider>() : null;
-            if (health == null || mine == null) { McLog.Info("boss intro test: no boss or no collider"); yield break; }
-            McLog.Info("boss intro test: into the boss's trigger");
-            t.GetMethod("OnTriggerEnter", BindingFlags.NonPublic | BindingFlags.Instance)?.Invoke(health, new object[] { mine });
+            if (mine == null) { McLog.Info("boss intro test: no collider"); yield break; }
+            if (health != null)
+            {
+                McLog.Info("boss intro test: into the boss's trigger");
+                t.GetMethod("OnTriggerEnter", BindingFlags.NonPublic | BindingFlags.Instance)?.Invoke(health, new object[] { mine });
+            }
+            else McLog.Info("boss intro test: the boss isn't active yet (StartBoss switches it on)");
+            // The intro itself starts from StartBoss's trigger (the boss's own trigger didn't start it).
+            Type sb = Type.GetType("StartBoss, Assembly-CSharp");
+            Component start = null;
+            if (sb != null) foreach (UnityEngine.Object o in Resources.FindObjectsOfTypeAll(sb)) { var c = o as Component; if (c != null && c.gameObject.scene.IsValid()) { start = c; break; } }
+            McLog.Info($"boss intro test: StartBoss {(start != null ? "found, into its trigger" : "not found")}");
+            if (start != null) sb.GetMethod("OnTriggerEnter", BindingFlags.NonPublic | BindingFlags.Instance)?.Invoke(start, new object[] { mine });
             Type bc = Type.GetType("BossCam, Assembly-CSharp");
             for (int i = 0; i < 40; i++)
             {

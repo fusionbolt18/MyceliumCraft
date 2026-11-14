@@ -126,7 +126,7 @@ namespace MyceliumCraft.Link
 
         public const int MappingBytes = OffForge + ForgeBytes;
         public const uint Magic = 0x4343594D; // "MYCC"
-        public const uint Version = 64;
+        public const uint Version = 65;
         public const ulong HeartbeatTimeoutMs = 3000;
 
         // Header @0x000
@@ -178,6 +178,7 @@ namespace MyceliumCraft.Link
         public const uint MycAtDecoration = 1u << 10; // at a decoration standing (the dance pad): third person, facing held, no pose; since v55
         public const uint MycWave = 1u << 9;     // not sent since v53 (the Curio key with nothing near does nothing now)
         public const uint MycFury = 1u << 6;     // Relentless Fury's frenzy is on: Minecraft shows red potion particles; since v50
+        public const uint MycFreecam = 1u << 14; // started with -freecam: Minecraft's /changename works (Freecam.Rename); since v65
         public const uint MycFullscreen = 1u << 13; // Mycelium is full screen (not in a window): Minecraft goes full screen too (MycWindowSize); since v62
         public const uint MycRain = 1u << 12;    // it's raining in Mycelium (WeatherSettingsScript.isRaining): Minecraft has a thunderstorm; since v60
         public const uint MycRoll = 1u << 5;     // the dodge roll is on (the spore's Animator "Roll"): Minecraft plays its roll animation; since v37
@@ -206,6 +207,9 @@ namespace MyceliumCraft.Link
         public const int McDamageTilt = 0x8C; // Minecraft's "Damage Tilt" setting, 0 (off) .. 1; since v20
         public const int McHandWeapon = 0x90; // u32: the weapon (Weapons table id) whose carrot is in Minecraft's main hand; 0 = none; since v24
         public const int McSwings = 0x94;     // u32: melee attacks Minecraft has started (counts up); since v25
+        public const int McRenameSeq = 0xA0; // u32: Minecraft's /changename requests (counts up); since v65
+        public const int McRenameName = 0xA4; // utf8[64]: the name the latest one asks for
+        public const int McRenameBytes = 64;
         public const int McMoveX = 0x98, McMoveZ = 0x9C; // f32 x2: the held movement keys' direction (Minecraft world, unit; 0, 0 = none); since v36
         public const uint McInWorld = 1u << 0;
         public const uint McScreenOpen = 1u << 1;
