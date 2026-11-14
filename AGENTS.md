@@ -59,7 +59,7 @@ Play Mycelium while being a Minecraft Player
   `MODLOG-template.md`.
 - `docs/DESIGN.md`: how the project works, in plain language. Update when the
   architecture changes, not on every commit.
-- `README.md`: the "what works / what doesn't work" list. Test before you claim
+- `Claude-README.md`: the "what works / what doesn't work" list. Test before you claim
   something works.
 
 ## Environment
