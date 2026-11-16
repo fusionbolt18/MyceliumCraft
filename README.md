@@ -34,6 +34,13 @@ Play Mycelium as a Minecraft player:
   - Right click it and hover over "Manage"
   - Click on "Browse local files" (This take you to Steam's Mycelium folder)
   - Take the all the contents of the "MyceliumCraft MYCELIUM" folder and drag them into Steam's Mycelium folder
+  - It should look like the below image
+  - ![Picture of Steam's Mycelium folder](https://github.com/fusionbolt18/MyceliumCraft/blob/main/screenshots/myceliumSteamFiles.png?raw=true)
+- Minecraft Side
+  -  Have Minecraft 26.3 with Fabric Loader 0.19.5
+  - Find your launcher's equivalent of the ".minecraft" folder (google if you don't know). Inside of it should be 2 folders named "mods" and "config". If they aren't there yet, then you can create them
+  - Find the "mods" and "config" folders inside the "MyceliumCraft MINECRAFT" folder
+  - Drag the contents of those folders into your own Minecraft's respective folders
 - Mycelium Side UNINSTALLATION
   - Right click Mycelium and hover over "Manage"
   - Click on "Browse local files" (This take you to Steam's Mycelium folder)
@@ -42,12 +49,6 @@ Play Mycelium as a Minecraft player:
   - Click on "Properties"
   - Click on "Installed Files"
   - Click on "Verify integrity of game files"
-- Minecraft Side
-  -  Have Minecraft 26.3 with Fabric Loader 0.19.5
-  - Find your launcher's equivalent of the ".minecraft" folder (google if you don't know). Inside of it should be 2 folders named "mods" and "config". If they aren't there yet, then you can create them
-  - Find the "mods" and "config" folders inside the "MyceliumCraft MINECRAFT" folder
-  - Drag the contents of those folders into your own Minecraft's respective folders
-
 
 ## Playing
 
