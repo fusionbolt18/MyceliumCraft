@@ -22,6 +22,7 @@
 !/fabric/gradle/wrapper/gradle-wrapper.jar
 # Your own weapon textures (your art, not game assets), for the mod's built-in resource pack.
 !/fabric/src/main/weapon-textures/*.png
+!/screenshots/*.png
 
 # Never track these folders, even if they contain the file types above:
 # local copies of the games, clones of other projects, build output.
