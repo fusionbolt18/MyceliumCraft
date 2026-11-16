@@ -16,6 +16,7 @@ Play Mycelium as a Minecraft player:
 - F5 to change camera views, just like normal Minecraft.
 - Remember that in the Mycelium pause menu there is a render setting (I forgot about this for a bit and o boy is the Delta Crag laggy).
 - I may look into Multiplayer one day idk
+- Idk how to make Claude show up as a contributor
 
 
 ## Requirements
